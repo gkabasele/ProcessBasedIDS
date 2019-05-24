@@ -1,0 +1,3 @@
+[submodule "requirement_interpreter"]
+	path = requirement_interpreter
+	url = git@github.com:gkabasele/requirement_interpreter.git

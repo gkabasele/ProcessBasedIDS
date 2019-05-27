@@ -30,6 +30,7 @@ class ProcessVariable():
         self.nbr_transition = 0
         self.last_transition = None
         self.elapsed_time_transition = []
+        self.last_valule = None
         self.value = None
 
     @classmethod

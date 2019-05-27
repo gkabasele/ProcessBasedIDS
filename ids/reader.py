@@ -20,10 +20,10 @@ class Message(object):
 
 class Reader(object):
 
-    def __init__(self, traces, queue):
+    def __init__(self, trace, queue):
         self.map_req_res = {}
-        self.traces = traces
-        self.reader = PcapReader(traces)
+        self.trace = trace
+        self.reader = PcapReader(trace)
         self.queue = queue
 
     def get_ip_tcp_fields(self, pkt):
@@ -62,6 +62,7 @@ class Reader(object):
                                                   pkt[ModbusRes].payload)
                 msg.res_timestamp = packet.time
                 self.queue.put(msg)
+                self.map_req_res.pop((srcip, transId), None)
 
     def readall(self):
         for p in self.reader:
@@ -72,3 +73,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--trace", type=str, dest="trace")
+    args = parser.parse_args()
+
+    queue = Queue()
+    reader = Reader(args.trace)

@@ -23,21 +23,36 @@ class Requirement(object):
         Requirement.identifier += 1
         self.content = content
 
-class State(object):
+class Checker(object):
 
-    def __init__(self, descFile, store, bool_weight=5, num_weight=1):
-        #name -> Process Variable
+    def __init__(self, descFile, store):
+        # name -> Process Variable
         self.vars = {}
         #key -> name
         self.map_key_name = {}
-        self.reqs = [] 
-
-        self.bool_weight = bool_weight
-        self.num_weight = num_weight
 
         self.store = store
-
         self.setup(descFile)
+
+    def setup(self, descFile):
+        content = open(descFile).read()
+        desc = yaml.load(content)
+        for var_desc in desc['variables']:
+            var = var_desc['variable']
+            pv = ProcessVariable(var['host'], var['port'], var['type'],
+                                 var['address'], var.get('gap', 1), var['size'],
+                                 var['name'])
+            self.vars[pv.name] = pv
+            self.map_key_name[pv.key()] = pv.name
+
+class ReqChecker(Checker):
+
+    def __init__(self, descFile, store, bool_weight=5, num_weight=1):
+
+        Checker.__init__(self, descFile, store)
+        self.reqs = [] 
+        self.bool_weight = bool_weight
+        self.num_weight = num_weight
 
     def count_bool_var(self):
         return len(filter(lambda x: x.is_bool_var(), self.vars.values()))
@@ -68,26 +83,20 @@ class State(object):
         d = Distance(min_dist, identifier, min_dist, identifier)
         return d
 
-    def setup(self, descFile):
+    def create_requirement(self):
         content = open(descFile).read()
         desc = yaml.load(content)
-        for var_desc in desc['variables']:
-            var = var_desc['variable']
-            pv = ProcessVariable(var['host'], var['port'], var['type'],
-                                 var['address'], var.get('gap', 1), var['size'],
-                                 var['name'])
-            self.vars[pv.name] = pv
-            self.map_key_name[pv.key()] = pv.name
-
         for req_desc in desc['requirements']:
             req = Requirement(Parser(Lexer(req_desc['requirement'])).parse())
             self.reqs.append(req)
 
     def update_vars_from_store(self):
         for k, v in self.store.items():
-            val = v.value
             if k in self.map_key_name:
                 name = self.map_key_name[k]
-                self.vars[name].value = val
+                self.vars[name].value = v.val
             else:
                 print("Unknown Process Variable {}".format(v))
+
+    def run(self):
+        pass

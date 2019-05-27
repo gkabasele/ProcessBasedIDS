@@ -26,14 +26,17 @@ class PVStore(object):
             pv.last_transition = msg.res_timestamp
             pv.elapsed_time_transition.append(diff)
 
-        pv.last_value = msg.value
+        if pv.first is None:
+            pv.first = msg.res_timestamp
+
+        pv.last_ts = msg.res_timestamp
         pv.value = msg.value
 
     def create_var(self, msg):
         pv = ProcessVariable(msg.host, msg.port, msg.kind, msg.addr)
-        pv.last_value = msg.value
         pv.value = msg.value
         pv.last_transition = msg.res_timestamp
+        pv.first = msg.res_timestamp
         self.store[msg.key()] = pv
 
     def items(self):

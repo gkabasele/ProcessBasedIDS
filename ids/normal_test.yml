@@ -1,0 +1,108 @@
+variables:
+    - variable:
+        name: t1
+        host: 10.0.20.7
+        port: 5020
+        type: hr
+        address: 0
+        size: 1
+        gap: 40
+
+    - variable:
+        name: vc
+        host: 10.0.20.15
+        port: 5020
+        type: co
+        address: 0
+        size: 1
+    
+    - variable:
+        name: wc
+        host: 10.0.20.13
+        port: 5020
+        type: hr
+        address: 0
+        size: 1
+        gap: 20
+
+    - variable:
+        name: we
+        host: 10.0.20.14
+        port: 5020
+        type: co
+        address: 0
+        size: 1
+
+    - variable:
+        name: tf
+        host: 10.0.20.21
+        port: 5020
+        type: hr
+        address: 0
+        size: 1
+        gap: 60
+
+    - variable:
+        name: m1
+        host: 10.0.20.4
+        port: 5020
+        type: co
+        address: 0
+        size: 1
+
+    - variable:
+        name: m2
+        host: 10.0.20.9
+        port: 5020
+        type: co
+        address: 0
+        size: 1
+
+    - variable:
+        name: s2
+        host: 10.0.20.19
+        port: 5020
+        type: hr
+        address: 0
+        size: 1
+        gap: 60
+
+# SHORTEN!!!!
+tank1: &t1 >
+            ( t1 <= 60 )
+wagoncar: &wc >
+                ( wc <= 40 )
+silo2: &s2 >
+             ( s2 <= 80 )
+
+tankfinal: &tf >
+                ( tf <= 80 )
+motor1: &m1 >
+             ( ( m1 = 0 & t1 <= 40 ) | (m1 = 1 & t1 = 40 ) )
+
+motor2: &m2 >
+             (( m2 = 0 & s2 <= 80 ) | ( m2 = 1 & s2 = 80 ))
+
+valve: &vc >
+            (( we = 0 & vc = 0 ) | 
+            ( we = 0 & vc = 1 ) | 
+            ( we = 1 & vc = 0 ))
+
+requirements:
+    - requirement: *t1
+    - requirement: *wc
+    - requirement: *s2
+    - requirement: *tf
+    - requirement: *m1
+    - requirement: *m2
+    - requirement: *vc
+
+#requirements:
+#    - requirement: !join [ *tank,'&', *motor,'&', *valve]
+#requirements:
+#    - requirement: ( tank1 >= 0 & tank1 <= 60 ) & ( wagoncar >= 0 & wagoncar <= 40 ) & ( silo2 >= 0 & silo2 <= 80 ) & ( tankfinal >= 0 & tankfinal <= 80 )
+#    - requirement: motor1 = 1 & tank1 = 40
+#    - requirement: motor2 = 1 & silo2 = 60
+#    - requirement: wagonend = 1 & valvecharcoal = 0
+#    - requirement: wagonend = 0 & valvecharcoal = 1
+#    - requirement: wagonend = 0 & valvecharcoal = 0

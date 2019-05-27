@@ -10,13 +10,17 @@ class Message(object):
 
     __slots__ = ['host', 'port', 'addr', 'size', 'value']
 
-    def __init__(self, host, kind, addr, ts):
+    def __init__(self, host, kind, addr, ts, port=MODBUS_PORT):
         self.req_timestamp = ts
         self.res_timestamp = None
         self.host = host
+        self.port = port
         self.kind = kind
         self.addr = addr
         self.value = None
+
+    def key(self):
+        return (self.host, self.port, self.kind, self.addr)
 
 class Reader(object):
 

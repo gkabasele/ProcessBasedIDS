@@ -17,6 +17,10 @@ DIS_INP = "di"
 HOL_REG = "hr"
 INP_REG = "ir"
 
+# Funcode write
+
+WRITE_FUNCODE = [5, 6]
+
 class ProcessVariable():
 
     def __init__(self, host, port, kind, addr, gap=1, size=None, name=None):
@@ -30,7 +34,7 @@ class ProcessVariable():
         self.nbr_transition = 0
         self.last_transition = None
         self.elapsed_time_transition = []
-        self.last_valule = None
+        self.last_value = None
         self.value = None
 
     @classmethod
@@ -43,8 +47,10 @@ class ProcessVariable():
             return HOL_REG
         elif funcode == 4:
             return INP_REG
-        
 
+    def key(self):
+        return (self.host, self.port, self.kind, self.addr)
+        
     def __eq__(self, other):
         return ((self.host, self.port, self.kind, self.addr) ==
                 (other.host, other.port, other.kind, other.addr))

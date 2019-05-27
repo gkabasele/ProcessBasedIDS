@@ -23,7 +23,8 @@ WRITE_FUNCODE = [5, 6]
 
 class ProcessVariable():
 
-    def __init__(self, host, port, kind, addr, gap=1, size=None, name=None):
+    def __init__(self, host, port, kind, addr, gap=1, size=None, name=None,
+                 first=None):
         self.host = host
         self.port = port
         self.kind = kind
@@ -31,10 +32,11 @@ class ProcessVariable():
         self.name = name
         self.size = size
         self.gap = gap
+        self.first = None
         self.nbr_transition = 0
         self.last_transition = None
         self.elapsed_time_transition = []
-        self.last_value = None
+        self.current_ts = None
         self.value = None
 
     @classmethod
@@ -67,6 +69,11 @@ class ProcessVariable():
 
     def is_bool_var(self):
         return self.kind in [DIS_COIL, DIS_INP]
+
+    def clear_time(self):
+        self.first = None
+        self.nbr_transition = 0
+        self.elapsed_time_transition = []
 
 class SRTag(Packet):
     name = "SRTag"

@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 
 import sys
+import os
 import argparse
 import yaml
 import collections
+import threading
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../requirement_interpreter')))
 
 from utils import ProcessVariable
 
-import Lexer
-import Parser
-import Interpreter
+from lexer import Lexer
+from parser import Parser
+from interpreter import Interpreter 
 
 class Requirement(object):
 
@@ -23,27 +25,32 @@ class Requirement(object):
         Requirement.identifier += 1
         self.content = content
 
-class Checker(object):
+class Checker(threading.Thread):
 
-    def __init__(self, descFile, store):
+    def __init__(self, descFile, queue):
+        threading.Thread.__init__(self)
         # name -> Process Variable
         self.vars = {}
         #key -> name
         self.map_key_name = {}
 
-        self.store = store
+        self.store = queue
         self.setup(descFile)
 
     def setup(self, descFile):
         content = open(descFile).read()
-        desc = yaml.load(content)
+        desc = yaml.load(content, Loader=yaml.Loader)
         for var_desc in desc['variables']:
             var = var_desc['variable']
             pv = ProcessVariable(var['host'], var['port'], var['type'],
-                                 var['address'], var.get('gap', 1), var['size'],
-                                 var['name'])
+                                 var['address'], var.get('gap', 1),
+                                 size=var['size'], name=var['name'])
+
             self.vars[pv.name] = pv
             self.map_key_name[pv.key()] = pv.name
+
+    def run(self):
+        raise NotImplementedError
 
 class ReqChecker(Checker):
 
@@ -53,6 +60,9 @@ class ReqChecker(Checker):
         self.reqs = [] 
         self.bool_weight = bool_weight
         self.num_weight = num_weight
+        self.done = False
+
+        self.create_requirement(descFile)
 
     def count_bool_var(self):
         return len(filter(lambda x: x.is_bool_var(), self.vars.values()))
@@ -83,20 +93,35 @@ class ReqChecker(Checker):
         d = Distance(min_dist, identifier, min_dist, identifier)
         return d
 
-    def create_requirement(self):
+    def create_requirement(self, descFile):
         content = open(descFile).read()
-        desc = yaml.load(content)
+        desc = yaml.load(content, Loader=yaml.Loader)
         for req_desc in desc['requirements']:
             req = Requirement(Parser(Lexer(req_desc['requirement'])).parse())
             self.reqs.append(req)
 
     def update_vars_from_store(self):
-        for k, v in self.store.items():
-            if k in self.map_key_name:
-                name = self.map_key_name[k]
-                self.vars[name].value = v.val
+        seen = set()
+
+        while True:
+            msg = self.store.get()
+            self.done = type(msg) == str
+            if self.done:
+                break
+            key = msg.key()
+
+            if key in seen:
+                break
+
+            if key in self.map_key_name:
+                name = self.map_key_name[key]
+                self.vars[name].value = msg.value
+                seen.add(key)
             else:
-                print("Unknown Process Variable {}".format(v))
+                print("Unknown ProcessVariable {}".format(key))
+                seen.add(key)
 
     def run(self):
-        pass
+        while not self.done:
+            self.update_vars_from_store()
+            self.get_min_distance()

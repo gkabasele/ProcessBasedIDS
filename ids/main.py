@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import argparse
-from queue import Queue
+import queue
 
 from reader import Reader
 from pvStore import PVStore
@@ -13,12 +13,25 @@ parser.add_argument("--conf", type=str, dest="conf")
 parser.add_argument("--infile", type=str, dest="infile")
 
 def main(conf, infile):
-    queue = Queue()
+    queue_req = queue.Queue()
+    queue_time = queue.Queue()
 
-    reader = Reader(infile, queue)
-    store = PVStore(queue)
-    req_checker = ReqChecker(conf, store)
-    time_checker = TimeChecker(conf, store)
+    threads = []
+
+    reader = Reader(infile, [queue_req, queue_time])
+    threads.append(reader)
+    reader.start()
+
+    req_checker = ReqChecker(conf, queue_req)
+    threads.append(req_checker)
+    req_checker.start()
+
+    time_checker = TimeChecker(conf, queue_time, 5)
+    threads.append(time_checker)
+    time_checker.start()
+
+    for thr in threads:
+        thr.join()
 
 if __name__ == "__main__":
     args = parser.parse_args()

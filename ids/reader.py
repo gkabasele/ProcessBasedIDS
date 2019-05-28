@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
 
 import argparse
-from queue import Queue
+import queue 
+import threading
 
-from scapy.all import *
-from util import *
+import time
+from datetime import datetime
 
-class Message(object):
+from scapy.utils import RawPcapReader
+from scapy.layers.l2 import Ether
+from scapy.layers.inet import IP, TCP
+from utils import *
 
-    __slots__ = ['host', 'port', 'addr', 'size', 'value']
+class PVMessage(object):
+
+    __slots__ = ['host', 'port', 'addr', 'size',
+                 'value', 'kind', 'req_timestamp', 'res_timestamp']
 
     def __init__(self, host, kind, addr, ts, port=MODBUS_PORT):
         self.req_timestamp = ts
@@ -22,25 +29,25 @@ class Message(object):
     def key(self):
         return (self.host, self.port, self.kind, self.addr)
 
-class Reader(object):
+class Reader(threading.Thread):
 
-    def __init__(self, trace, queue):
+    def __init__(self, trace, queues):
+        threading.Thread.__init__(self)
         self.map_req_res = {}
         self.trace = trace
-        self.reader = PcapReader(trace)
-        self.queue = queue
+        self.queues = queues
 
-    def get_ip_tcp_fields(self, pkt):
-        srcip = pkt[IP].src
-        dstip = pkt[IP].dst
-        sport = pkt[TCP].sport
-        dport = pkt[TCP].dport
+    def get_ip_tcp_fields(self, ip_pkt, tcp_pkt):
+        srcip = ip_pkt.src
+        dstip = ip_pkt.dst
+        sport = tcp_pkt.sport
+        dport = tcp_pkt.dport
         return srcip, dstip, sport, dport
-    
+
     def get_modbus_req_fields(self, pkt):
-        funcode = pkt[ModbusReq].funcode
-        transId = pkt[ModbusReq].transId
-        addr = pkt[ModbusReq].startAddr
+        funcode = pkt.funcode
+        transId = pkt.transId
+        addr = pkt.startAddr
         kind = ProcessVariable.funcode_to_kind(funcode)
         return funcode, transId, addr, kind
 
@@ -50,27 +57,42 @@ class Reader(object):
             val = val[0]
         return val
 
-    def read_packet(self, packet):
-        payload = packet.get_payload()
-        pkt = IP(payload)
-        if TCP in pkt:
-            srcip, dstip, sport, dport = self.get_ip_tcp_fields(pkt)
-            if dport == MODBUS_PORT:
-                funcode, transId, addr, kind = self.get_modbus_req_fields(pkt)
-                self.map_req_res[(transId, dstip)] = Message(dstip, kind, addr,
-                                                             packet.time)
-            elif sport == MODBUS_PORT:
-                transId = pkt[ModbusRes].transId
-                msg = self.map_req_res[(srcip, transId)] 
-                msg.value = self.get_variable_val(pkt[ModbusRes].funcode,
-                                                  pkt[ModbusRes].payload)
-                msg.res_timestamp = packet.time
-                self.queue.put(msg)
-                self.map_req_res.pop((srcip, transId), None)
+    def get_pkt_time(self, pkt):
+        ts_subsec = pkt.usec
+        ts_sec_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(pkt.sec))
+        ts_str = '{}.{}'.format(ts_sec_str, ts_subsec)
+        return datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S.%f")
 
-    def readall(self):
-        for p in self.reader:
-            self.read_packet(p)
+    def read_packet(self, pkt, meta_pkt):
+        ether_pkt = Ether(pkt)
+        if ether_pkt.type == 0x0800:
+            ip_pkt = ether_pkt[IP]
+            if ip_pkt.proto == 6:
+                tcp_pkt = ip_pkt[TCP]
+                srcip, dstip, sport, dport = self.get_ip_tcp_fields(ip_pkt, tcp_pkt)
+                flags = tcp_pkt.flags
+                if PSH & flags:
+                    if dport == MODBUS_PORT:
+                        modbus_pkt = tcp_pkt[ModbusReq]
+                        funcode, transId, addr, kind = self.get_modbus_req_fields(modbus_pkt)
+                        self.map_req_res[(transId, dstip)] = PVMessage(dstip, kind, addr,
+                                                                       self.get_pkt_time(meta_pkt))
+                    elif sport == MODBUS_PORT:
+                        modbus_pkt = tcp_pkt[ModbusRes]
+                        transId = modbus_pkt.transId
+                        msg = self.map_req_res[(transId, srcip)]
+                        msg.value = self.get_variable_val(modbus_pkt.funcode,
+                                                          modbus_pkt.payload)
+                        msg.res_timestamp = self.get_pkt_time(meta_pkt)
+                        for q in self.queues:
+                            q.put(msg)
+                        self.map_req_res.pop((srcip, transId), None)
+
+    def run(self):
+        for pkt, meta_pkt in RawPcapReader(self.trace):
+            self.read_packet(pkt, meta_pkt)
+        for q in self.queues:
+            q.put("End")
 
 if __name__ == "__main__":
     
@@ -79,5 +101,7 @@ if __name__ == "__main__":
     parser.add_argument("--trace", type=str, dest="trace")
     args = parser.parse_args()
 
-    queue = Queue()
-    reader = Reader(args.trace)
+    queues = [queue.Queue()]
+    reader = Reader(args.trace, queues)
+    reader.start()
+    reader.join()

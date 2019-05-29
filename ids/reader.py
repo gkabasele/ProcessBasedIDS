@@ -29,6 +29,13 @@ class PVMessage(object):
     def key(self):
         return (self.host, self.port, self.kind, self.addr)
 
+    def __str__(self):
+        return "{}, {}, {}, {}".format(self.host, self.port, self.kind,
+                self.addr)
+
+    def __repr__(self):
+        return self.__str__()
+
 class Reader(threading.Thread):
 
     def __init__(self, trace, queues):
@@ -36,6 +43,8 @@ class Reader(threading.Thread):
         self.map_req_res = {}
         self.trace = trace
         self.queues = queues
+        
+        self.messages = {}
 
     def get_ip_tcp_fields(self, ip_pkt, tcp_pkt):
         srcip = ip_pkt.src
@@ -72,12 +81,13 @@ class Reader(threading.Thread):
                 srcip, dstip, sport, dport = self.get_ip_tcp_fields(ip_pkt, tcp_pkt)
                 flags = tcp_pkt.flags
                 if PSH & flags:
-                    if dport == MODBUS_PORT:
+                    if dport in MODBUS_PORT:
                         modbus_pkt = tcp_pkt[ModbusReq]
                         funcode, transId, addr, kind = self.get_modbus_req_fields(modbus_pkt)
-                        self.map_req_res[(transId, dstip)] = PVMessage(dstip, kind, addr,
-                                                                       self.get_pkt_time(meta_pkt))
-                    elif sport == MODBUS_PORT:
+                        self.map_req_res[(transId, dstip)] = PVMessage(dstip, kind, addr, 
+                                                                       self.get_pkt_time(meta_pkt),
+                                                                       port=dport)
+                    elif sport in MODBUS_PORT:
                         modbus_pkt = tcp_pkt[ModbusRes]
                         transId = modbus_pkt.transId
                         msg = self.map_req_res[(transId, srcip)]
@@ -88,9 +98,21 @@ class Reader(threading.Thread):
                             q.put(msg)
                         self.map_req_res.pop((srcip, transId), None)
 
+                        if msg.key() not in self.messages:
+                            self.messages[msg.key()] = [msg.value]
+                        else:
+                            self.messages[msg.key()].append(msg.value)
+
+    def display_message(self):
+        s = ""
+        for k, v in self.messages.items():
+            s += "{}-> {}\n".format(k, v)
+        return s
+
     def run(self):
         for pkt, meta_pkt in RawPcapReader(self.trace):
             self.read_packet(pkt, meta_pkt)
+
         for q in self.queues:
             q.put("End")
 
@@ -105,3 +127,4 @@ if __name__ == "__main__":
     reader = Reader(args.trace, queues)
     reader.start()
     reader.join()
+    print(reader.display_message())

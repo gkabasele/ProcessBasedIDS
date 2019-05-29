@@ -6,7 +6,9 @@ import numpy as np
 from scapy.all import *
 
 # PORT
-MODBUS_PORT = 5020
+MODBUS_PORT = [5020, 5021, 5022, 5023, 5024, 5025, 5026, 5027, 5028, 5029,
+               5030, 5031, 5032, 5033, 5034, 5035, 5036, 5037, 5038, 5039,
+               5040]
 
 # TAG
 SRTAG_REDIRECT = 0
@@ -109,7 +111,6 @@ class ModbusReq(Packet):
                    ByteField("funcode", None),
                    ShortField("startAddr", 0)
                   ]
-bind_layers(TCP, ModbusReq, dport=MODBUS_PORT)
 
 class ModbusRes(Packet):
     name = "ModbusRes"
@@ -120,7 +121,9 @@ class ModbusRes(Packet):
                    ByteField("funcode", None)
                   ]
 
-bind_layers(TCP, ModbusRes, sport=MODBUS_PORT)
+for port in MODBUS_PORT:
+    bind_layers(TCP, ModbusReq, dport=port)
+    bind_layers(TCP, ModbusRes, sport=port)
 
 class ReadCoilsRes(Packet):
     name = "ReadCoilsRes"

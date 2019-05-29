@@ -2,7 +2,6 @@
 
 import sys
 import os
-import argparse
 import yaml
 import collections
 import threading
@@ -24,6 +23,12 @@ class Requirement(object):
         self.identifier = Requirement.identifier
         Requirement.identifier += 1
         self.content = content
+
+    def __str__(self):
+        return "ID:{}, content:{}".format(self.identifier, self.content)
+
+    def __repr__(self):
+        return self.__str__()
 
 class Checker(threading.Thread):
 
@@ -65,7 +70,7 @@ class ReqChecker(Checker):
         self.create_requirement(descFile)
 
     def count_bool_var(self):
-        return len(filter(lambda x: x.is_bool_var(), self.vars.values()))
+        return len([x for x in filter(lambda x: x.is_bool_var(), self.vars.values())])
 
     def get_min_distance(self):
 
@@ -97,31 +102,51 @@ class ReqChecker(Checker):
         content = open(descFile).read()
         desc = yaml.load(content, Loader=yaml.Loader)
         for req_desc in desc['requirements']:
+            content = req_desc['requirement'].replace("\n","")
             req = Requirement(Parser(Lexer(req_desc['requirement'])).parse())
             self.reqs.append(req)
 
     def update_vars_from_store(self):
-        seen = set()
+        seen = {}
+        message_read = 0
+        for k in self.vars.keys():
+            seen[k] = False
 
         while True:
+
+            if all(seen.values()):
+                break
+
             msg = self.store.get()
-            self.done = type(msg) == str
+            message_read += 1
+            self.done = isinstance(msg, str)
             if self.done:
                 break
             key = msg.key()
 
-            if key in seen:
-                break
-
             if key in self.map_key_name:
                 name = self.map_key_name[key]
-                self.vars[name].value = msg.value
-                seen.add(key)
+                pv = self.vars[name]
+                pv.value = msg.value
+                print("Updating PV: {}".format(pv))
+                seen[name] = True
             else:
-                print("Unknown ProcessVariable {}".format(key))
-                seen.add(key)
+                pass
+                #print("Unknown ProcessVariable {}".format(key))
+        return message_read
+
+    def display_vars(self):
+        s = ""
+        for pv in self.vars.values():
+            s += "{} ,val:{}\n".format(pv, pv.value)
+        return s
 
     def run(self):
+        all_read = 0
         while not self.done:
-            self.update_vars_from_store()
+            all_read += self.update_vars_from_store()
+            print("End: {}, Nbr Read: {}".format(self.done, all_read))
+            if self.done:
+                break
             self.get_min_distance()
+            break

@@ -1,7 +1,7 @@
 variables:
     - variable:
         name: t1
-        host: localhost
+        host: 127.0.0.1
         port: 5038
         type: hr
         address: 0
@@ -10,7 +10,7 @@ variables:
 
     - variable:
         name: vc
-        host: localhost
+        host: 127.0.0.1
         port: 5022
         type: co
         address: 0
@@ -18,7 +18,7 @@ variables:
     
     - variable:
         name: wc
-        host: localhost
+        host: 127.0.0.1
         port: 5028
         type: hr
         address: 0
@@ -27,7 +27,7 @@ variables:
 
     - variable:
         name: we
-        host: localhost
+        host: 127.0.0.1
         port: 5029
         type: co
         address: 0
@@ -35,7 +35,7 @@ variables:
 
     - variable:
         name: tf
-        host: localhost
+        host: 127.0.0.1
         port: 5037
         type: hr
         address: 0
@@ -44,7 +44,7 @@ variables:
 
     - variable:
         name: m1
-        host: localhost
+        host: 127.0.0.1
         port: 5036
         type: co
         address: 0
@@ -52,7 +52,7 @@ variables:
 
     - variable:
         name: m2
-        host: localhost
+        host: 127.0.0.1
         port: 5032
         type: co
         address: 0
@@ -60,7 +60,7 @@ variables:
 
     - variable:
         name: s2
-        host: localhost
+        host: 127.0.0.1
         port: 5035
         type: hr
         address: 0

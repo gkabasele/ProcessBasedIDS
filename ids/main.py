@@ -26,7 +26,7 @@ def main(conf, infile):
     threads.append(req_checker)
     req_checker.start()
 
-    time_checker = TimeChecker(conf, queue_time, 5)
+    time_checker = TimeChecker(conf, queue_time)
     threads.append(time_checker)
     time_checker.start()
 

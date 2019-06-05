@@ -1,3 +1,6 @@
 [submodule "requirement_interpreter"]
 	path = requirement_interpreter
 	url = git@github.com:gkabasele/requirement_interpreter.git
+[submodule "scapy-cip-enip"]
+	path = scapy-cip-enip
+	url = https://github.com/scy-phy/scapy-cip-enip.git

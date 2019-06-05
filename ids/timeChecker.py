@@ -13,6 +13,40 @@ from scipy import stats
 from utils import ProcessVariable, randomName
 from reqChecker import Checker
 
+
+class TransitionMatrix(object):
+
+    def __init__(self, values):
+        self.header = values
+        self.historic_val = []
+        self.val_pos = {}
+        self.transitions = self.compute_transition(values)
+
+    def compute_transition(self, values):
+        transitions = []
+        for index, val in enumerate(values):
+            b = [-1] * len(values)
+            b[index] = 0 
+            transitions.append(b)
+            self.val_pos[val] = index
+        a = np.array(transitions)
+
+        return np.reshape(a, (len(values), (len(values))))
+
+    def __str__(self):
+        s=" "
+        for val in self.header:
+            s += " {}".format(val)
+        s += "\n"
+
+        for index, val in enumerate(self.header):
+            s += "{}".format(val)
+            for v in self.transitions[index]:
+                s += " {}".format(v)
+            s += "\n"
+        return s
+
+
 class TimeFrame(object):
 
     def __init__(self):
@@ -32,6 +66,9 @@ class TimeFrame(object):
         s += "]"
         return s
 
+    def nbr_transition(self):
+        return len(self.vals)-1
+
     def compute_elapsed_time(self):
         elapsed_time = []
         for i in range(len(self.ts) - 1):
@@ -41,29 +78,33 @@ class TimeFrame(object):
         return elapsed_time
 
     def __repr__(self):
-        s = "Val: {}, Avg:{}".format(len(self.vals),
-                                     np.average(self.compute_elapsed_time()))
+        elapsed_time = self.compute_elapsed_time()
+        if len(elapsed_time) != 0:
+            avg = np.average(elapsed_time)
+        else:
+            avg = -1
+        s = "Trans: {}, Avg:{}".format(self.nbr_transition(), avg)
         return s
 
 class TimeCond(object):
 
     def __init__(self):
         self.expected_values = set()
-        self.avg_elapsed_val = []
-        self.var_elapsed_val = []
+        self.avg_elapsed_val = set()
+        self.var_elapsed_val = set()
 
     def add_expected_value(self, val):
         self.expected_values.add(val)
 
     def add_expected_avg_var(self, elapsed_time):
-        if elapsed_time:
+        if len(elapsed_time) != 0:
             avg = np.average(elapsed_time)
             var = np.var(elapsed_time)
-            self.avg_elapsed_val.append(avg)
-            self.var_elapsed_val.append(var)
+            self.avg_elapsed_val.add(avg)
+            self.var_elapsed_val.add(var)
         else:
-            self.avg_elapsed_val.append(-1)
-            self.var_elapsed_val.append(-1)
+            self.avg_elapsed_val.add(-1)
+            self.var_elapsed_val.add(-1)
 
     def compute_t(self, avg, var, ex_avg, n):
         if n > 0:
@@ -73,17 +114,22 @@ class TimeCond(object):
             crit_byte = stats.t.ppf(1-alpha, df=df)
             return t_score < crit_byte
 
-    
     def test_cond(self, value, elapsed_time):
         res = value in self.expected_values
         if res:
-            if len(elapsed_time) != 0:
+            if len(elapsed_time) == 0:
+                avg, var = -1, -1
+            else:
                 avg = np.average(elapsed_time)
                 var = np.var(elapsed_time)
-                for ex_avg in self.avg_elapsed_val:
+
+            for ex_avg in self.avg_elapsed_val:
+                if avg == -1 or ex_avg == -1:
+                    res = avg == ex_avg
+                else:
                     res = self.compute_t(avg, var, ex_avg, len(elapsed_time))
-                    if res:
-                        return res
+                if res:
+                    return res
         return res
 
     def __str__(self):
@@ -189,7 +235,7 @@ class TimeChecker(Checker):
         for key, frames in self.map_var_frame.items():
             cond = TimeCond()
             for frame in frames[0:nbr_frame]:
-                cond.add_expected_value(len(frame.vals))
+                cond.add_expected_value(frame.nbr_transition())
                 elapsed_time = frame.compute_elapsed_time()
                 cond.add_expected_avg_var(elapsed_time)
             self.map_pv_cond[key] = cond
@@ -201,8 +247,9 @@ class TimeChecker(Checker):
                 continue
 
             cond = self.map_pv_cond[key]
+            #pdb.set_trace()
             frame = frames.pop(0)
-            value = len(frame.vals)
+            value = frame.nbr_transition()
             elapsed_time = frame.compute_elapsed_time()
             res = cond.test_cond(value, elapsed_time)
             if not res:
@@ -211,7 +258,7 @@ class TimeChecker(Checker):
                 print("Expected: {}\n".format(cond))
 
     def display_message(self):
-        s =""
+        s = ""
         for k, v in self.messages.items():
             s += "{}->{}\n".format(k,v)
         return s
@@ -236,4 +283,3 @@ class TimeChecker(Checker):
         while not self.done:
             self.compute_frame(True)
             self.check_condition()
-            break

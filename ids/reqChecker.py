@@ -8,7 +8,7 @@ import threading
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../requirement_interpreter')))
 
-from utils import ProcessVariable
+from utils import *
 
 from lexer import Lexer
 from parser import Parser
@@ -47,9 +47,14 @@ class Checker(threading.Thread):
         desc = yaml.load(content, Loader=yaml.Loader)
         for var_desc in desc['variables']:
             var = var_desc['variable']
+            if var['type'] == DIS_COIL or var['type'] == DIS_INP:
+                limit_values = [0, 1]
+            else:
+                limit_values = var['values']
             pv = ProcessVariable(var['host'], var['port'], var['type'],
-                                 var['address'], var.get('gap', 1),
-                                 size=var['size'], name=var['name'])
+                                 var['address'], limit_values=limit_values,
+                                 gap=var.get('gap', 1), size=var['size'],
+                                 name=var['name'])
 
             self.vars[pv.name] = pv
             self.map_key_name[pv.key()] = pv.name

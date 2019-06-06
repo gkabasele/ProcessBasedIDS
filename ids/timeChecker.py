@@ -13,20 +13,26 @@ from scipy import stats
 from utils import ProcessVariable, randomName
 from reqChecker import Checker
 
+ValueTS = collections.namedtuple('ValueTS', ['value', 'ts'])
 
 class TransitionMatrix(object):
 
-    def __init__(self, values):
+    def __init__(self, values, isbool, margin=2):
         self.header = values
         self.historic_val = []
+        # map value -> position to row or column of the value in the matrix
         self.val_pos = {}
-        self.transitions = self.compute_transition(values)
+        if not isbool:
+            self.transitions = self.compute_transition(values)
+        else:
+            self.transitions = [[0, -1],[-1, 0]]
+        self.margin = margin
 
     def compute_transition(self, values):
         transitions = []
         for index, val in enumerate(values):
             b = [-1] * len(values)
-            b[index] = 0 
+            b[index] = 0
             transitions.append(b)
             self.val_pos[val] = index
         a = np.array(transitions)
@@ -34,7 +40,7 @@ class TransitionMatrix(object):
         return np.reshape(a, (len(values), (len(values))))
 
     def __str__(self):
-        s=" "
+        s = " "
         for val in self.header:
             s += " {}".format(val)
         s += "\n"
@@ -46,6 +52,44 @@ class TransitionMatrix(object):
             s += "\n"
         return s
 
+    def is_diff_reading(self, val1, val2):
+        return not (val2 >= val1 - self.margin and
+                    val2 <= val1 + self.margin)
+
+    def compute_change_prob(self):
+        nbr_seq = len(self.historic_val) - 1
+        change = 0
+        for i in range(len(self.historic_val) - 1):
+            cur_val = self.historic_val[i].value
+            next_val = self.historic_val[i+1].value
+            if self.is_diff_reading(cur_val, next_val):
+                change += 1
+        return change/nbr_seq
+
+    def add_value(self, val, ts):
+        v = ValueTS(value=val, ts=ts)
+        self.historic_val.append(v)
+
+    def update_transition_matrix(self):
+        current_val = None
+        current_ts = None
+        for val, ts in self.historic_val:
+            if (val in self.header and
+                    current_val is None and
+                    current_ts is None):
+                current_ts = ts
+                current_val = val
+            elif val in self.header and not self.is_diff_reading(current_val, val):
+                current_ts = ts
+            elif (val in self.header and self.is_diff_reading(current_val, val) and
+                  current_val is not None and
+                  current_ts is not None):
+                elapsed_time = ts - current_ts
+                row = self.val_pos[current_val]
+                column = self.val_pos[val]
+                self.transitions[row][column] = elapsed_time
+                current_val = val
+                current_ts = ts
 
 class TimeFrame(object):
 

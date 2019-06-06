@@ -38,8 +38,8 @@ WRITE_FUNCODE = [5, 6]
 
 class ProcessVariable():
 
-    def __init__(self, host, port, kind, addr, gap=1, size=None, name=None,
-                 first=None):
+    def __init__(self, host, port, kind, addr, limit_values=None, gap=1,
+                 size=None, name=None, first=None):
         self.host = host
         self.port = port
         self.kind = kind
@@ -53,6 +53,7 @@ class ProcessVariable():
         self.elapsed_time_transition = []
         self.current_ts = None
         self.value = None
+        self.limit_values = limit_values
 
     @classmethod
     def funcode_to_kind(cls, funcode):

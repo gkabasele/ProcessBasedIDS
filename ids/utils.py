@@ -53,7 +53,10 @@ class ProcessVariable():
         self.elapsed_time_transition = []
         self.current_ts = None
         self.value = None
-        self.limit_values = limit_values
+        if limit_values:
+            self.limit_values = limit_values
+        else:
+            self.limit_values = []
 
     @classmethod
     def funcode_to_kind(cls, funcode):

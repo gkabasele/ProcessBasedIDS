@@ -17,15 +17,34 @@ ValueTS = collections.namedtuple('ValueTS', ['value', 'ts'])
 
 class TransitionMatrix(object):
 
-    def __init__(self, values, isbool, margin=2):
-        self.header = values
+    class Decorators(object):
+        def __init__(self, f):
+            self.func = f
+
+        def __get__(self, instance, cls=None):
+            self._instance = instance
+            return self
+
+        def __call__(self, *args, **kwargs):
+
+            if len(self._instance.transitions) != 0:
+                res = self.func(self._instance, *args, **kwargs)
+            else:
+                raise ValueError('Cannot perform computation on transitions Matrix')
+            return res
+
+
+    def __init__(self, variable, margin=2):
+        self.header = variable.limit_values
         self.historic_val = []
         # map value -> position to row or column of the value in the matrix
         self.val_pos = {}
-        if not isbool:
-            self.transitions = self.compute_transition(values)
+        if not variable.is_bool_var() and len(variable.limit_values) != 0:
+            self.transitions = self.compute_transition(variable.limit_values)
+        elif variable.is_bool_var():
+            self.transitions = [[0, -1], [-1, 0]]
         else:
-            self.transitions = [[0, -1],[-1, 0]]
+            self.transitions = []
         self.margin = margin
 
     def compute_transition(self, values):
@@ -39,7 +58,7 @@ class TransitionMatrix(object):
 
         return np.reshape(a, (len(values), (len(values))))
 
-    def __str__(self):
+    def display_matrix(self):
         s = " "
         for val in self.header:
             s += " {}".format(val)
@@ -52,12 +71,26 @@ class TransitionMatrix(object):
             s += "\n"
         return s
 
+    def __str__(self):
+        s = "["
+        for val, ts in self.historic_val:
+            s += " ({},{}) ".format(val, ts)
+
+        s += "]"
+        return s
+
+    def __repr__(self):
+        return self.__str__()
+
     def is_diff_reading(self, val1, val2):
         return not (val2 >= val1 - self.margin and
                     val2 <= val1 + self.margin)
 
+    def nbr_transition(self):
+        return len(self.historic_val) - 1
+
     def compute_change_prob(self):
-        nbr_seq = len(self.historic_val) - 1
+        nbr_seq = self.nbr_transition()
         change = 0
         for i in range(len(self.historic_val) - 1):
             cur_val = self.historic_val[i].value
@@ -70,6 +103,7 @@ class TransitionMatrix(object):
         v = ValueTS(value=val, ts=ts)
         self.historic_val.append(v)
 
+    @Decorators
     def update_transition_matrix(self):
         current_val = None
         current_ts = None
@@ -84,51 +118,20 @@ class TransitionMatrix(object):
             elif (val in self.header and self.is_diff_reading(current_val, val) and
                   current_val is not None and
                   current_ts is not None):
-                elapsed_time = ts - current_ts
+                elapsed_time = (ts - current_ts).total_seconds()
                 row = self.val_pos[current_val]
                 column = self.val_pos[val]
                 self.transitions[row][column] = elapsed_time
                 current_val = val
                 current_ts = ts
 
-class TimeFrame(object):
-
-    def __init__(self):
-        self.vals = []
-        self.ts = []
-
-    def add_val(self, val, ts):
-        if len(self.vals) == 0 or self.vals[-1] != val:
-            self.vals.append(val)
-            self.ts.append(ts)
-
-    def __str__(self):
-        s = "["
-        for val, ts in zip(self.vals, self.ts):
-            s += " ({},{}) ".format(val, ts)
-
-        s += "]"
-        return s
-
-    def nbr_transition(self):
-        return len(self.vals)-1
-
     def compute_elapsed_time(self):
         elapsed_time = []
-        for i in range(len(self.ts) - 1):
-            cur = self.ts[i]
-            nextframe = self.ts[i+1]
+        for i in range(len(self.historic_val) - 1):
+            cur = self.historic_val[i].ts
+            nextframe = self.historic_val[i+1].ts
             elapsed_time.append((nextframe - cur).total_seconds())
         return elapsed_time
-
-    def __repr__(self):
-        elapsed_time = self.compute_elapsed_time()
-        if len(elapsed_time) != 0:
-            avg = np.average(elapsed_time)
-        else:
-            avg = -1
-        s = "Trans: {}, Avg:{}".format(self.nbr_transition(), avg)
-        return s
 
 class TimeCond(object):
 
@@ -158,7 +161,9 @@ class TimeCond(object):
             crit_byte = stats.t.ppf(1-alpha, df=df)
             return t_score < crit_byte
 
-    def test_cond(self, value, elapsed_time):
+    def test_cond(self, frame):
+        value = frame.nbr_transition()
+        elapsed_time = frame.compute_elapsed_time()
         res = value in self.expected_values
         if res:
             if len(elapsed_time) == 0:
@@ -210,14 +215,14 @@ class TimeChecker(Checker):
             pv = self.vars[name]
         return pv
 
-    def get_frame(self, key, detection):
+    def get_transition_matrix(self, key, variable, detection):
         if not detection:
             if key not in self.map_var_frame:
-                self.map_var_frame[key] = [TimeFrame()]
+                self.map_var_frame[key] = [TransitionMatrix(variable)]
             return self.map_var_frame[key][-1]
         else:
             if key not in self.detection_cond:
-                self.detection_cond[key] = [TimeFrame()]
+                self.detection_cond[key] = [TransitionMatrix(variable)]
             return self.detection_cond[key][-1]
 
     def compute_frame(self, detection=False):
@@ -241,7 +246,7 @@ class TimeChecker(Checker):
                 pv.last_transition = msg.res_timestamp
                 pv.first = msg.res_timestamp
 
-            frame = self.get_frame(key, detection)
+            frame = self.get_transition_matrix(key, pv, detection)
 
             pv.current_ts = msg.res_timestamp
             pv.value = msg.value
@@ -251,16 +256,16 @@ class TimeChecker(Checker):
                 end = pv.first + self.frame_size
                 cond = (begin, end)
                 current_cond[key] = cond
-                frame.add_val(msg.value, msg.res_timestamp)
+                frame.add_value(msg.value, msg.res_timestamp)
 
             elif finish_run[key]:
-                frame.add_val(msg.value, msg.res_timestamp)
+                frame.add_value(msg.value, msg.res_timestamp)
 
             elif key in current_cond:
                 begin, end = current_cond[key]
                 if pv.current_ts > end:
-                    new_frame = TimeFrame()
-                    new_frame.add_val(msg.value, msg.res_timestamp)
+                    new_frame = TransitionMatrix(pv)
+                    new_frame.add_value(msg.value, msg.res_timestamp)
                     if not detection:
                         self.map_var_frame[key].append(new_frame)
                     else:
@@ -270,7 +275,7 @@ class TimeChecker(Checker):
                     finish_run[key] = True
                     del current_cond[key]
                 else:
-                    frame.add_val(msg.value, msg.res_timestamp)
+                    frame.add_value(msg.value, msg.res_timestamp)
 
             if all(finish_run.values()):
                 break
@@ -284,6 +289,15 @@ class TimeChecker(Checker):
                 cond.add_expected_avg_var(elapsed_time)
             self.map_pv_cond[key] = cond
 
+    def distance_matrix(self, a, b):
+        acc = 0
+        for i in range(len(a.header)):
+            for j in range(len(b.header)):
+                val1 = a.transitions[i][j]
+                val2 = b.transitions[i][j]
+                acc += (val1 - val2)**2
+        return math.sqrt(acc)
+
     def check_condition(self):
         for key, frames in self.detection_cond.items():
             if key not in self.map_pv_cond:
@@ -293,9 +307,14 @@ class TimeChecker(Checker):
             cond = self.map_pv_cond[key]
             #pdb.set_trace()
             frame = frames.pop(0)
-            value = frame.nbr_transition()
-            elapsed_time = frame.compute_elapsed_time()
-            res = cond.test_cond(value, elapsed_time)
+            matrices = self.map_var_frame[key]
+            try:
+                dist = min([self.distance_matrix(frame, x) for x in matrices])
+                print("Key:{}, Distance: {}".format(key, dist))
+            except ValueError as err:
+                print(err)
+
+            res = cond.test_cond(frame)
             if not res:
                 print("Alert for {}\n".format(key))
                 print("Got: {}\n".format(repr(frame)))
@@ -304,7 +323,7 @@ class TimeChecker(Checker):
     def display_message(self):
         s = ""
         for k, v in self.messages.items():
-            s += "{}->{}\n".format(k,v)
+            s += "{}->{}\n".format(k, v)
         return s
 
     def display_dict(self, d):
@@ -327,3 +346,4 @@ class TimeChecker(Checker):
         while not self.done:
             self.compute_frame(True)
             self.check_condition()
+            break

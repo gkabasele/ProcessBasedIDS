@@ -68,6 +68,7 @@ variables:
         type: hr
         address: 0
         size: 1
+        values: [0, 20, 40, 60]
 
     - variable:
         name: s2

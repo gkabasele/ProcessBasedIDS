@@ -39,6 +39,12 @@ def test_transition_matrix():
 
     t.update_transition_matrix()
 
+    res = [[0, 10, -1], [-1, 0, 10], [-1, -1, 0]]
+
+    for i in range(3):
+        for j in range(3):
+            assert res[i][j] == t.transitions[i][j]
+
 test_transition_matrix()
 
 def distance_matrix(a, b):

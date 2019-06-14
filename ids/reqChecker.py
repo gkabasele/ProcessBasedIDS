@@ -62,6 +62,23 @@ class Checker(threading.Thread):
     def run(self):
         raise NotImplementedError
 
+class SWaTChecker(Checker):
+
+    def __init__(self, descFile, queue):
+        Checker.__init__(self, descFile, queue)
+
+    def setup(self, descFile):
+        content = open(descFile).read()
+        desc = yaml.load(content, Loader=yaml.Loader)
+        for var_desc in desc['variables']:
+            var = var_desc['variable']
+            if var['type'] == DIS_COIL or var['type'] == DIS_INP:
+                limit_values = [0, 2]
+            else: 
+                limit_values = var['values']
+            pv = ProcessSWaTVar(var['name'], var['type'])
+            self.vars[pv.name] = pv
+
 class ReqChecker(Checker):
 
     def __init__(self, descFile, store, bool_weight=5, num_weight=1):

@@ -36,6 +36,34 @@ INP_REG = "ir"
 
 WRITE_FUNCODE = [5, 6]
 
+TS = "timestamp"
+
+class ProcessSWaTVar():
+
+    def __init__(self, name, kind, limit_values=None):
+        self.name = name
+        self.kind = kind
+        self.value = None
+        self.first = None
+        self.nbr_transition = 0
+        self.last_transition = None
+        self.elapsed_time_transition = []
+        if limit_values:
+            self.limit_values = limit_values
+        else:
+            self.limit_values = []
+
+        def __hash__(self):
+            return hash(self.name)
+
+        def  is_bool_var(self):
+            return self.kind in [DIS_COIL, DIS_INP]
+
+        def clear_time_value(self):
+            self.first = None
+            self.nbr_transition = 0
+            self.elapsed_time_transition = []
+
 class ProcessVariable():
 
     def __init__(self, host, port, kind, addr, limit_values=None, gap=1,

@@ -1,0 +1,243 @@
+variables:
+        - variable:
+                name: fit101
+                type: hr
+                values: [2.5, 2.6]
+        
+        - varible:
+                name: lit101
+                type: hr
+                values: [500, 1100]
+
+        - variable:
+                name: mv101
+                type: co
+
+        - varible:
+                name: p101
+                type: co
+
+        - variable:
+                name: p102
+                type: co
+
+        - variable:
+                name: ait201
+                type: hr
+                values: [30, 260]
+
+        - variable:
+                name: ait202
+                type: hr
+                values: [6, 9]
+
+        - variable:
+                name: ait203
+                type: hr               
+                values: [200, 500]
+
+        - variable:
+                name: fit201
+                type: hr               
+                values: [2.4, 2.5]
+
+        - variable:
+                name: mv201
+                type: co               
+
+        - variable:
+                name: p201
+                type: co               
+
+        - variable:
+                name: p201
+                type: co               
+
+        - variable:
+                name: p202
+                type: co               
+
+        - variable:
+                name: p203
+                type: co               
+
+        - variable:
+                name: p204
+                type: co
+        
+        - variable:
+                name: p205
+                type: co               
+        
+        - variable:
+                name: p206
+                type: co                              
+
+        - variable:
+                name: p207
+                type: co
+
+        - variable:
+                name: p208
+                type: co
+        
+        - variable:
+                name: dpit301
+                type: hr            
+                values: [0.1, 0.3]
+        
+        - variable:
+                name: fit301
+                type: hr
+                values: [2.2, 2.4]
+        
+        - variable:
+                name: lit301
+                type: hr
+                values: [800, 1000]
+        
+        - variable:
+                name: mv301
+                type: co
+        
+        - variable:
+                name: mv302
+                type: co
+        
+        - variable:
+                name: mv303
+                type: co
+        
+        - variable:
+                name: mv304
+                type: co
+        
+        - variable:
+                name: p301
+                type: co
+        
+        - variable:
+                name: p302
+                type: co
+        
+        - variable:
+                name: ait401
+                type: hr
+                values: [5, 30]
+        
+        - variable:
+                name: ait402
+                type: hr
+                values: [150, 300]
+        
+        - variable:
+                name: fit401
+                type: hr
+                values: [1.5, 2]
+        
+        - variable:
+                name: lit401
+                type: hr
+                values: [800, 1000]
+        
+        - variable:
+                name: p401
+                type: co
+        
+        - variable:
+                name: p402
+                type: co
+        
+        - variable:
+                name: p403
+                type: co
+        
+        - variable:
+                name: p404
+                type: co
+        
+        - variable:
+                name: uv401
+                type: co
+        
+        - variable:
+                name: ait501
+                type: hr
+                values: [6, 8]
+        
+        - variable:
+                name: ait502
+                type: hr
+                values: [100, 250]
+        
+        - variable:
+                name: ait503
+                type: co
+                values: [200, 300]
+        
+        - variable:
+                name: ait504
+                type: co
+                values: [5, 10]
+        
+        - variable:
+                name: fit501
+                type: hr
+                values: [1, 2]
+        
+        - variable:
+                name: fit502
+                type: hr
+                values: [1.1, 1.3]
+        
+        - variable:
+                name: fit503
+                type: hr
+                values: [0.7, 0.9]
+        
+        - variable:
+                name: fit504
+                type: hr
+                values: [0.25, 0.35]
+        
+        - variable:
+                name: p501
+                type: co
+        
+        - variable:
+                name: p502
+                type: co
+        
+        - variable:
+                name: pit501
+                type: hr
+                values: [2, 3]
+        
+        - variable:
+                name: pit502
+                type: hr
+                values: [0, 0.2]
+        
+        - variable:
+                name: pit503
+                type: hr
+                values: [1, 2]
+        
+        # TODO, change values
+        - variable:
+                name: fit601
+                type: hr
+                values: [1, 2]
+        
+        - variable:
+                name: p601
+                type: co
+        
+        - variable:
+                name: p602
+                type: co
+        
+        - variable:
+                name: p603
+                type: co
+

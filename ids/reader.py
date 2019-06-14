@@ -2,7 +2,9 @@
 
 import argparse
 import queue 
+import csv
 import threading
+import pdb
 
 import time
 from datetime import datetime
@@ -11,6 +13,8 @@ from scapy.utils import RawPcapReader
 from scapy.layers.l2 import Ether
 from scapy.layers.inet import IP, TCP
 from utils import *
+
+
 
 class PVMessage(object):
 
@@ -36,6 +40,36 @@ class PVMessage(object):
     def __repr__(self):
         return self.__str__()
 
+class CSVReader(threading.Thread):
+
+    def __init__(self, filename, queues):
+        threading.Thread.__init__(self)
+        self.queues = queues
+        self.filename = filename
+
+    def run(self):
+        with open(self.filename, 'r') as csvfile:
+            csvreader = csv.reader(csvfile)
+            next(csvreader)
+            name_var = [x.replace(" ", "").lower() for x in next(csvreader)]
+            indices = [x for x in range(len(name_var))]
+            map_var_indice = {key: value for (key, value) in zip(indices, name_var)}
+            state = dict.fromkeys(name_var, 1)
+
+            for index, row in enumerate(csvreader):
+                for i, value in enumerate(row):
+                    name = map_var_indice[i]
+                    val = value
+                    if name == "timestamp":
+                        val = datetime.strptime(value, " %d/%m/%Y %I:%M:%S %p")
+                    elif name != "normal/attack":
+                        val = float(value.replace(",", "."))
+                    state[name] = val
+
+                for q in self.queues:
+                    q.put(state.copy())
+
+
 class Reader(threading.Thread):
 
     def __init__(self, trace, queues):
@@ -43,7 +77,6 @@ class Reader(threading.Thread):
         self.map_req_res = {}
         self.trace = trace
         self.queues = queues
-        
         self.messages = {}
 
     def get_ip_tcp_fields(self, ip_pkt, tcp_pkt):
@@ -124,7 +157,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     queues = [queue.Queue()]
-    reader = Reader(args.trace, queues)
+    reader = CSVReader(args.trace, queues)
     reader.start()
     reader.join()
-    print(reader.display_message())

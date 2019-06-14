@@ -13,18 +13,22 @@ parser.add_argument("--conf", type=str, dest="conf")
 parser.add_argument("--infile", type=str, dest="infile")
 
 def main(conf, infile):
+    """
     queue_req = queue.Queue()
+    """
     queue_time = queue.Queue()
 
     threads = []
 
-    reader = Reader(infile, [queue_req, queue_time])
+    reader = Reader(infile, [queue_time])
     threads.append(reader)
     reader.start()
 
+    """
     req_checker = ReqChecker(conf, queue_req)
     threads.append(req_checker)
     req_checker.start()
+    """
 
     time_checker = TimeChecker(conf, queue_time)
     threads.append(time_checker)

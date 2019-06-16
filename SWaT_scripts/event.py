@@ -29,13 +29,18 @@ def get_readings(state, reading, exclude):
             else:
                 reading[k].append(v)
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--input", type=str, dest="input")
-    args = parser.parse_args()
-    pv = "mv101"
-    ts = "timestamp"
+def update_min_max(state, min_values, max_values):
 
+    for k in state:
+        if k not in min_values:
+            if k != "timestamp" and k != "normal/attack":
+                min_values[k] = state[k]
+                max_values[k] = state[k]
+        else:
+            min_values[k] = min(min_values[k], state[k])
+            max_values[k] = max(max_values[k], state[k])
+
+def main(filename, pv, ts):
     on_reading = {}
     off_reading = {}
 
@@ -43,10 +48,15 @@ if __name__ == "__main__":
     off_timestamp = []
     current = 0
 
+    min_values = {}
+    max_values = {}
 
-    data = pickle.load(open(args.input, "rb"))
+    data = pickle.load(open(filename, "rb"))
 
     for i, state in enumerate(data):
+
+        update_min_max(state, min_values, max_values)
+
         if i == 0:
             current = state[pv]
             print("Nbr Var:{}".format(len(state) - 2))
@@ -61,8 +71,14 @@ if __name__ == "__main__":
                 elif current == 2:
                     get_readings(state, on_reading, EXCLUDE)
                     on_timestamp.append(state[ts])
-                else:
-                    pass
+
+    for k in min_values:
+        min_val = min_values[k]
+        max_val = max_values[k]
+        diff = max_val - min_val
+        print("Name: {}, Min:{}, Max:{}, diff: {}".format(k, min_val, max_val,
+                                                          diff))
+def plot_data(on_reading, off_reading):
 
     print("Nbr Sensors: {}".format(len(on_reading)))
     plt.yscale("log")
@@ -82,3 +98,11 @@ if __name__ == "__main__":
     plt.show()
 
 
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", type=str, dest="input")
+    args = parser.parse_args()
+    pv = "mv101"
+    ts = "timestamp"
+
+    main(args.input, pv, ts)

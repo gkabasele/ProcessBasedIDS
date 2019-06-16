@@ -43,7 +43,8 @@ class Checker(threading.Thread):
         self.setup(descFile)
 
     def setup(self, descFile):
-        content = open(descFile).read()
+        fh = open(descFile)
+        content = fh.read()
         desc = yaml.load(content, Loader=yaml.Loader)
         for var_desc in desc['variables']:
             var = var_desc['variable']
@@ -58,6 +59,7 @@ class Checker(threading.Thread):
 
             self.vars[pv.name] = pv
             self.map_key_name[pv.key()] = pv.name
+        fh.close()
 
     def run(self):
         raise NotImplementedError

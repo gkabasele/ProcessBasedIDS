@@ -2,6 +2,7 @@ import struct
 import sys
 import random
 import string
+import math
 import numpy as np
 from scapy.all import *
 
@@ -40,7 +41,8 @@ TS = "timestamp"
 
 class ProcessSWaTVar():
 
-    def __init__(self, name, kind, limit_values=None):
+    def __init__(self, name, kind, min_val=None, max_val=None, 
+                 limit_values=None):
         self.name = name
         self.kind = kind
         self.value = None
@@ -48,21 +50,35 @@ class ProcessSWaTVar():
         self.nbr_transition = 0
         self.last_transition = None
         self.elapsed_time_transition = []
+
+        if min_val:
+            self.min_val = min_val
+        else:
+            self.min_val = 1
+
+        if max_val:
+            self.max_val = max_val
+        else:
+            self.max_val = 2
+
         if limit_values:
             self.limit_values = limit_values
         else:
             self.limit_values = []
 
-        def __hash__(self):
-            return hash(self.name)
+    def __hash__(self):
+        return hash(self.name)
 
-        def  is_bool_var(self):
-            return self.kind in [DIS_COIL, DIS_INP]
+    def is_bool_var(self):
+        return self.kind in [DIS_COIL, DIS_INP]
 
-        def clear_time_value(self):
-            self.first = None
-            self.nbr_transition = 0
-            self.elapsed_time_transition = []
+    def clear_time_value(self):
+        self.first = None
+        self.nbr_transition = 0
+        self.elapsed_time_transition = []
+
+    def normalized_dist(self, val1, val2):
+        return (math.sqrt((val1-val2)**2)/math.sqrt((self.max_val - self.min_val)**2))
 
 class ProcessVariable():
 

@@ -78,6 +78,18 @@ def main(filename, pv, ts):
         diff = max_val - min_val
         print("Name: {}, Min:{}, Max:{}, diff: {}".format(k, min_val, max_val,
                                                           diff))
+    return off_reading, on_reading
+
+def plot_timeseries(filename, pv):
+
+    data = pickle.load(open(filename, "rb"))
+    vals = np.array([x[pv] for x in data])
+
+    x = np.arange(len(vals))
+
+    plt.plot(x, vals)
+    plt.show()
+
 def plot_data(on_reading, off_reading):
 
     print("Nbr Sensors: {}".format(len(on_reading)))
@@ -105,4 +117,8 @@ if __name__ == "__main__":
     pv = "mv101"
     ts = "timestamp"
 
-    main(args.input, pv, ts)
+    """
+    off_reading, on_reading = main(args.input, pv, ts)
+    plot_data(on_reading, off_reading)
+    """
+    plot_timeseries(args.input, "fit101")

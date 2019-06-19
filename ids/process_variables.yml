@@ -61,9 +61,6 @@ variables:
                 name: p201
                 type: co               
 
-        - variable:
-                name: p201
-                type: co               
 
         - variable:
                 name: p202
@@ -85,14 +82,6 @@ variables:
                 name: p206
                 type: co                              
 
-        - variable:
-                name: p207
-                type: co
-
-        - variable:
-                name: p208
-                type: co
-        
         - variable:
                 name: dpit301
                 type: hr            
@@ -202,7 +191,7 @@ variables:
         
         - variable:
                 name: ait503
-                type: co
+                type: hr
                 values: [200, 300]
                 min: 252.083
                 max: 283.357

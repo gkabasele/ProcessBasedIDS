@@ -1,5 +1,4 @@
-import os 
-import sys
+import os
 import argparse
 import pickle
 
@@ -89,6 +88,35 @@ def plot_timeseries(filename, pv):
     plt.plot(x, vals)
     plt.show()
 
+def plot_variable_timeseries_corr(filename, act, sens):
+    data = pickle.load(open(filename, "rb"))
+
+    fig, ax1 = plt.subplots()
+
+    #x_vals = np.arange(len(data))
+    x_vals = np.arange(100000)
+
+    act_ts = []
+    sens_ts = []
+    for state in data[:100000]:
+        act_ts.append(state[act])
+        sens_ts.append(state[sens])
+
+    act_ts = np.array(act_ts)
+    sens_ts = np.array(sens_ts)
+
+    ax1.plot(x_vals, act_ts, color='b')
+    ax1.set_xlabel('time(s)')
+    ax1.set_ylabel(act, color='b')
+    ax1.tick_params('y', colors='b')
+
+    ax2 = ax1.twinx()
+    ax2.plot(x_vals, sens_ts, color='g')
+    ax2.set_ylabel(sens, color='g')
+    ax2.tick_params('y', colors='g')
+
+    plt.show()
+
 def plot_data(on_reading, off_reading):
 
     print("Nbr Sensors: {}".format(len(on_reading)))
@@ -120,4 +148,5 @@ if __name__ == "__main__":
     off_reading, on_reading = main(args.input, pv, ts)
     plot_data(on_reading, off_reading)
     """
-    plot_timeseries(args.input, "fit101")
+    plot_variable_timeseries_corr(args.input, "mv101", "lit101")
+    plot_variable_timeseries_corr(args.input, "p101", "lit101")

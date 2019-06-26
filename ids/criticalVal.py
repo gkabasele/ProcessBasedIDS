@@ -16,32 +16,44 @@ DIST = 0.005
 
 MAGNITUDE = 0.1
 
+TRESH = 0.0001
+
 CACHE_ON = "./sensors_on.bin"
 CACHE_OFF = "./sensors_off.bin"
 
 class CandVal(object):
 
-    def __init__(self, val, nbr_seen=1, j_measure=0):
+    def __init__(self, val=0, nbr_seen=1, j_measure=0):
         self.nbr_seen = nbr_seen
         self.cur_avg = val
         self.j_measure = j_measure
+        self.prob = 0
 
     def add_value(self, val):
         self.nbr_seen += 1
         self.cur_avg = self.cur_avg + (val - self.cur_avg)/self.nbr_seen
+
+    def normalize(self, nbr):
+        if nbr != 0 and nbr >= self.nbr_seen:
+            self.prob = self.nbr_seen/nbr
 
     def __repr__(self):
         return "{} ({})".format(self.cur_avg, self.nbr_seen)
 
     def __hash__(self):
         return self.cur_avg.__hash__()
-
+    
     def __lt__(self, other):
         return self.j_measure < other.j_measure
 
     def __gt__(self, other):
         return self.j_measure > other.j_measure
 
+    def from_json(self, text):
+        val, freq = text.split()
+        self.cur_avg = float(val)
+        self.nbr_seen = int(freq.replace('(', '').replace(')', ''))
+        return self
 
 class Readings(object):
 
@@ -80,6 +92,9 @@ class Readings(object):
 
     def __iter__(self):
         return self.readings.__iter__()
+
+    def __getitem__(self, key):
+        return self.readings.__getitem__(key)
 
 class ProbVal(object):
 
@@ -176,28 +191,39 @@ def sort_candidate(d1, d2):
         for _, val in d2[key].items():
             val = sorted(val, key=attrgetter('nbr_seen', 'cur_avg'))
 
+def normalize_readings(actuators, actuators_trans, state):
+    for k in actuators:
+        for key, readings in actuators[k].items():
+            for candval in readings:
+                candval.normalize(actuators_trans[k][state])
+
 def create_sensors_cand(actuators, actuators_trans, state, pv_store):
     sensors = {}
 
     for k in actuators:
         # Sensor name, readings
-        for key, val in actuators[k].items():
+        for key, readings in actuators[k].items():
             #Only candidate value
             if key not in sensors:
                 sensors[key] = {}
 
             pv = pv_store[key]
-            for r in val:
-                found = False
-                for x in sensors[key].keys(): 
-                    if same_value(r, x, pv):
-                        found = True
-                        break
-                if not found and r.nbr_seen >= 0.75*actuators_trans[k][state]:
+            #pdb.set_trace()
+
+            for candval in readings:
+                candval.normalize(actuators_trans[k][state])
+                # in 75% of the case when there was a switch, we observed this value
+                if candval not in sensors[key] and candval.prob >= 0.75:
                     probval = ProbVal()
-                    probval.add_act_prob(actuators.keys())
-                    sensors[key][r] = probval
+                    #probval.add_act_prob(actuators.keys())
+                    sensors[key][candval] = probval
     return sensors
+
+def decode_sensors_cand(sensors_enc):
+    for k in sensors_enc:
+        candvals = [CandVal().from_json(x) for x in sensors_enc[k].keys()]
+        probvals = sensors_enc[k].values()
+        sensors_enc[k] = dict(zip(candvals, probvals))
 
 
 def get_readings(name, state, pv_store, reading, debug=False):
@@ -225,12 +251,12 @@ def compute_frequence(data, sensors_on, sensors_off, pv_store):
                 if same_value(state[k], val, pv):
                     probval = sensors_on[k][val]
                     probval.prob += 1
-                    for act in probval:
-                        if i > 0:
-                            state_prev = data[i-1]
-                            if ((state_prev[act] == 0 or state_prev[act] == 1) and
-                                    (state[act] == 2)):
-                                probval.act_prob[act] += 1
+                    #for act in probval:
+                    #    if i > 0:
+                    #        state_prev = data[i-1]
+                    #        if ((state_prev[act] == 0 or state_prev[act] == 1) and
+                    #                (state[act] == 2)):
+                    #            probval.act_prob[act] += 1
 
         for k in sensors_off:
             pv = pv_store[k]
@@ -238,12 +264,12 @@ def compute_frequence(data, sensors_on, sensors_off, pv_store):
                 if same_value(state[k], val, pv):
                     probval = sensors_off[k][val]
                     probval.prob += 1
-                    for act in probval:
-                        if i > 0:
-                            state_prev = data[i-1]
-                            if ((state_prev[act] == 2) and
-                                    (state[act] == 1 or state[act] == 0)):
-                                probval.act_prob[act] += 1
+                    #for act in probval:
+                    #    if i > 0:
+                    #        state_prev = data[i-1]
+                    #        if ((state_prev[act] == 2) and
+                    #                (state[act] == 1 or state[act] == 0)):
+                    #            probval.act_prob[act] += 1
 
 def normalized_prob(data, actuators_prob, actuators_trans, sensors):
     n = len(data)
@@ -260,29 +286,40 @@ def normalized_prob(data, actuators_prob, actuators_trans, sensors):
     for sensor in sensors:
         for key in sensor:
             for val, probval in sensor[key].items():
-                probval.normalized_act()
+                #probval.normalized_act()
                 probval.prob = probval.prob/n
 
 def _compute_j_measure(p_cond, p_x):
     try:
-        res = p_cond * math.log((p_cond/p_x), 2) + (1 - p_cond) * math.log((1-p_cond)/(1-p_x), 2)
+        res = p_cond * math.log2((p_cond/p_x)) + (1 - p_cond) * math.log2((1-p_cond)/(1-p_x))
     except ValueError:
-        res = 0
+        if p_cond == 1:
+            res =  math.log2((p_cond/p_x))
+        elif p_cond == 0:
+            res = math.log2(1/(1-p_x))
+        
     return res
 
 def compute_j_measure(pv_store, sensors, sensor_name, sensor_value,
-                      actuators_prob, actuators_trans, actuator_name,
-                      actuator_state): 
+                      actuators, actuators_prob, actuators_trans,
+                      actuator_name, actuator_state):
+
     pv = pv_store[sensor_name]
-    p_sensor = None
-    p_act_cond = None
+    p_sensor = 0
+    p_sens_given_act = 0
     p_act = actuators_trans[actuator_name][actuator_state]
-    for key, val in sensors[sensor_name].items():
+    if sensor_name in actuators[actuator_name]:
+        for candval in actuators[actuator_name][sensor_name]:
+            if same_value(candval, sensor_value, pv):
+                p_sens_given_act = candval.prob
+                break
+
+    for key, probval in sensors[sensor_name].items():
         if same_value(key, sensor_value, pv):
-            p_sensor = val.prob
-            p_act_cond = val.act_prob[actuator_name]
+            p_sensor = probval.prob
             break
-    return p_sensor * _compute_j_measure(p_act_cond, p_act)
+
+    return p_act * _compute_j_measure(p_sens_given_act, p_sensor)
 
 def order_magnitude(val1, val2):
 
@@ -296,32 +333,28 @@ def order_magnitude(val1, val2):
 def cand_rule_quality(pv_store, sensors_on, sensors_off,
                       actuators_on, actuators_off,
                       actuators_prob, actuators_trans):
-    on_rule = dict(zip(actuators_on.keys(), [{} for _ in range(len(actuators_on))]))
+    on_rule = dict(zip(actuators_on.keys(), [[] for _ in range(len(actuators_on))]))
     off_rule = copy.deepcopy(on_rule)
     for key in actuators_on:
         for k, v in actuators_on[key].items():
-            if len(v) < 3 and len(v) != 0:
-                for value in v:
+            for value in v:
+                if value.prob >= 0.75:
                     j_measure = compute_j_measure(pv_store, sensors_on, k,
-                                                  value, actuators_prob,
-                                                  actuators_trans, key, "offon")
+                                              value, actuators_on, actuators_prob,
+                                              actuators_trans, key, "offon")
                     value.j_measure = j_measure
-
-                    if k not in on_rule[key]:
-                        on_rule[key][k] = [value]
-                    else:
-                        insort(on_rule[key][k], value)
+                    if j_measure >= TRESH:
+                        on_rule[key].append((value, k))
 
         for k, v in actuators_off[key].items():
-            if len(v) < 3 and len(v) != 0:
-                for value in v:
+            for value in v:
+                if value.prob >= 0.75:
                     j_measure = compute_j_measure(pv_store, sensors_off, k,
-                                                  value, actuators_prob, actuators_trans,
-                                                  key, "onoff")
-                    if k not in off_rule[key]:
-                        off_rule[key][k] = [value]
-                    else:
-                        insort(off_rule[key][k], value)
+                                                  value, actuators_off, actuators_prob,
+                                                  actuators_trans, key, "onoff")
+                    value.j_measure = j_measure
+                    if j_measure >= TRESH:
+                        off_rule[key].append((value, k))
 
     return on_rule, off_rule
 
@@ -400,25 +433,32 @@ def main(phys, variables, cache_on, cache_off):
 
         with open(CACHE_OFF, "r") as f:
             sensors_off = jsonpickle.decode(f.read())
-
-    pprint.pprint(actuators_prob)
-    pprint.pprint(actuators_trans)
-    pdb.set_trace()
+        normalize_readings(actuators_on, actuators_trans, "offon")
+        normalize_readings(actuators_off, actuators_trans, "onoff")
+        decode_sensors_cand(sensors_on)
+        decode_sensors_cand(sensors_off)
 
     normalized_prob(data, actuators_prob, actuators_trans, [sensors_on, sensors_off])
+    pprint.pprint(actuators_prob)
+    pprint.pprint(actuators_trans)
+    #j_measure_lit101 = compute_j_measure(pv_store, sensors_on, "lit101", 495.0656,
+    #                                     actuators_on, actuators_prob, actuators_trans,
+    #                                     "mv101", "offon")
     #j_measure_lit101 = compute_j_measure(pv_store, sensors_on, "lit101",
     #                                     495.0656, actuators_prob, actuators_trans,
     #                                     "mv101", "onoff")
-    #on_rule, off_rule = cand_rule_quality(pv_store, sensors_on, sensors_off,
-    #                                      actuators_on, actuators_off,
-    #                                      actuators_prob)
+    on_rule, off_rule = cand_rule_quality(pv_store, sensors_on, sensors_off,
+                                          actuators_on, actuators_off,
+                                          actuators_prob, actuators_trans)
 
     #print(j_measure_lit101)
-    #print("On Value")
-    #pprint.pprint(on_rule)
+    print("On Value")
+    pprint.pprint(on_rule)
 
-    #print("Off Value")
-    #pprint.pprint(off_rule)
+    print("Off Value")
+    pprint.pprint(off_rule)
+
+    pdb.set_trace()
 
 if __name__ == "__main__":
 

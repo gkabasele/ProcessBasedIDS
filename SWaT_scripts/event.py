@@ -1,6 +1,8 @@
 import os
 import argparse
 import pickle
+import math
+import pdb
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -93,12 +95,12 @@ def plot_variable_timeseries_corr(filename, act, sens):
 
     fig, ax1 = plt.subplots()
 
-    #x_vals = np.arange(len(data))
-    x_vals = np.arange(100000)
+    length = math.floor(len(data)/2)
+    x_vals = np.arange(length)
 
     act_ts = []
     sens_ts = []
-    for state in data[:100000]:
+    for state in data[:length]:
         act_ts.append(state[act])
         sens_ts.append(state[sens])
 
@@ -148,5 +150,9 @@ if __name__ == "__main__":
     off_reading, on_reading = main(args.input, pv, ts)
     plot_data(on_reading, off_reading)
     """
-    plot_variable_timeseries_corr(args.input, "mv101", "lit101")
-    plot_variable_timeseries_corr(args.input, "p101", "lit101")
+    #plot_variable_timeseries_corr(args.input, "mv101", "mv201")
+    #plot_variable_timeseries_corr(args.input, "lit101", "lit301")
+    #plot_variable_timeseries_corr(args.input, "mv101", "lit101")
+    #plot_variable_timeseries_corr(args.input, "mv101", "lit301")
+    #plot_variable_timeseries_corr(args.input, "mv101", "lit401")
+    pdb.set_trace() 

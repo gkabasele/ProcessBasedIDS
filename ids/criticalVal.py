@@ -12,7 +12,7 @@ import jsonpickle
 import pprint
 from utils import *
 
-DIST = 0.005
+DIST = 0.01
 
 MAGNITUDE = 0.1
 
@@ -159,6 +159,21 @@ def setup(filename, pv_store):
                                 min_val=min_val,
                                 max_val=max_val)
             pv_store[pv.name] = pv
+
+def export_critical(filename, output, critical_vals):
+    with open(filename) as fh:
+        content = fh.read()
+        desc = yaml.load(content, Loader=yaml.Loader)
+        for sens, crit_vals in critical_vals.items():
+            val = [x.cur_avg for x in crit_vals]
+            for variable in desc['variables']:
+                var = variable['variable']
+                if var['name'] == sens:
+                    var["critical"] = val
+                    break
+        with open(output, "w") as ofh:
+            content = yaml.dump(desc)
+            ofh.write(content)
 
 def create_actuators(pv_store):
     actuators_name = get_bool_vars(pv_store) 
@@ -344,7 +359,7 @@ def cand_rule_quality(pv_store, sensors_on, sensors_off,
                                               actuators_trans, key, "offon")
                     value.j_measure = j_measure
                     if j_measure >= TRESH:
-                        on_rule[key].append((value, k))
+                        on_rule[key].append((k, value))
 
         for k, v in actuators_off[key].items():
             for value in v:
@@ -354,11 +369,51 @@ def cand_rule_quality(pv_store, sensors_on, sensors_off,
                                                   actuators_trans, key, "onoff")
                     value.j_measure = j_measure
                     if j_measure >= TRESH:
-                        off_rule[key].append((value, k))
+                        off_rule[key].append((k, value))
 
     return on_rule, off_rule
 
-def main(phys, variables, cache_on, cache_off):
+def summarize_critical_val(critical_vals, pv_store):
+    summary = dict(zip(critical_vals.keys(), [[] for _ in range(len(critical_vals))]))
+    for k, vals in critical_vals.items():
+        i = 0
+        pv = pv_store[k]
+        while i<len(vals) - 1:
+            summary[k].append(vals[i])
+            j = i + 1
+            while j < len(vals):
+                if same_value(vals[i], vals[j], pv):
+                    i += 1
+                    j += 1
+                else:
+                    i+= 1
+                    break
+    return summary        
+
+def get_critical_val(on_rule, off_rule, pv_store):
+    critical_vals = {}
+
+    for k in on_rule:
+        for reading in on_rule[k]:
+            sens, val = reading
+            if sens not in critical_vals:
+                critical_vals[sens] = [val]
+            else:
+                critical_vals[sens].append(val)
+
+        for reading in off_rule[k]:
+            sens, val = reading
+            if sens not in critical_vals:
+                critical_vals[sens] = [val]
+            else:
+                critical_vals[sens].append(val)
+
+    for k, val in critical_vals.items():
+        val.sort(key=lambda x: x.cur_avg)
+
+    return summarize_critical_val(critical_vals, pv_store)
+
+def main(phys, variables, output, cache_on, cache_off):
 
     data = pickle.load(open(phys, "rb"))
     pv_store = {}
@@ -420,18 +475,18 @@ def main(phys, variables, cache_on, cache_off):
 
         compute_frequence(data, sensors_on, sensors_off, pv_store)
 
-        with open(CACHE_ON, "w") as f:
+        with open(cache_on, "w") as f:
             f.write(jsonpickle.encode(sensors_on))
 
-        with open(CACHE_OFF, "w") as f:
+        with open(cache_off, "w") as f:
             f.write(jsonpickle.encode(sensors_off))
 
     elif isinstance(cache_on, str):
 
-        with open(CACHE_ON, "r") as f:
+        with open(cache_on, "r") as f:
             sensors_on = jsonpickle.decode(f.read())
 
-        with open(CACHE_OFF, "r") as f:
+        with open(cache_off, "r") as f:
             sensors_off = jsonpickle.decode(f.read())
         normalize_readings(actuators_on, actuators_trans, "offon")
         normalize_readings(actuators_off, actuators_trans, "onoff")
@@ -452,13 +507,8 @@ def main(phys, variables, cache_on, cache_off):
                                           actuators_prob, actuators_trans)
 
     #print(j_measure_lit101)
-    print("On Value")
-    pprint.pprint(on_rule)
-
-    print("Off Value")
-    pprint.pprint(off_rule)
-
-    pdb.set_trace()
+    critical_vals = get_critical_val(on_rule, off_rule, pv_store)
+    export_critical(variables, output, critical_vals)
 
 if __name__ == "__main__":
 
@@ -466,10 +516,11 @@ if __name__ == "__main__":
 
     parser.add_argument("--phys", action="store", dest="phys")
     parser.add_argument("--vars", action="store", dest="vars")
+    parser.add_argument("--output", action="store", dest="output")
     parser.add_argument("--cache-on", action="store_const", dest="cache_on",
                         const=True, default=CACHE_ON)
     parser.add_argument("--cache-off", action="store_const", dest="cache_off",
                         const=True, default=CACHE_OFF)
     args = parser.parse_args()
 
-    main(args.phys, args.vars, args.cache_on, args.cache_off)
+    main(args.phys, args.vars, args.output, args.cache_on, args.cache_off)

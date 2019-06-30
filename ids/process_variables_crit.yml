@@ -1,0 +1,311 @@
+variables:
+- variable:
+    critical:
+    - 0.0
+    max: 2.745
+    min: 0.0
+    name: fit101
+    type: hr
+    values:
+    - 2.5
+    - 2.6
+- variable:
+    critical:
+    - 495.0656041666665
+    - 503.9922056074766
+    - 800.8295350000001
+    - 812.0978306306306
+    max: 817.557
+    min: 120.623
+    name: lit101
+    type: hr
+    values:
+    - 500
+    - 1100
+- variable:
+    name: mv101
+    type: co
+- variable:
+    name: p101
+    type: co
+- variable:
+    name: p102
+    type: co
+- variable:
+    max: 272.526
+    min: 251.666
+    name: ait201
+    type: hr
+    values:
+    - 30
+    - 260
+- variable:
+    max: 8.988
+    min: 8.259
+    name: ait202
+    type: hr
+    values:
+    - 6
+    - 9
+- variable:
+    max: 567.47
+    min: 312.279
+    name: ait203
+    type: hr
+    values:
+    - 200
+    - 500
+- variable:
+    critical:
+    - 0.0
+    max: 2.488
+    min: 0.0
+    name: fit201
+    type: hr
+    values:
+    - 2.4
+    - 2.5
+- variable:
+    name: mv201
+    type: co
+- variable:
+    name: p201
+    type: co
+- variable:
+    name: p202
+    type: co
+- variable:
+    name: p203
+    type: co
+- variable:
+    name: p204
+    type: co
+- variable:
+    name: p205
+    type: co
+- variable:
+    name: p206
+    type: co
+- variable:
+    critical:
+    - 0.03478835671874999
+    - 2.26722162244898
+    max: 21.099
+    min: 0.0
+    name: dpit301
+    type: hr
+    values:
+    - 0.1
+    - 0.3
+- variable:
+    critical:
+    - 4.417610344827586e-06
+    max: 2.356
+    min: 0.0
+    name: fit301
+    type: hr
+    values:
+    - 2.2
+    - 2.4
+- variable:
+    critical:
+    - 792.0624247787614
+    - 823.0931672727272
+    - 857.5330944954129
+    - 872.9453688073396
+    - 900.6060385321102
+    - 1000.234969105691
+    max: 1014.724
+    min: 132.819
+    name: lit301
+    type: hr
+    values:
+    - 800
+    - 1000
+- variable:
+    name: mv301
+    type: co
+- variable:
+    name: mv302
+    type: co
+- variable:
+    name: mv303
+    type: co
+- variable:
+    name: mv304
+    type: co
+- variable:
+    name: p301
+    type: co
+- variable:
+    name: p302
+    type: co
+- variable:
+    max: 148.856
+    min: 0.0
+    name: ait401
+    type: hr
+    values:
+    - 5
+    - 30
+- variable:
+    max: 235.708
+    min: 153.781
+    name: ait402
+    type: hr
+    values:
+    - 150
+    - 300
+- variable:
+    max: 1.748
+    min: 0.0
+    name: fit401
+    type: hr
+    values:
+    - 1.5
+    - 2
+- variable:
+    critical:
+    - 804.9280449541286
+    - 814.0528100000001
+    - 868.5816114035088
+    - 891.0377188118812
+    - 911.8638240384618
+    - 921.2811557692308
+    - 990.352108737864
+    max: 1003.935
+    min: 130.39
+    name: lit401
+    type: hr
+    values:
+    - 800
+    - 1000
+- variable:
+    name: p401
+    type: co
+- variable:
+    name: p402
+    type: co
+- variable:
+    name: p403
+    type: co
+- variable:
+    name: p404
+    type: co
+- variable:
+    name: uv401
+    type: co
+- variable:
+    max: 7.925
+    min: 7.411
+    name: ait501
+    type: hr
+    values:
+    - 6
+    - 8
+- variable:
+    max: 218.329
+    min: 142.348
+    name: ait502
+    type: hr
+    values:
+    - 100
+    - 250
+- variable:
+    max: 283.357
+    min: 252.083
+    name: ait503
+    type: hr
+    values:
+    - 200
+    - 300
+- variable:
+    max: 227.173
+    min: 7.344
+    name: ait504
+    type: hr
+    values:
+    - 5
+    - 10
+- variable:
+    max: 1.758
+    min: 0.001
+    name: fit501
+    type: hr
+    values:
+    - 1
+    - 2
+- variable:
+    max: 1.362
+    min: 0.0
+    name: fit502
+    type: hr
+    values:
+    - 1.1
+    - 1.3
+- variable:
+    max: 0.764
+    min: 0.002
+    name: fit503
+    type: hr
+    values:
+    - 0.7
+    - 0.9
+- variable:
+    max: 0.317
+    min: 0
+    name: fit504
+    type: hr
+    values:
+    - 0.25
+    - 0.35
+- variable:
+    name: p501
+    type: co
+- variable:
+    name: p502
+    type: co
+- variable:
+    max: 264.644
+    min: 8.892
+    name: pit501
+    type: hr
+    values:
+    - 2
+    - 3
+- variable:
+    max: 3.668
+    min: 0.0
+    name: pit502
+    type: hr
+    values:
+    - 0
+    - 0.2
+- variable:
+    max: 200.638
+    min: 3.108
+    name: pit503
+    type: hr
+    values:
+    - 1
+    - 2
+- variable:
+    critical:
+    - 0.0033103616536842148
+    - 0.014265617373737374
+    max: 1.746
+    min: 0.0
+    name: fit601
+    type: hr
+    values:
+    - 1
+    - 2
+- variable:
+    name: p601
+    type: co
+- variable:
+    name: p602
+    type: co
+- variable:
+    name: p603
+    type: co

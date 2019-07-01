@@ -32,7 +32,7 @@ class Requirement(object):
 
 class Checker(threading.Thread):
 
-    def __init__(self, descFile, queue):
+    def __init__(self, descFile, queue, network=False):
         threading.Thread.__init__(self)
         # name -> Process Variable
         self.vars = {}
@@ -40,7 +40,11 @@ class Checker(threading.Thread):
         self.map_key_name = {}
 
         self.store = queue
-        self.setup(descFile)
+        self.network = network
+        if network:
+            self.setup(descFile)
+        else:
+            self.setupSWaT(descFile)
 
     def setup(self, descFile):
         fh = open(descFile)
@@ -61,6 +65,32 @@ class Checker(threading.Thread):
             self.map_key_name[pv.key()] = pv.name
         fh.close()
 
+    def setupSWaT(self, descFile):
+        with open(descFile) as fh:
+            content = fh.read()
+            desc = yaml.load(content, Loader=yaml.Loader)
+            for var_desc in desc['variables']:
+                var = var_desc['variable']
+                if var['type'] == DIS_COIL or var['type'] == DIS_INP:
+                    limit_values = [0, 1, 2]
+                    pv = ProcessSWaTVar(var['name'], var['type'],
+                                        limit_values=limit_values,
+                                        min_val=0,
+                                        max_val=2)
+                else:
+                    if 'critical' in var:
+                        limit_values = var['critical']
+                        limit_values.extend([var['min'], var['max']])
+                        limit_values.sort()
+                    else:
+                        limit_values = [var['min'], var['max']] 
+                        limit_values.sort()
+
+                    pv = ProcessSWaTVar(var['name'], var['type'],
+                                        limit_values=limit_values,
+                                        min_val=var['min'],
+                                        max_val=var['max'])
+                self.vars[pv.name] = pv
     def run(self):
         raise NotImplementedError
 

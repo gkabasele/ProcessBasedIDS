@@ -5,6 +5,7 @@ import collections
 import math
 import threading
 from datetime import datetime, timedelta
+import pickle
 import pdb
 
 import numpy as np
@@ -14,6 +15,7 @@ from utils import ProcessVariable, randomName
 from reqChecker import Checker
 
 ValueTS = collections.namedtuple('ValueTS', ['value', 'ts'])
+DIST = 0.01
 
 class TransitionMatrix(object):
 
@@ -34,18 +36,12 @@ class TransitionMatrix(object):
             return res
 
 
-    def __init__(self, variable, margin=2):
+    def __init__(self, variable):
         self.header = variable.limit_values
         self.historic_val = []
         # map value -> position to row or column of the value in the matrix
         self.val_pos = {}
-        if not variable.is_bool_var() and len(variable.limit_values) != 0:
-            self.transitions = self.compute_transition(variable.limit_values)
-        elif variable.is_bool_var():
-            self.transitions = [[0, -1], [-1, 0]]
-        else:
-            self.transitions = []
-        self.margin = margin
+        self.transitions = self.compute_transition(variable.limit_values)
 
     def compute_transition(self, values):
         transitions = []
@@ -72,57 +68,63 @@ class TransitionMatrix(object):
         return s
 
     def __str__(self):
-        s = "["
-        for val, ts in self.historic_val:
-            s += " ({},{}) ".format(val, ts)
-
-        s += "]"
+        s = "\n".join([str(self.header), str(self.transitions)])
         return s
 
     def __repr__(self):
         return self.__str__()
 
-    def is_diff_reading(self, val1, val2):
-        return not (val2 >= val1 - self.margin and
-                    val2 <= val1 + self.margin)
+    def same_value(self, val1, val2, pv):
+        return pv.normalized_dist(val1, val2) <= DIST
 
     def nbr_transition(self):
         return len(self.historic_val) - 1
 
-    def compute_change_prob(self):
+    def compute_change_prob(self, pv):
         nbr_seq = self.nbr_transition()
         change = 0
         for i in range(len(self.historic_val) - 1):
             cur_val = self.historic_val[i].value
             next_val = self.historic_val[i+1].value
-            if self.is_diff_reading(cur_val, next_val):
+            if not self.same_value(cur_val, next_val, pv):
                 change += 1
         return change/nbr_seq
 
-    def add_value(self, val, ts):
-        v = ValueTS(value=val, ts=ts)
-        self.historic_val.append(v)
+    def add_value(self, val, ts, pv):
+        for crit_val in self.header:
+            if self.same_value(val, crit_val, pv):
+                v = ValueTS(value=val, ts=ts)
+                self.historic_val.append(v)
+                break
+            elif val < crit_val:
+                break
+
+    def find_crit_val(self, val, pv):
+        for crit_val in self.header:
+            if self.same_value(crit_val, val, pv):
+                return crit_val
 
     @Decorators
-    def update_transition_matrix(self):
+    def update_transition_matrix(self, pv):
         current_val = None
         current_ts = None
         for val, ts in self.historic_val:
-            if (val in self.header and
-                    current_val is None and
-                    current_ts is None):
+            if current_val is None and current_ts is None:
+                current_val = self.find_crit_val(val, pv)
                 current_ts = ts
-                current_val = val
-            elif val in self.header and not self.is_diff_reading(current_val, val):
+
+            elif self.same_value(current_val, val, pv):
                 current_ts = ts
-            elif (val in self.header and self.is_diff_reading(current_val, val) and
+
+            elif (not self.same_value(current_val, val, pv) and
                   current_val is not None and
                   current_ts is not None):
+                new_current_val = self.find_crit_val(val, pv)
                 elapsed_time = (ts - current_ts).total_seconds()
                 row = self.val_pos[current_val]
-                column = self.val_pos[val]
+                column = self.val_pos[new_current_val]
                 self.transitions[row][column] = elapsed_time
-                current_val = val
+                current_val = new_current_val
                 current_ts = ts
 
     def compute_elapsed_time(self):
@@ -190,8 +192,8 @@ class TimeCond(object):
 
 class TimeChecker(Checker):
 
-    def __init__(self, descFile, store, frameSize=10):
-        Checker.__init__(self, descFile, store)
+    def __init__(self, descFile, store, network=False, frameSize=10):
+        Checker.__init__(self, descFile, store, network)
         self.done = False
         self.frame_size = timedelta(seconds=frameSize)
         self.messages = {}
@@ -200,6 +202,14 @@ class TimeChecker(Checker):
         self.map_var_frame = {}
 
         self.detection_cond = {}
+
+        self.matrices = self.create_matrices()
+
+    def create_matrices(self):
+        matrices = {}
+        for name, variable in self.vars.items():
+            matrices[name] = TransitionMatrix(variable)
+        return matrices
 
     def create_var(self, host, port, kind, addr):
         pv = ProcessVariable(host, port, kind, addr, name=randomName())
@@ -224,6 +234,22 @@ class TimeChecker(Checker):
             if key not in self.detection_cond:
                 self.detection_cond[key] = [TransitionMatrix(variable)]
             return self.detection_cond[key][-1]
+
+    def get_values_timestamp(self):
+
+        for i, state in enumerate(self.store):
+            ts = state['timestamp']
+            for name, var in state.items():
+                if name != 'timestamp':
+                    matrix = self.matrices[name]
+                    val = state[name]
+                    pv = self.vars[name]
+                    matrix.add_value(val, ts, pv)
+
+    def compute_matrices(self):
+        for name, var in self.vars.items():
+            if name != 'timestamp':
+                self.matrices[name].update_transition_matrix(var)
 
     def compute_frame(self, detection=False):
         finish_run = {}
@@ -333,13 +359,15 @@ class TimeChecker(Checker):
         return s
 
     def run(self):
+        self.fill_matrices()
+        """
         i = 0
         nbr_frame = 5
         print("Creating condition")
         while not self.done and i < nbr_frame:
             self.compute_frame()
             i += 1
-
+        pdb.set_trace()
         self.update_condition(nbr_frame)
 
         print("Running detection")
@@ -347,3 +375,4 @@ class TimeChecker(Checker):
             self.compute_frame(True)
             self.check_condition()
             break
+        """

@@ -110,17 +110,18 @@ class TransitionMatrix(object):
 
     def check_transition_time(self, newval, oldval, elapsed_time, pv):
 
+        pdb.set_trace()
         row = self.val_pos[oldval]
         column = self.val_pos[newval]
         expected = self.transitions[row][column]
-        if expected == -1:
-            return False
-        else:
+        res = expected == -1
+        if not res:
             z = (elapsed_time - expected.M)/expected.k
             # How likely a elapsed time diff from the mean to be from the same 
             # group of observation
             prob_same = 1 - stats.norm.cdf(z)
-        return 0.05 > prob_same
+            res = 0.05 > prob_same
+        return res
 
     def compute_transition_time(self, newval, ts, pv):
         for crit_val in self.header:

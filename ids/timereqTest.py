@@ -2,123 +2,55 @@ import math
 from datetime import datetime, timedelta
 from timeChecker import TransitionMatrix, TimeChecker
 from utils import *
+import numpy as np
 import pdb
 
 start_date = datetime.strptime("2018-12-25 15:10:00","%Y-%m-%d %H:%M:%S")
 
 vars_store = "./process_variables_crit.yml"
 
+mu = 10
+sigma = 2
+
 def test_matrix():
+    round_value_sens = [120.439, 120.46, 495.065, 504.055, 800.70, 812.75,
+                        817.44, 815.29, 802.42, 504.029, 493.81, 493.93]
+    round_value_act = [1, 0, 2, 2, 2, 0, 0, 1, 1, 1, 1, 2]
 
-    round_one = {
-                    'lit101': 120.439,
-                    'mv101': 1,
-                    'timestamp': datetime.strptime("2018-12-25 15:10:00", "%Y-%m-%d %H:%M:%S")
-                }
+    datas = []
 
-    round_two = {
-                    'lit101': 120.46,
-                    'mv101': 0,
-                    'timestamp': datetime.strptime("2018-12-25 15:10:05", "%Y-%m-%d %H:%M:%S")
-                }
+    timestamp = datetime.strptime("2018-12-25 15:10:00", "%Y-%m-%d %H:%M:%S")
+    for _ in range (5):
+        for i, value in enumerate(zip(round_value_sens, round_value_act)):
+            x, y = value
+            delta = np.random.normal(mu, sigma, 1)[0]
+            timestamp = timestamp + timedelta(seconds=delta)
 
-    round_three = {
-                    'lit101': 495.065,
-                    'mv101': 2,
-                    'timestamp': datetime.strptime("2018-12-25 15:10:10", "%Y-%m-%d %H:%M:%S")
-                }
+            data = {'lit101': x, 'mv101': y, 'timestamp': timestamp}
 
-    round_four = {
-                    'lit101': 504.055,
-                    'mv101': 2,
-                    'timestamp': datetime.strptime("2018-12-25 15:10:15", "%Y-%m-%d %H:%M:%S")
-                }
+            datas.append(data)
     
-    round_five = {
-                    'lit101': 800.70,
-                    'mv101':2,
-                    'timestamp': datetime.strptime("2018-12-25 15:10:20", "%Y-%m-%d %H:%M:%S")
-                }
-
-    round_six = {
-                    'lit101': 812.75,
-                    'mv101':0,
-                    'timestamp': datetime.strptime("2018-12-25 15:10:25", "%Y-%m-%d %H:%M:%S")
-                }
-
-    round_seven = {
-                    'lit101': 817.44,
-                    'mv101':0,
-                    'timestamp': datetime.strptime("2018-12-25 15:10:30", "%Y-%m-%d %H:%M:%S")
-                }
-
-
-    round_eight = {
-                    'lit101': 815.29,
-                    'mv101':1,
-                    'timestamp': datetime.strptime("2018-12-25 15:10:35", "%Y-%m-%d %H:%M:%S")
-                }
-
-    round_nine = {
-                    'lit101': 802.42,
-                    'mv101':1,
-                    'timestamp': datetime.strptime("2018-12-25 15:10:40", "%Y-%m-%d %H:%M:%S")
-                }
-
-    round_ten = {
-                    'lit101': 504.029,
-                    'mv101':1,
-                    'timestamp': datetime.strptime("2018-12-25 15:10:45", "%Y-%m-%d %H:%M:%S")
-                }
-
-    round_eleven = {
-                    'lit101': 493.81,
-                    'mv101':1,
-                    'timestamp': datetime.strptime("2018-12-25 15:10:50", "%Y-%m-%d %H:%M:%S")
-                   }
-
-    round_twelve = {
-                    'lit101': 493.93,
-                    'mv101':2,
-                    'timestamp': datetime.strptime("2018-12-25 15:10:55", "%Y-%m-%d %H:%M:%S")
-                   }
-
-    data = [round_one, round_two, round_three, round_four, round_five, 
-            round_six, round_seven, round_eight, round_nine, round_ten,
-            round_eleven, round_twelve]
-
-    
-    time_checker = TimeChecker(vars_store, data)
+    time_checker = TimeChecker(vars_store, datas)
     time_checker.get_values_timestamp()
     time_checker.compute_matrices()
 
-    attack_one = {
-                   'lit101': 493.93,
-                   'mv101':2,
-                   'timestamp': datetime.strptime("2018-12-25 15:25:10", "%Y-%m-%d %H:%M:%S")
-                 }
+    pdb.set_trace()
 
-    attack_two = {
-                   'lit101': 504.74,
-                   'mv101':2,
-                   'timestamp': datetime.strptime("2018-12-25 15:25:15", "%Y-%m-%d %H:%M:%S")
-                 }
+    atk_value_sens = [493.93, 504.74, 800.93, 493.93]
+    atk_value_act = [2, 2, 1, 2]
 
-    attack_three = {
-                   'lit101': 800.93,
-                   'mv101':1,
-                   'timestamp': datetime.strptime("2018-12-25 15:25:45", "%Y-%m-%d %H:%M:%S")
-                 }
-
-
-    attack_four = {
-                   'lit101': 493.93,
-                   'mv101':2,
-                   'timestamp': datetime.strptime("2018-12-25 15:26:15", "%Y-%m-%d %H:%M:%S")
-                 }
-
-    data = [attack_one, attack_two, attack_three, attack_four]
-    time_checker.store = data
+    datas_atk = []
+    for i, value in enumerate(zip(atk_value_sens, atk_value_act)):
+        x, y = value
+        if i == 0:
+            timestamp = datetime.strptime("2018-12-25 15:25:10", "%Y-%m-%d %H:%M:%S")
+        else:
+            delta = np.random.normal(mu, sigma, 1)[0]
+            timestamp = timestamp + timedelta(seconds=delta)
+        data = {'lit101': x, 'mv101':y, 'timestamp': timestamp}
+        datas_atk.append(data)
+        
+    time_checker.store = datas_atk
     time_checker.detect_suspect_transition()
     pdb.set_trace()
 

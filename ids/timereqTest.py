@@ -52,11 +52,74 @@ def test_matrix():
                     'timestamp': datetime.strptime("2018-12-25 15:10:30", "%Y-%m-%d %H:%M:%S")
                 }
 
-    data = [round_one, round_two, round_three, round_four, round_five, round_six, round_seven]
 
+    round_eight = {
+                    'lit101': 815.29,
+                    'mv101':1,
+                    'timestamp': datetime.strptime("2018-12-25 15:10:35", "%Y-%m-%d %H:%M:%S")
+                }
+
+    round_nine = {
+                    'lit101': 802.42,
+                    'mv101':1,
+                    'timestamp': datetime.strptime("2018-12-25 15:10:40", "%Y-%m-%d %H:%M:%S")
+                }
+
+    round_ten = {
+                    'lit101': 504.029,
+                    'mv101':1,
+                    'timestamp': datetime.strptime("2018-12-25 15:10:45", "%Y-%m-%d %H:%M:%S")
+                }
+
+    round_eleven = {
+                    'lit101': 493.81,
+                    'mv101':1,
+                    'timestamp': datetime.strptime("2018-12-25 15:10:50", "%Y-%m-%d %H:%M:%S")
+                   }
+
+    round_twelve = {
+                    'lit101': 493.93,
+                    'mv101':2,
+                    'timestamp': datetime.strptime("2018-12-25 15:10:55", "%Y-%m-%d %H:%M:%S")
+                   }
+
+    data = [round_one, round_two, round_three, round_four, round_five, 
+            round_six, round_seven, round_eight, round_nine, round_ten,
+            round_eleven, round_twelve]
+
+    
     time_checker = TimeChecker(vars_store, data)
     time_checker.get_values_timestamp()
     time_checker.compute_matrices()
+
+    attack_one = {
+                   'lit101': 493.93,
+                   'mv101':2,
+                   'timestamp': datetime.strptime("2018-12-25 15:25:10", "%Y-%m-%d %H:%M:%S")
+                 }
+
+    attack_two = {
+                   'lit101': 504.74,
+                   'mv101':2,
+                   'timestamp': datetime.strptime("2018-12-25 15:25:15", "%Y-%m-%d %H:%M:%S")
+                 }
+
+    attack_three = {
+                   'lit101': 800.93,
+                   'mv101':1,
+                   'timestamp': datetime.strptime("2018-12-25 15:25:45", "%Y-%m-%d %H:%M:%S")
+                 }
+
+
+    attack_four = {
+                   'lit101': 493.93,
+                   'mv101':2,
+                   'timestamp': datetime.strptime("2018-12-25 15:26:15", "%Y-%m-%d %H:%M:%S")
+                 }
+
+    data = [attack_one, attack_two, attack_three, attack_four]
+    time_checker.store = data
+    time_checker.detect_suspect_transition()
     pdb.set_trace()
 
 test_matrix()

@@ -13,16 +13,30 @@ mu = 10
 sigma = 2
 
 def test_matrix():
-    round_value_sens = [120.439, 120.46, 495.065, 504.055, 800.70, 812.75,
-                        817.44, 815.29, 802.42, 504.029, 493.81, 493.93]
-    round_value_act = [1, 0, 2, 2, 2, 0, 0, 1, 1, 1, 1, 2]
 
     datas = []
+    round_val_sens_start = [120.439, 120.46, 179.46, 248.234, 325.46]
+    round_val_act_start = [1, 0, 2, 2, 2]
 
     timestamp = datetime.strptime("2018-12-25 15:10:00", "%Y-%m-%d %H:%M:%S")
-    for _ in range (5):
-        for i, value in enumerate(zip(round_value_sens, round_value_act)):
-            x, y = value
+    assert len(round_val_act_start) == len(round_val_sens_start)
+
+    for x, y in zip(round_val_sens_start, round_val_act_start):
+        delta = np.random.normal(mu, sigma, 1)[0]
+        timestamp = timestamp + timedelta(seconds=delta)
+        data = {'lit101': x, 'mv101': y, 'timestamp': timestamp}
+        datas.append(data)
+
+    round_value_sens = [495.065, 504.055, 573.932, 746.27, 800.70, 806.369,
+                        812.75, 817.44, 815.29, 802.42, 739.42, 567.743,
+                        504.029, 493.81, 494.83]
+
+    round_value_act = [2, 2, 2, 2, 2, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0]
+
+    assert len(round_value_act) == len(round_value_sens)
+
+    for _ in range (10):
+        for x, y in zip(round_value_sens, round_value_act):
             delta = np.random.normal(mu, sigma, 1)[0]
             timestamp = timestamp + timedelta(seconds=delta)
 
@@ -33,20 +47,20 @@ def test_matrix():
     time_checker = TimeChecker(vars_store, datas)
     time_checker.get_values_timestamp()
     time_checker.compute_matrices()
-
     pdb.set_trace()
 
-    atk_value_sens = [493.93, 504.74, 800.93, 493.93]
-    atk_value_act = [2, 2, 1, 2]
+    atk_value_sens = [493.93, 504.74, 598.07, 744.19, 800.93, 810.49, 809.12, 
+                      811.39, 813.49, 814.03, 799.53, 737.41, 541.93, 507.074,
+                      493.93]
+    atk_value_act = [2, 2, 2, 2, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]
+
+    assert len(atk_value_sens) == len(atk_value_act)
 
     datas_atk = []
-    for i, value in enumerate(zip(atk_value_sens, atk_value_act)):
-        x, y = value
-        if i == 0:
-            timestamp = datetime.strptime("2018-12-25 15:25:10", "%Y-%m-%d %H:%M:%S")
-        else:
-            delta = np.random.normal(mu, sigma, 1)[0]
-            timestamp = timestamp + timedelta(seconds=delta)
+    timestamp = datetime.strptime("2018-12-25 15:25:10", "%Y-%m-%d %H:%M:%S")
+    for x, y  in zip(atk_value_sens, atk_value_act):
+        delta = np.random.normal(mu, sigma, 1)[0]
+        timestamp = timestamp + timedelta(seconds=delta)
         data = {'lit101': x, 'mv101':y, 'timestamp': timestamp}
         datas_atk.append(data)
         

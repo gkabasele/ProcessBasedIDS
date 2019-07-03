@@ -20,6 +20,10 @@ DIST = 0.01
 
 class TransitionMatrix(object):
 
+    DIFF = "Different"
+    SAME = "Same"
+    UNKNOWN = "Unknown"
+
     class Decorators(object):
         def __init__(self, f):
             self.func = f
@@ -109,31 +113,35 @@ class TransitionMatrix(object):
                 return crit_val
 
     def check_transition_time(self, newval, oldval, elapsed_time, pv):
-
-        pdb.set_trace()
         row = self.val_pos[oldval]
         column = self.val_pos[newval]
         expected = self.transitions[row][column]
-        res = expected == -1
-        if not res:
-            z = (elapsed_time - expected.M)/expected.k
-            # How likely a elapsed time diff from the mean to be from the same 
-            # group of observation
-            prob_same = 1 - stats.norm.cdf(z)
-            res = 0.05 > prob_same
-        return res
+        if expected == -1:
+            return TransitionMatrix.UNKNOWN, -1
+
+        z = (elapsed_time - expected.M)/expected.k
+        # How likely a elapsed time diff from the mean to be from the same 
+        # group of observation
+        prob_same = 1 - stats.norm.cdf(z)
+        if prob_same < 0.05:
+            return TransitionMatrix.DIFF, expected
+        else:
+            return TransitionMatrix.SAME, expected
 
     def compute_transition_time(self, newval, ts, pv):
         for crit_val in self.header:
             if self.same_value(newval, crit_val, pv):
-                if self.last_value and self.last_value.value != crit_val:
+                if self.last_value is not None and self.last_value.value != crit_val:
                     elapsed_time = (ts - self.last_value.ts).total_seconds()
-                    res = self.check_transition_time(crit_val, self.last_value.value,
-                                                     elapsed_time, pv)
-                    if res:
-                        print("Suspect transitions from {}".format(pv.name))
+                    res, expected = self.check_transition_time(crit_val, self.last_value.value,
+                                                               elapsed_time, pv)
+                    if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
+                        print("[{}]transitions for {} {}->{}, expected: {}, got:{}".format(res, pv.name,
+                                                                                           self.last_value.value,
+                                                                                           crit_val, expected,
+                                                                                           elapsed_time))
                     self.last_value = ValueTS(value=crit_val, ts=ts)
-                elif not self.last_value:
+                elif self.last_value is None:
                     self.last_value = ValueTS(value=crit_val, ts=ts)
                 elif self.last_value.value == crit_val:
                     pass
@@ -152,7 +160,7 @@ class TransitionMatrix(object):
                 current_ts = ts
 
             elif self.same_value(current_val, val, pv):
-                current_ts = ts
+                pass
 
             elif (not self.same_value(current_val, val, pv) and
                   current_val is not None and

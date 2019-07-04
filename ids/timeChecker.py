@@ -23,6 +23,7 @@ class TransitionMatrix(object):
     DIFF = "Different"
     SAME = "Same"
     UNKNOWN = "Unknown"
+    UNEXPECT = "Unexpected"
 
     class Decorators(object):
         def __init__(self, f):
@@ -130,6 +131,10 @@ class TransitionMatrix(object):
             return TransitionMatrix.SAME, expected
 
     def compute_transition_time(self, newval, ts, pv):
+        if ((not self.same_value(newval, self.header[0], pv) and newval < self.header[0]) or
+                not self.same_value(newval, self.header[-1], pv) and newval > self.header[-1]):
+            print("[{}] Unexpected value: {}".format(TransitionMatrix.UNEXPECT, newval))
+
         for crit_val in self.header:
             if self.same_value(newval, crit_val, pv):
                 if self.last_value is not None and self.last_value.value != crit_val:

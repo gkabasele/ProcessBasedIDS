@@ -57,8 +57,7 @@ def test_matrix():
     atk_value_sens = [493.93, 504.74, 598.07, 744.19, 800.93, 810.49, 809.12,
                       811.39, 813.49, 814.03, 812.04, 815.94, 814.84, 817.32,
                       799.53, 737.41, 541.93, 507.074, 493.93]
-                      
-                      
+
     atk_value_act = [2, 2, 2, 2, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]
 
     try:
@@ -73,7 +72,7 @@ def test_matrix():
         timestamp = timestamp + timedelta(seconds=delta)
         data = {'lit101': x, 'mv101':y, 'timestamp': timestamp}
         datas_atk.append(data)
-        
+
     time_checker.store = datas_atk
     time_checker.detect_suspect_transition()
     pdb.set_trace()

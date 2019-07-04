@@ -1,6 +1,8 @@
 import argparse
 import csv
 import pickle
+import pdb
+from datetime import datetime
 
 """
 keep_var = ["fit101", "lit101", "mv101", "p101", "p102", "ait201","ait202", "ait203",
@@ -22,12 +24,15 @@ states = []
 with open(args.input, mode='r') as csv_file:
     csv_reader = csv.DictReader(csv_file, delimiter=',')
     for i, row in enumerate(csv_reader):
-        if i != 0:
-            state = {}
-            for x in row:
-                key = x.lower()
+        state = {}
+        for x in row:
+            key = x.lower().replace(" ", "")
+            if key == 'timestamp':
+                ts = datetime.strptime(row[x], "%d/%m/%Y %I:%M:%S %p")
+                state[key] = ts
+            else:
                 state[key] = row[x]
-            states.append(state)
+        states.append(state)
 
 with open(args.output, mode="wb") as bin_file:
     pickle.dump(states, bin_file)

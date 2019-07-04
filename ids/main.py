@@ -2,6 +2,7 @@
 import argparse
 import queue
 import pickle
+import pdb
 
 from reader import Reader
 from pvStore import PVStore

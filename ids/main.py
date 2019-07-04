@@ -37,8 +37,8 @@ def main_network(conf, infile):
         thr.join()
 
 def main(conf, infile):
-
-    data = pickle.load(open(infile, "rb"))
+    with open(infile, "rb") as filename:
+        data = pickle.load(filename)
 
     time_checker = TimeChecker(conf, data)
     time_checker.start()

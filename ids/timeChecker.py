@@ -48,6 +48,7 @@ class TransitionMatrix(object):
         self.val_pos = {}
         self.transitions = self.compute_transition(variable.limit_values)
         self.last_value = None
+        self.last_val_train = None
 
     def compute_transition(self, values):
         transitions = []
@@ -149,32 +150,30 @@ class TransitionMatrix(object):
                 break
             elif newval < crit_val:
                 break
-                    
     @Decorators
-    def update_transition_matrix(self, pv):
-        current_val = None
-        current_ts = None
-        for val, ts in self.historic_val:
-            if current_val is None and current_ts is None:
-                current_val = self.find_crit_val(val, pv)
-                current_ts = ts
+    def update_transition_matrix(self, value, ts, pv):
+        for crit_val in self.header:
+            if self.same_value(value, crit_val, pv):
+                #pdb.set_trace()
+                if self.last_val_train is not None and self.last_val_train.value != crit_val:
+                    elapsed_time = (ts - self.last_val_train.ts).total_seconds()
+                    row = self.val_pos[self.last_val_train.value]
+                    column = self.val_pos[crit_val]
+                    if self.transitions[row][column] == -1:
+                        self.transitions[row][column] = Welford(elapsed_time)
+                    else:
+                        self.transitions[row][column](elapsed_time)
+                    self.last_val_train = ValueTS(value=crit_val, ts=ts)
 
-            elif self.same_value(current_val, val, pv):
-                pass
+                elif self.last_val_train is None:
+                    self.last_val_train = ValueTS(value=crit_val, ts=ts)
 
-            elif (not self.same_value(current_val, val, pv) and
-                  current_val is not None and
-                  current_ts is not None):
-                new_current_val = self.find_crit_val(val, pv)
-                elapsed_time = (ts - current_ts).total_seconds()
-                row = self.val_pos[current_val]
-                column = self.val_pos[new_current_val]
-                if self.transitions[row][column] == -1:
-                    self.transitions[row][column] = Welford(elapsed_time)
-                else:
-                    self.transitions[row][column](elapsed_time)
-                current_val = new_current_val
-                current_ts = ts
+                elif self.last_val_train.value == crit_val:
+                    pass
+                break
+
+            elif value < crit_val:
+                break
 
     def compute_elapsed_time(self):
         elapsed_time = []
@@ -292,12 +291,7 @@ class TimeChecker(Checker):
                 if name != 'timestamp':
                     matrix = self.matrices[name]
                     pv = self.vars[name]
-                    matrix.add_value(val, ts, pv)
-
-    def compute_matrices(self):
-        for name, var in self.vars.items():
-            if name != 'timestamp':
-                self.matrices[name].update_transition_matrix(var)
+                    matrix.update_transition_matrix(val, ts, pv)
 
     def detect_suspect_transition(self):
         for state in self.store:

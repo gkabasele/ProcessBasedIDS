@@ -19,7 +19,10 @@ def test_matrix():
     round_val_act_start = [1, 0, 2, 2, 2]
 
     timestamp = datetime.strptime("2018-12-25 15:10:00", "%Y-%m-%d %H:%M:%S")
-    assert len(round_val_act_start) == len(round_val_sens_start)
+    try:
+        assert len(round_val_act_start) == len(round_val_sens_start)
+    except AssertionError:
+        print("Sens: {}, Act: {}".format(len(round_val_sens_start), len(round_val_act_start)))
 
     for x, y in zip(round_val_sens_start, round_val_act_start):
         delta = np.random.normal(mu, sigma, 1)[0]
@@ -33,7 +36,10 @@ def test_matrix():
 
     round_value_act = [2, 2, 2, 2, 2, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0]
 
-    assert len(round_value_act) == len(round_value_sens)
+    try:
+        assert len(round_value_act) == len(round_value_sens)
+    except AssertionError:
+        print("Sens: {}, Act: {}".format(len(round_value_sens), len(round_value_act)))
 
     for _ in range (10):
         for x, y in zip(round_value_sens, round_value_act):
@@ -43,18 +49,22 @@ def test_matrix():
             data = {'lit101': x, 'mv101': y, 'timestamp': timestamp}
 
             datas.append(data)
-    
+
     time_checker = TimeChecker(vars_store, datas)
     time_checker.get_values_timestamp()
-    time_checker.compute_matrices()
     pdb.set_trace()
 
-    atk_value_sens = [493.93, 504.74, 598.07, 744.19, 800.93, 810.49, 809.12, 
-                      811.39, 813.49, 814.03, 799.53, 737.41, 541.93, 507.074,
-                      493.93]
-    atk_value_act = [2, 2, 2, 2, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]
+    atk_value_sens = [493.93, 504.74, 598.07, 744.19, 800.93, 810.49, 809.12,
+                      811.39, 813.49, 814.03, 812.04, 815.94, 814.84, 817.32,
+                      799.53, 737.41, 541.93, 507.074, 493.93]
+                      
+                      
+    atk_value_act = [2, 2, 2, 2, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]
 
-    assert len(atk_value_sens) == len(atk_value_act)
+    try:
+        assert len(atk_value_sens) == len(atk_value_act)
+    except AssertionError:
+        print("Sens: {}, Act: {}".format(len(atk_value_sens), len(atk_value_act)))
 
     datas_atk = []
     timestamp = datetime.strptime("2018-12-25 15:25:10", "%Y-%m-%d %H:%M:%S")

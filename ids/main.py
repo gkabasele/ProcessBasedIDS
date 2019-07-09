@@ -15,6 +15,16 @@ parser.add_argument("--conf", type=str, dest="conf")
 parser.add_argument("--benign", type=str, dest="infile")
 parser.add_argument("--malicious", type=str, dest="malicious")
 
+FIRST_WAVE = 7103
+
+SECOND_WAVE = 12376
+
+THIRD_WAVE = 16101
+
+FOURTH_WAVE = 90920
+
+FIFTH_WAVE = 103812
+
 def main_network(conf, infile):
     queue_req = queue.Queue()
     queue_time = queue.Queue()
@@ -46,7 +56,7 @@ def main(conf, infile, malicious):
     with open(malicious, "rb") as mal_filename:
         data_mal = pickle.load(mal_filename)
     print("Read Attack mode file")
-    data_mv = data_mal[:2700]
+    data_mv = data_mal[:FIRST_WAVE]
 
     time_checker = TimeChecker(conf, data, detection_store=data_mv)
     time_checker.start()

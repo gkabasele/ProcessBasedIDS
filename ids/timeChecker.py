@@ -7,6 +7,7 @@ import threading
 from datetime import datetime, timedelta
 import pickle
 import pdb
+from copy import copy
 
 import numpy as np
 from scipy import stats
@@ -17,6 +18,7 @@ from reqChecker import Checker
 
 ValueTS = collections.namedtuple('ValueTS', ['value', 'ts'])
 DIST = 0.01
+DIFF = 0.05
 
 class TransitionMatrix(object):
 
@@ -24,6 +26,7 @@ class TransitionMatrix(object):
     SAME = "Same"
     UNKNOWN = "Unknown"
     UNEXPECT = "Unexpected"
+    ILLEGAL = "Illegal"
 
     class Decorators(object):
         def __init__(self, f):
@@ -87,6 +90,9 @@ class TransitionMatrix(object):
     def same_value(self, val1, val2, pv):
         return pv.normalized_dist(val1, val2) <= DIST
 
+    def great_diff(self, val1, val2, pv):
+        return pv.normalized_dist(val1, val2) >= DIFF
+
     def nbr_transition(self):
         return len(self.historic_val) - 1
 
@@ -131,23 +137,37 @@ class TransitionMatrix(object):
             return TransitionMatrix.SAME, expected
 
     def compute_transition_time(self, newval, ts, pv):
-        if ((not self.same_value(newval, self.header[0], pv) and newval < self.header[0]) or
-                not self.same_value(newval, self.header[-1], pv) and newval > self.header[-1]):
-            print("[{}][{}] Unexpected value: {}".format(ts,
-                                                         TransitionMatrix.UNEXPECT,
-                                                         newval))
+        if not self.same_value(newval, self.header[0], pv) and newval < self.header[0]:
 
+            print("[{}][{}] Unexpected value for {}, got {}".format(ts, TransitionMatrix.UNEXPECT,
+                                                                    pv.name, newval))
+            if self.last_value.value != "-inf":
+                self.last_value = ValueTS("-inf", ts)
+        elif not self.same_value(newval, self.header[-1], pv) and newval > self.header[-1]:
+
+            print("[{}][{}] Unexpected value for {}, got {}".format(ts, TransitionMatrix.UNEXPECT,
+                                                                    pv.name, newval))
+            if self.last_value.value != "inf":
+                self.last_value = ValueTS("inf", ts)
         for crit_val in self.header:
             if self.same_value(newval, crit_val, pv):
                 if self.last_value is not None:
                     elapsed_time = (ts - self.last_value.ts).total_seconds()
-                    res, expected = self.check_transition_time(crit_val, self.last_value.value,
-                                                               elapsed_time, pv)
-                    if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
-                        print("[{}][{}]transitions for {} {}->{}, expected: {}, got:{}".format(ts, res, pv.name,
-                                                                                               self.last_value.value,
-                                                                                               crit_val, expected,
-                                                                                               elapsed_time))
+                    if self.last_value.value == "inf" or self.last_value.value == "-inf":
+                        print("[{}][{}]transition from illegal position for {} {}->{},  {}".format(ts,
+                                                                                              TransitionMatrix.ILLEGAL,
+                                                                                              pv.name,
+                                                                                              self.last_value.value,
+                                                                                              crit_val,
+                                                                                              elapsed_time))
+                    else:
+                        res, expected = self.check_transition_time(crit_val, self.last_value.value,
+                                                                   elapsed_time, pv)
+                        if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
+                            print("[{}][{}]transitions for {} {}->{}, expected: {}, got:{}".format(ts, res, pv.name,
+                                                                                                   self.last_value.value
+                                                                                                   , crit_val, expected,
+                                                                                                   elapsed_time))
                     if self.last_value.value != crit_val:
                         self.last_value = ValueTS(value=crit_val, ts=ts)
                 else:

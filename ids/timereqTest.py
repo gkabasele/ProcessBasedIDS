@@ -41,7 +41,7 @@ def test_matrix():
     except AssertionError:
         print("Sens: {}, Act: {}".format(len(round_value_sens), len(round_value_act)))
 
-    for _ in range (10):
+    for _ in range(10):
         for x, y in zip(round_value_sens, round_value_act):
             delta = np.random.normal(mu, sigma, 1)[0]
             timestamp = timestamp + timedelta(seconds=delta)
@@ -73,9 +73,28 @@ def test_matrix():
         data = {'lit101': x, 'mv101':y, 'timestamp': timestamp}
         datas_atk.append(data)
 
-    time_checker.store = datas_atk
+    time_checker.detection_store = datas_atk
     time_checker.detect_suspect_transition()
+
     pdb.set_trace()
+    atk_value_sens = [493.93, 504.74, 598.07, 744.19, 800.93, 810.49, 809.12,
+                      811.39, 813.49, 817.50, 820.94, 823.29, 825.35]
+
+    atk_value_act = [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+
+    try:
+        assert len(atk_value_sens) == len(atk_value_act)
+    except AssertionError:
+        print("Sens : {}, Act: {}".format(len(atk_value_sens), len(atk_value_act)))
+
+    datas_atk = []
+    for x, y in zip(atk_value_sens, atk_value_act):
+        delta = np.random.normal(mu, sigma, 1)[0]
+        timestamp = timestamp + timedelta(seconds=delta)
+        data = {'lit101': x, 'mv101': y, 'timestamp': timestamp}
+        datas_atk.append(data)
+    time_checker.detection_store = datas_atk
+    time_checker.detect_suspect_transition()
 
 test_matrix()
 

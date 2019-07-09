@@ -28,10 +28,13 @@ with open(args.input, mode='r') as csv_file:
         for x in row:
             key = x.lower().replace(" ", "")
             if key == 'timestamp':
-                ts = datetime.strptime(row[x], "%d/%m/%Y %I:%M:%S %p")
+                ts = datetime.strptime(row[x], " %d/%m/%Y %I:%M:%S %p")
                 state[key] = ts
-            else:
+            elif key == 'normal/attack':
                 state[key] = row[x]
+            else:
+                value = float(row[x].replace(",", "."))
+                state[key] = value
         states.append(state)
 
 with open(args.output, mode="wb") as bin_file:

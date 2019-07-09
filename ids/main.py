@@ -12,7 +12,8 @@ from timeChecker import TimeChecker
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--conf", type=str, dest="conf")
-parser.add_argument("--infile", type=str, dest="infile")
+parser.add_argument("--benign", type=str, dest="infile")
+parser.add_argument("--malicious", type=str, dest="malicious")
 
 def main_network(conf, infile):
     queue_req = queue.Queue()
@@ -37,14 +38,20 @@ def main_network(conf, infile):
     for thr in threads:
         thr.join()
 
-def main(conf, infile):
+def main(conf, infile, malicious):
     with open(infile, "rb") as filename:
         data = pickle.load(filename)
 
-    time_checker = TimeChecker(conf, data)
+    print("Read Normal mode file")
+    with open(malicious, "rb") as mal_filename:
+        data_mal = pickle.load(mal_filename)
+    print("Read Attack mode file")
+    data_mv = data_mal[:2700]
+
+    time_checker = TimeChecker(conf, data, detection_store=data_mv)
     time_checker.start()
     time_checker.join()
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    main(args.conf, args.infile)
+    main(args.conf, args.infile, args.malicious)

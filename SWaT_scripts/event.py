@@ -80,9 +80,8 @@ def main(filename, pv, ts):
                                                           diff))
     return off_reading, on_reading
 
-def plot_timeseries(filename, pv):
+def plot_timeseries(data, filename, pv):
 
-    data = pickle.load(open(filename, "rb"))
     vals = np.array([x[pv] for x in data])
 
     x = np.arange(len(vals))
@@ -90,8 +89,7 @@ def plot_timeseries(filename, pv):
     plt.plot(x, vals)
     plt.show()
 
-def plot_variable_timeseries_corr(filename, act, sens):
-    data = pickle.load(open(filename, "rb"))
+def plot_variable_timeseries_corr(data, act, sens):
 
     fig, ax1 = plt.subplots()
 
@@ -145,6 +143,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     pv = "mv101"
     ts = "timestamp"
+    data = pickle.load(open(args.input, "rb"))
 
     """
     off_reading, on_reading = main(args.input, pv, ts)

@@ -118,8 +118,8 @@ class TransitionMatrix(object):
         row = self.val_pos[oldval]
         column = self.val_pos[newval]
         expected = self.transitions[row][column]
-        if expected == -1:
-            return TransitionMatrix.UNKNOWN, -1
+        if expected == -1 or expected == 0:
+            return TransitionMatrix.UNKNOWN, expected
 
         z = (elapsed_time - expected.M)/expected.k
         # How likely a elapsed time diff from the mean to be from the same 
@@ -133,25 +133,25 @@ class TransitionMatrix(object):
     def compute_transition_time(self, newval, ts, pv):
         if ((not self.same_value(newval, self.header[0], pv) and newval < self.header[0]) or
                 not self.same_value(newval, self.header[-1], pv) and newval > self.header[-1]):
-            print("[{}] Unexpected value: {}".format(TransitionMatrix.UNEXPECT, newval))
+            print("[{}][{}] Unexpected value: {}".format(ts,
+                                                         TransitionMatrix.UNEXPECT,
+                                                         newval))
 
         for crit_val in self.header:
             if self.same_value(newval, crit_val, pv):
-                if self.last_value is not None and self.last_value.value != crit_val:
+                if self.last_value is not None:
                     elapsed_time = (ts - self.last_value.ts).total_seconds()
                     res, expected = self.check_transition_time(crit_val, self.last_value.value,
                                                                elapsed_time, pv)
                     if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
-                        print("[{}]transitions for {} {}->{}, expected: {}, got:{}".format(res, pv.name,
-                                                                                           self.last_value.value,
-                                                                                           crit_val, expected,
-                                                                                           elapsed_time))
+                        print("[{}][{}]transitions for {} {}->{}, expected: {}, got:{}".format(ts, res, pv.name,
+                                                                                               self.last_value.value,
+                                                                                               crit_val, expected,
+                                                                                               elapsed_time))
+                    if self.last_value.value != crit_val:
+                        self.last_value = ValueTS(value=crit_val, ts=ts)
+                else:
                     self.last_value = ValueTS(value=crit_val, ts=ts)
-                elif self.last_value is None:
-                    self.last_value = ValueTS(value=crit_val, ts=ts)
-                elif self.last_value.value == crit_val:
-                    pass
-
                 break
             elif newval < crit_val:
                 break
@@ -159,22 +159,21 @@ class TransitionMatrix(object):
     def update_transition_matrix(self, value, ts, pv):
         for crit_val in self.header:
             if self.same_value(value, crit_val, pv):
-                #pdb.set_trace()
-                if self.last_val_train is not None and self.last_val_train.value != crit_val:
+                if self.last_val_train is not None:
                     elapsed_time = (ts - self.last_val_train.ts).total_seconds()
                     row = self.val_pos[self.last_val_train.value]
                     column = self.val_pos[crit_val]
-                    if self.transitions[row][column] == -1:
+                    if self.transitions[row][column] == -1 or self.transitions[row][column] == 0:
                         self.transitions[row][column] = Welford(elapsed_time)
                     else:
                         self.transitions[row][column](elapsed_time)
+
+                    if self.last_val_train.value != crit_val:
+                        self.last_val_train = ValueTS(value=crit_val, ts=ts)
+
+                else:
                     self.last_val_train = ValueTS(value=crit_val, ts=ts)
 
-                elif self.last_val_train is None:
-                    self.last_val_train = ValueTS(value=crit_val, ts=ts)
-
-                elif self.last_val_train.value == crit_val:
-                    pass
                 break
 
             elif value < crit_val:
@@ -245,10 +244,12 @@ class TimeCond(object):
 
 class TimeChecker(Checker):
 
-    def __init__(self, descFile, store, network=False, frameSize=10):
+    def __init__(self, descFile, store, detection_store=None, network=False,
+                 frameSize=10):
         Checker.__init__(self, descFile, store, network)
         self.done = False
         self.frame_size = timedelta(seconds=frameSize)
+        self.detection_store = detection_store
         self.messages = {}
 
         self.map_pv_cond = {}
@@ -293,19 +294,20 @@ class TimeChecker(Checker):
         for state in self.store:
             ts = state['timestamp']
             for name, val in state.items():
-                if name != 'timestamp':
+                if name != 'timestamp' and name != 'normal/attack':
                     matrix = self.matrices[name]
                     pv = self.vars[name]
                     matrix.update_transition_matrix(val, ts, pv)
 
     def detect_suspect_transition(self):
-        for state in self.store:
-            ts = state['timestamp']
-            for name, val in state.items():
-                if name != 'timestamp':
-                    matrix = self.matrices[name]
-                    pv = self.vars[name]
-                    matrix.compute_transition_time(val, ts, pv)
+        if self.detection_store is not None:
+            for state in self.detection_store:
+                ts = state['timestamp']
+                for name, val in state.items():
+                    if name != 'timestamp' and name != 'normal/attack':
+                        matrix = self.matrices[name]
+                        pv = self.vars[name]
+                        matrix.compute_transition_time(val, ts, pv)
 
     def compute_frame(self, detection=False):
         finish_run = {}
@@ -415,7 +417,9 @@ class TimeChecker(Checker):
         return s
 
     def run(self):
-        self.fill_matrices()
+        self.get_values_timestamp()
+        print("Passing in detection mode")
+        self.detect_suspect_transition()
         """
         i = 0
         nbr_frame = 5

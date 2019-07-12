@@ -8,6 +8,10 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
+import readline 
+import code
+
+
 
 matplotlib.use('TkAgg')
 
@@ -123,7 +127,7 @@ def plot_variable_timeseries_corr(data, act, sens):
 def y_histogram(data, pv):
     values = [[x[pv] for x in data]]
     fig, ax = plt.subplots()
-    ax.hist(values, bins=100)
+    ax.hist(values, bins=100, density=True)
 
     plt.show()
 
@@ -153,7 +157,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
     pv = "mv101"
     ts = "timestamp"
-    data = pickle.load(open(args.input, "rb"))
+    with open(args.input, "rb") as filename:
+        data = pickle.load(open(args.input, "rb"))
+    variables = globals().copy()
+    variables.update(locals())
+    shell = code.InteractiveConsole(variables)
+    shell.interact()
 
     """
     off_reading, on_reading = main(args.input, pv, ts)
@@ -164,4 +173,4 @@ if __name__ == "__main__":
     #plot_variable_timeseries_corr(args.input, "mv101", "lit101")
     #plot_variable_timeseries_corr(args.input, "mv101", "lit301")
     #plot_variable_timeseries_corr(args.input, "mv101", "lit401")
-    pdb.set_trace() 
+    #pdb.set_trace() 

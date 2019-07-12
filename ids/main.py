@@ -19,9 +19,9 @@ FIRST_WAVE = 7103
 
 SECOND_WAVE = 12376
 
-THIRD_WAVE = 16101
+THIRD_WAVE = 16103
 
-FOURTH_WAVE = 90920
+FOURTH_WAVE = 92573
 
 FIFTH_WAVE = 103812
 
@@ -56,7 +56,7 @@ def main(conf, infile, malicious):
     with open(malicious, "rb") as mal_filename:
         data_mal = pickle.load(mal_filename)
     print("Read Attack mode file")
-    data_mv = data_mal[:FIRST_WAVE]
+    data_mv = data_mal
 
     time_checker = TimeChecker(conf, data, detection_store=data_mv)
     time_checker.start()

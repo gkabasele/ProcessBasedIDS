@@ -141,14 +141,16 @@ class TransitionMatrix(object):
 
             print("[{}][{}] Unexpected value for {}, got {}".format(ts, TransitionMatrix.UNEXPECT,
                                                                     pv.name, newval))
-            if self.last_value.value != "-inf":
+            if self.last_value is None or self.last_value.value != "-inf":
                 self.last_value = ValueTS("-inf", ts)
+            return
         elif not self.same_value(newval, self.header[-1], pv) and newval > self.header[-1]:
 
             print("[{}][{}] Unexpected value for {}, got {}".format(ts, TransitionMatrix.UNEXPECT,
                                                                     pv.name, newval))
-            if self.last_value.value != "inf":
+            if self.last_value is None or self.last_value.value != "inf":
                 self.last_value = ValueTS("inf", ts)
+            return
         for crit_val in self.header:
             if self.same_value(newval, crit_val, pv):
                 if self.last_value is not None:

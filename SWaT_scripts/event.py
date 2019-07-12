@@ -80,13 +80,16 @@ def main(filename, pv, ts):
                                                           diff))
     return off_reading, on_reading
 
-def plot_timeseries(data, filename, pv):
+def plot_timeseries(data, pv):
 
     vals = np.array([x[pv] for x in data])
+    x = np.array([x['timestamp'] for x in data])
 
-    x = np.arange(len(vals))
+    fig, ax = plt.subplots() 
+    ax.set_xlabel('time(s)')
+    ax.set_ylabel(pv)
 
-    plt.plot(x, vals)
+    ax.plot(x, vals)
     plt.show()
 
 def plot_variable_timeseries_corr(data, act, sens):
@@ -94,7 +97,7 @@ def plot_variable_timeseries_corr(data, act, sens):
     fig, ax1 = plt.subplots()
 
     length = math.floor(len(data)/2)
-    x_vals = np.arange(length)
+    x_vals = np.array([x['timestamp'] for x in data[:math.floor(len(data)/2)]])
 
     act_ts = []
     sens_ts = []
@@ -114,6 +117,13 @@ def plot_variable_timeseries_corr(data, act, sens):
     ax2.plot(x_vals, sens_ts, color='g')
     ax2.set_ylabel(sens, color='g')
     ax2.tick_params('y', colors='g')
+
+    plt.show()
+
+def y_histogram(data, pv):
+    values = [[x[pv] for x in data]]
+    fig, ax = plt.subplots()
+    ax.hist(values, bins=100)
 
     plt.show()
 

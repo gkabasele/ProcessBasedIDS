@@ -125,9 +125,11 @@ def plot_variable_timeseries_corr(data, act, sens):
     plt.show()
 
 def y_histogram(data, pv):
-    values = [[x[pv] for x in data]]
+    values = np.array([x[pv] for x in data])
     fig, ax = plt.subplots()
-    ax.hist(values, bins=100, density=True)
+    hist, bin_edges, patches = ax.hist(values, bins=100)
+    pdb.set_trace()
+    normalized = np.array([x/len(values) for x in hist])
 
     plt.show()
 

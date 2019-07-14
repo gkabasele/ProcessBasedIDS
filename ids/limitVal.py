@@ -11,6 +11,84 @@ import pprint
 import matplotlib
 import matplotlib.pyplot as plt
 
+TRESH = 0.01
+
+class RangeVal(object):
+
+    def __init__(self, lower, upper, count, normalized=None):
+
+        self.lower = lower
+        self.upper = upper
+        self.count = count
+        self.norm = normalized
+
+    def normalized(self, number):
+        self.norm = self.count/number
+
+    def __str__(self):
+        return "{}-{}".format(self.lower, self.upper)
+
+    def __repr__(self):
+        return self.__str__()
+
+def compute_ranges(values):
+    hist, bin_edges = np.histogram(values, bins=100)
+
+    ranges = []
+    for i in range(len(bin_edges) - 1):
+        lower = bin_edges[i]
+        upper = bin_edges[i+1]
+        count = hist[i]
+        norm = hist[i]/len(values)
+        if norm >= TRESH:
+            ranges.append(RangeVal(lower, upper, count, norm))
+    return ranges
+
+def merge_ranges(ranges, number):
+
+    blocks = []
+    start_block = ranges[0].lower
+    end_block = ranges[0].upper
+    count = 0
+    for i in range(len(ranges)-1):
+        block = ranges[i]
+        next_block = ranges[i+1]
+
+        if block.upper != next_block.lower:
+            count += block.count
+            r = RangeVal(start_block, end_block, count)
+            r.normalized(number)
+            blocks.append(r)
+
+            start_block = next_block.lower
+            end_block = next_block.upper
+         
+        else:
+            end_block = next_block.upper
+            count += block.count
+
+        if i == len(ranges) - 2:
+
+            if block.upper == next_block.lower:
+                count += block.count + next_block.count
+                r = RangeVal(start_block, next_block.upper, count)
+                r.normalized(number)
+                blocks.append(r)
+            else:
+                blocks.append(next_block)
+
+
+            return blocks
+
+def divide_and_conquer(data, pv, limit=None):
+    values, _ = get_values(data, pv, limit)
+
+    ranges = compute_ranges(values)
+    pdb.set_trace()
+    blocks = merge_ranges(ranges, len(values))
+
+
+
 def get_values(data, pv, limit=None):
 
     if limit is None:
@@ -28,32 +106,40 @@ def compute_window_average(data, i, win):
     mv_avg = sum(data[low:high])/(high - low)
     return mv_avg
 
-def moving_average(data, pv, win, limit=None):
-
-    values, times = get_values(data, pv, limit)
+def moving_average(values, win):
     trends = []
-
     for i in range(len(values)):
         new_val = compute_window_average(values, i, win)
         trends.append(new_val)
+    return np.array(trends)
 
-    ma = np.array(trends)
+def limit_values(data, pv, win, limit=None):
 
-    slopes = slope_graph(times, ma)
+    values, times = get_values(data, pv, limit)
 
-    plt.subplot(3, 1, 1)
+    seconds = np.arange(len(times))
+    
+    ma = moving_average(values, win)
 
-    plt.plot(times, ma)
-    plt.ylabel('moving_average_{}'.format(pv))
+    slopes = moving_average(slope_graph(seconds, ma), win)
+    change_points = np.diff(slopes)
 
-    plt.subplot(3, 1, 2)
-    plt.plot(times[:-1], slopes)
-    plt.ylabel('slopes_{}'.format(pv))
-
-    plt.subplot(3, 1, 3)
+    plt.subplot(4, 1, 1)
     plt.plot(times, values)
-    plt.xlabel('time(s)')
     plt.ylabel(pv)
+
+    plt.subplot(4, 1, 2)
+    plt.plot(times, ma)
+    plt.ylabel('moving_average')
+
+    plt.subplot(4, 1, 3)
+    plt.plot(times[:-1], slopes)
+    plt.ylabel('Ft Deri')
+
+    plt.subplot(4, 1, 4)
+    plt.plot(times[:-2], change_points)
+    plt.ylabel('Sd Deri')
+    plt.xlabel('time(s)')
 
     plt.show()
 
@@ -61,88 +147,13 @@ def moving_average(data, pv, win, limit=None):
 def slope_graph(times, values):
     trends = []
     for i in range(len(values)-1):
-        xdiff = (times[i+1] - times[i]).total_seconds() 
+        xdiff = times[i+1] - times[i]
         ydiff = values[i+1] - values[i]
         trends.append(ydiff/xdiff)
     slopes = np.array(trends)
 
     return slopes
     
-
-def compute_b(data, n, win):
-    sum_u = 0
-    sum_nu = 0
-    for i in range(win):
-        if n + i < len(data):
-            sum_u += data[n + i]
-            sum_nu += i * data[n + i]
-
-    numerator = 2*(2*win + 1)*sum_u - 6*sum_nu
-
-    b_zero = numerator/(win*(win-1))
-
-    numerator = 12*sum_nu - 6*(win+1)*sum_u
-
-    b_one = numerator/(win*win*(win-1)*(win + 1))
-    return b_zero, b_one
-
-def linearize(data, pv, win, limit=None):
-
-    if limit is None:
-        values = np.array([x[pv] for x in data])
-        times = np.array([x['timestamp'] for x in data])
-    else:
-        values = np.array([x[pv] for x in data[:limit]])
-        times = np.array([x['timestamp'] for x in data[:limit]])
-
-    trends = []
-
-    for i in range(len(values)):
-        b_zero, b_one = compute_b(values, i, win)
-        trends.append(b_zero + b_one)
-
-    linear_values = np.array(trends)
-
-    plt.subplot(2, 1, 1)
-
-    plt.plot(times, linear_values)
-    plt.ylabel(pv)
-
-    plt.subplot(2, 1, 2)
-    plt.plot(times, values)
-    plt.xlabel('time(s)')
-    plt.ylabel("lin_{}".format(pv))
-    plt.show()
-
-def masks(vec):
-    d = np.diff(vec)
-    dd = np.diff(d)
-
-    to_mask = ((d[:1] != 0) & (d[:-1] == -dd))
-    from_mask = ((d[1:] != 0) & (d[1:] == dd))
-    return to_mask, from_mask
-
-def apply_mask(mask, x, y):
-    return x[1:-1][mask], y[1:-1][mask]
-
-def inflection_point(values, times):
-
-    to_vert_mask, from_vert_mask = masks(times)
-    to_horiz_mask, from_horiz_mask = masks(values)
-
-    to_vert_t, to_vert_v = apply_mask(to_vert_mask, times, values)
-    from_vert_t, from_vert_v = apply_mask(from_vert_mask, times, values)
-    to_horiz_t, to_horiz_v = apply_mask(to_horiz_mask, times, values)
-    from_horiz_t, from_horiz_v = apply_mask(from_horiz_mask, times, values)
-
-    plt.plot(times, values, 'b-')
-    plt.plot(to_vert_t, to_vert_v, 'r^', label='Plot goes vertical')
-    plt.plot(from_vert_t, from_vert_v, 'kv', label='Plot stops being vertical')
-    plt.plot(to_horiz_t, to_horiz_v, 'r>', label='Plot goes horizontal')
-    plt.plot(from_horiz_t, from_horiz_v, 'k<', label='Plot stops being horizontal')
-
-    plt.legend()
-    plt.show()
 
 def main(data, pv):
     values = np.array([x[pv] for x in data])

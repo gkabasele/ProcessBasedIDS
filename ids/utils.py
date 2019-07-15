@@ -2,6 +2,7 @@ import struct
 import sys
 import random
 import string
+import yaml
 import math
 import numpy as np
 from scapy.all import *
@@ -137,6 +138,27 @@ class ProcessVariable():
         self.first = None
         self.nbr_transition = 0
         self.elapsed_time_transition = []
+
+def setup(filename, pv_store):
+    with open(filename) as fh:
+        content = fh.read()
+        desc = yaml.load(content, Loader=yaml.Loader)
+        for var_desc in desc['variables']:
+            var = var_desc['variable']
+            if var['type'] == DIS_COIL or var['type'] == DIS_INP:
+                limit_values = [1, 2]
+                min_val = 1
+                max_val = 2
+            else:
+                limit_values = var['values']
+                min_val = var['min']
+                max_val = var['max']
+
+            pv = ProcessSWaTVar(var['name'], var['type'],
+                                limit_values=limit_values,
+                                min_val=min_val,
+                                max_val=max_val)
+            pv_store[pv.name] = pv
 
 def randomName(stringLength=4):
     letters = string.ascii_lowercase

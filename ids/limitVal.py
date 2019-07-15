@@ -11,6 +11,8 @@ import pprint
 import matplotlib
 import matplotlib.pyplot as plt
 
+from utils import *
+
 TRESH = 0.01
 
 class RangeVal(object):
@@ -30,6 +32,7 @@ class RangeVal(object):
 
     def __repr__(self):
         return self.__str__()
+
 
 def compute_ranges(values):
     hist, bin_edges = np.histogram(values, bins=100)
@@ -62,7 +65,7 @@ def merge_ranges(ranges, number):
 
             start_block = next_block.lower
             end_block = next_block.upper
-         
+
         else:
             end_block = next_block.upper
             count += block.count
@@ -77,17 +80,14 @@ def merge_ranges(ranges, number):
             else:
                 blocks.append(next_block)
 
-
-            return blocks
+    return blocks
 
 def divide_and_conquer(data, pv, limit=None):
     values, _ = get_values(data, pv, limit)
 
     ranges = compute_ranges(values)
-    pdb.set_trace()
     blocks = merge_ranges(ranges, len(values))
-
-
+    return blocks
 
 def get_values(data, pv, limit=None):
 
@@ -99,6 +99,8 @@ def get_values(data, pv, limit=None):
         times = np.array([x['timestamp'] for x in data[:limit]])
 
     return values, times
+
+
 
 def compute_window_average(data, i, win):
     low = max(0, i - win)
@@ -153,26 +155,40 @@ def slope_graph(times, values):
     slopes = np.array(trends)
 
     return slopes
-    
 
-def main(data, pv):
-    values = np.array([x[pv] for x in data])
-    hist, bin_edges = np.histogram(values, bins=100, density=True)
+def main(data, conf, output):
+    with open(conf) as fh:
+        content = fh.read()
+        desc = yaml.load(content, Loader=yaml.Loader)
+        for variable in desc['variables']:
+            var = variable['variable']
+            if var["type"] == "hr" or var["type"] == "ir":
+                blocks = divide_and_conquer(data, var['name'])
+                vals = []
+                for block in blocks:
+                    vals.append(block.lower.item())
+                    vals.append(block.upper.item())
+                var['critical'] = vals
 
-    dist = {}
-
-    for i, edges in enumerate(bin_edges[:-1]):
-        dist[edges] = hist[i]
-
-    pprint.pprint(dist)
+        with open(output, "w") as ofh:
+            content = yaml.dump(desc)
+            ofh.write(content)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", dest="filename", action="store")
+    parser.add_argument("--conf", dest="conf", action="store")
+    parser.add_argument("--output", dest="output", action="store")
     args = parser.parse_args()
+    
     with open(args.filename, "rb") as filename:
         data = pickle.load(filename)
+
+    main(data, args.conf, args.output)
+    
+    """
     variables = globals().copy()
     variables.update(locals())
     shell = code.InteractiveConsole(variables)
     shell.interact()
+    """

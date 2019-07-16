@@ -251,3 +251,8 @@ func_fields_dict = {
 def is_number(s):
     """ Returns Truse if string s is a number """
     return s.replace('.','',1).isdigit()
+
+def normalized_dist(max_val, min_val, val1, val2):
+    return (math.sqrt((val1-val2)**2)/math.sqrt((max_val - min_val)**2))
+
+    pass

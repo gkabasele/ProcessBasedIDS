@@ -12,6 +12,12 @@ import jsonpickle
 import pprint
 from utils import *
 
+"""
+J-Measure approach. Looking for values occuring when one of the
+actuators is changing. Taking into account: probability of actuators changing,
+probability of sensors values and conditional probability
+"""
+
 DIST = 0.01
 
 MAGNITUDE = 0.1

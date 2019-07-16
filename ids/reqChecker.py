@@ -80,7 +80,7 @@ class Checker(threading.Thread):
                 else:
                     if 'critical' in var:
                         limit_values = var['critical']
-                        limit_values.extend([var['min'], var['max']])
+                        #limit_values.extend([var['min'], var['max']])
                         limit_values.sort()
                     else:
                         limit_values = [var['min'], var['max']] 

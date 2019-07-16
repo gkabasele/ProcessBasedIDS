@@ -7,7 +7,7 @@ import pdb
 
 start_date = datetime.strptime("2018-12-25 15:10:00","%Y-%m-%d %H:%M:%S")
 
-vars_store = "./process_variables_crit.yml"
+vars_store = "./process_variables_limit.yml"
 
 mu = 10
 sigma = 2
@@ -30,11 +30,11 @@ def test_matrix():
         data = {'lit101': x, 'mv101': y, 'timestamp': timestamp}
         datas.append(data)
 
-    round_value_sens = [495.065, 504.055, 573.932, 746.27, 800.70, 806.369,
+    round_value_sens = [495.065, 504.055, 544.89, 573.932, 746.27, 800.70, 806.369,
                         812.75, 817.44, 815.29, 802.42, 739.42, 567.743,
-                        504.029, 493.81, 494.83]
+                        547.295, 504.029, 493.81, 494.83]
 
-    round_value_act = [2, 2, 2, 2, 2, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0]
+    round_value_act = [2, 2, 2, 2, 2, 2, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0]
 
     try:
         assert len(round_value_act) == len(round_value_sens)
@@ -54,11 +54,11 @@ def test_matrix():
     time_checker.get_values_timestamp()
     pdb.set_trace()
 
-    atk_value_sens = [493.93, 504.74, 598.07, 744.19, 800.93, 810.49, 809.12,
+    atk_value_sens = [493.93, 504.74, 543.43, 598.07, 744.19, 800.93, 810.49, 809.12,
                       811.39, 813.49, 814.03, 812.04, 815.94, 814.84, 817.32,
-                      799.53, 737.41, 541.93, 507.074, 493.93]
+                      799.53, 737.41, 544.93, 507.074, 493.93]
 
-    atk_value_act = [2, 2, 2, 2, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]
+    atk_value_act = [2, 2, 2, 2, 2, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]
 
     try:
         assert len(atk_value_sens) == len(atk_value_act)
@@ -77,11 +77,11 @@ def test_matrix():
     time_checker.detect_suspect_transition()
 
     pdb.set_trace()
-    atk_value_sens = [493.93, 504.74, 598.07, 744.19, 800.93, 810.49, 809.12,
+    atk_value_sens = [493.93, 504.74, 547.02, 598.07, 744.19, 800.93, 810.49, 809.12,
                       811.39, 813.49, 817.50, 820.94, 823.29, 835.35, 822.83,
                       819.48]
 
-    atk_value_act = [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1]
+    atk_value_act = [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1]
 
     try:
         assert len(atk_value_sens) == len(atk_value_act)

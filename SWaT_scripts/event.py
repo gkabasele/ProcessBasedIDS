@@ -7,11 +7,10 @@ import pdb
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-
+from statsmodels.graphics.tsaplots import plot_acf
+from statsmodels.tsa.seasonal import seasonal_decompose
 import readline 
 import code
-
-
 
 matplotlib.use('TkAgg')
 
@@ -125,12 +124,27 @@ def plot_variable_timeseries_corr(data, act, sens):
     plt.show()
 
 def y_histogram(data, pv):
-    values = np.array([x[pv] for x in data])
+    values = get_values(data, pv)
     fig, ax = plt.subplots()
     hist, bin_edges, patches = ax.hist(values, bins=100)
     pdb.set_trace()
     normalized = np.array([x/len(values) for x in hist])
 
+    plt.show()
+
+def plot_acorr(data, pv):
+    values = get_values(data, pv)
+    plot_acf(values, lags=[600, 3600, 24*3600])
+
+    plt.title('Autocorrelation of {}'.format(pv))
+    plt.xlabel('Lag')
+    plt.ylabel('Autocorrelation')
+    plt.show()
+
+def plot_decomp(data, pv, freq=60*60):
+    values = get_values(data, pv)
+    result = seasonal_decompose(values, model='additive', freq=freq)
+    result.plot()
     plt.show()
 
 def plot_data(on_reading, off_reading):
@@ -152,6 +166,8 @@ def plot_data(on_reading, off_reading):
 
     plt.show()
 
+def get_values(data, pv):
+    return np.array([x[pv] for x in data])
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -175,4 +191,4 @@ if __name__ == "__main__":
     #plot_variable_timeseries_corr(args.input, "mv101", "lit101")
     #plot_variable_timeseries_corr(args.input, "mv101", "lit301")
     #plot_variable_timeseries_corr(args.input, "mv101", "lit401")
-    #pdb.set_trace() 
+    #pdb.set_trace()

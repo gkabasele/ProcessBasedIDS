@@ -46,13 +46,32 @@ class TransitionMatrix(object):
 
 
     def __init__(self, variable):
-        self.header = variable.limit_values
+        self.header = self.compute_header(variable)
         self.historic_val = []
         # map value -> position to row or column of the value in the matrix
         self.val_pos = {}
         self.transitions = self.compute_transition(variable.limit_values)
         self.last_value = None
         self.last_val_train = None
+
+    def compute_header(self, variable):
+        header = []
+        start_index = 0
+        end_index = 0
+        values = variable.limit_values
+        i = 0
+        while i < len(values):
+            if i == 0:
+                header.append(values[i])
+            else:
+                if self.same_value(values[start_index], values[i], variable):
+                    pass
+                else:
+                    header.append(values[i])
+                    start_index = i
+            i += 1
+
+        return header
 
     def compute_transition(self, values):
         transitions = []

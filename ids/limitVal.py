@@ -13,6 +13,13 @@ import matplotlib.pyplot as plt
 
 from utils import *
 
+"""
+Approach that take advantage of the fact that data point tend to group
+around critical value as the slope will change. Drastic increase or decrease
+take some time so those critical values appear more often. Histogram from 
+y-axis
+"""
+
 TRESH = 0.01
 
 class RangeVal(object):

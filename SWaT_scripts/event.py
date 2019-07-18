@@ -141,7 +141,7 @@ def plot_acorr(data, pv):
     plt.ylabel('Autocorrelation')
     plt.show()
 
-def plot_decomp(data, pv, freq=60*60):
+def plot_decomp(data, pv, freq=86400):
     values = get_values(data, pv)
     result = seasonal_decompose(values, model='additive', freq=freq)
     result.plot()

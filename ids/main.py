@@ -58,7 +58,7 @@ def main(conf, infile, malicious):
     print("Read Attack mode file")
     data_mv = data_mal
 
-    time_checker = TimeChecker(conf, data, detection_store=data_mv)
+    time_checker = TimeChecker(conf, data, detection_store=data_mv[:SECOND_WAVE])
     time_checker.start()
     time_checker.join()
 

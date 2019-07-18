@@ -255,4 +255,5 @@ def is_number(s):
 def normalized_dist(max_val, min_val, val1, val2):
     return (math.sqrt((val1-val2)**2)/math.sqrt((max_val - min_val)**2))
 
-    pass
+def moving_average(data, window):
+    return np.convolve(data, np.ones(window), 'valid')/window

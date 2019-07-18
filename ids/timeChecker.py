@@ -10,11 +10,15 @@ import pdb
 from copy import copy
 
 import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+from sklearn.neighbors import KernelDensity
 from scipy import stats
 
 from welford import Welford
 from utils import ProcessVariable, randomName
 from reqChecker import Checker
+from TimePattern import timePattern
 
 ValueTS = collections.namedtuple('ValueTS', ['value', 'ts'])
 DIST = 0.01
@@ -47,10 +51,11 @@ class TransitionMatrix(object):
 
     def __init__(self, variable):
         self.header = self.compute_header(variable)
+        self.name = variable.name
         self.historic_val = []
         # map value -> position to row or column of the value in the matrix
         self.val_pos = {}
-        self.transitions = self.compute_transition(variable.limit_values)
+        self.transitions = self.compute_transition(self.header)
         self.last_value = None
         self.last_val_train = None
 
@@ -205,9 +210,9 @@ class TransitionMatrix(object):
                     row = self.val_pos[self.last_val_train.value]
                     column = self.val_pos[crit_val]
                     if self.transitions[row][column] == -1 or self.transitions[row][column] == 0:
-                        self.transitions[row][column] = Welford(elapsed_time)
+                        self.transitions[row][column] = TimePattern(elapsed_time)
                     else:
-                        self.transitions[row][column](elapsed_time)
+                        self.transitions[row][column].update(elapsed_time)
 
                     if self.last_val_train.value != crit_val:
                         self.last_val_train = ValueTS(value=crit_val, ts=ts)
@@ -460,6 +465,7 @@ class TimeChecker(Checker):
     def run(self):
         self.get_values_timestamp()
         print("Passing in detection mode")
+        pdb.set_trace()
         self.detect_suspect_transition()
         """
         i = 0

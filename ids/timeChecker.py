@@ -15,10 +15,9 @@ import matplotlib.pyplot as plt
 from sklearn.neighbors import KernelDensity
 from scipy import stats
 
-from welford import Welford
 from utils import ProcessVariable, randomName
 from reqChecker import Checker
-from TimePattern import timePattern
+from timePattern import TimePattern
 
 ValueTS = collections.namedtuple('ValueTS', ['value', 'ts'])
 DIST = 0.01
@@ -144,6 +143,33 @@ class TransitionMatrix(object):
             if self.same_value(crit_val, val, pv):
                 return crit_val
 
+    def _find_closest(self, elapsed_time, prev, curr, i):
+        dist_prev = elapsed_time - prev
+        dst = curr - elapsed_time
+        if dist < dist_prev:
+            return i
+        else:
+            return i-1
+
+    def find_cluster(self, pattern, elapsed_time):
+        cluster = None
+        bpoints = pattern.breakpoints
+        for i, limit in enumerate(bpoints):
+            if elapsed_time <= limit:
+                if i == 0:
+                    cluster = pattern.cluster[i]
+                else:
+                    prev = pattern.cluster[i-1]
+                    index = self._find_closest(elapsed_time, prev, limit, i)
+                    cluster = pattern.cluster[index]
+                break
+
+            else:
+                if i == len()-1:
+                    cluster = pattern.cluster[i+1]
+        return cluster
+                
+
     def check_transition_time(self, newval, oldval, elapsed_time, pv):
         row = self.val_pos[oldval]
         column = self.val_pos[newval]
@@ -151,14 +177,16 @@ class TransitionMatrix(object):
         if expected == -1 or expected == 0:
             return TransitionMatrix.UNKNOWN, expected
 
-        z = (elapsed_time - expected.M)/expected.k
+        cluster = self.find_cluster(expected, elapsed_time)
+
+        z = (elapsed_time - cluster.M)/cluster.k
         # How likely a elapsed time diff from the mean to be from the same 
         # group of observation
         prob_same = 1 - stats.norm.cdf(z)
         if prob_same < 0.05:
-            return TransitionMatrix.DIFF, expected
+            return TransitionMatrix.DIFF, cluster
         else:
-            return TransitionMatrix.SAME, expected
+            return TransitionMatrix.SAME, cluster
 
     def compute_transition_time(self, newval, ts, pv):
         if not self.same_value(newval, self.header[0], pv) and newval < self.header[0]:
@@ -168,6 +196,7 @@ class TransitionMatrix(object):
             if self.last_value is None or self.last_value.value != "-inf":
                 self.last_value = ValueTS("-inf", ts)
             return
+
         elif not self.same_value(newval, self.header[-1], pv) and newval > self.header[-1]:
 
             print("[{}][{}] Unexpected value for {}, got {}".format(ts, TransitionMatrix.UNEXPECT,
@@ -175,6 +204,7 @@ class TransitionMatrix(object):
             if self.last_value is None or self.last_value.value != "inf":
                 self.last_value = ValueTS("inf", ts)
             return
+
         for crit_val in self.header:
             if self.same_value(newval, crit_val, pv):
                 if self.last_value is not None:
@@ -210,13 +240,12 @@ class TransitionMatrix(object):
                     row = self.val_pos[self.last_val_train.value]
                     column = self.val_pos[crit_val]
                     if self.transitions[row][column] == -1 or self.transitions[row][column] == 0:
-                        self.transitions[row][column] = TimePattern(elapsed_time)
-                    else:
-                        self.transitions[row][column].update(elapsed_time)
+                        self.transitions[row][column] = TimePattern()
+
+                    self.transitions[row][column].update(elapsed_time)
 
                     if self.last_val_train.value != crit_val:
                         self.last_val_train = ValueTS(value=crit_val, ts=ts)
-
                 else:
                     self.last_val_train = ValueTS(value=crit_val, ts=ts)
 
@@ -232,6 +261,11 @@ class TransitionMatrix(object):
             nextframe = self.historic_val[i+1].ts
             elapsed_time.append((nextframe - cur).total_seconds())
         return elapsed_time
+
+    def compute_clusters(self):
+        for row in self.transitions:
+            for column in self.transitions[row]:
+                self.transitions[row][column].create_clusters()
 
 class TimeCond(object):
 
@@ -335,7 +369,7 @@ class TimeChecker(Checker):
                 self.detection_cond[key] = [TransitionMatrix(variable)]
             return self.detection_cond[key][-1]
 
-    def get_values_timestamp(self):
+    def fill_matrices(self):
 
         for state in self.store:
             ts = state['timestamp']
@@ -344,6 +378,9 @@ class TimeChecker(Checker):
                     matrix = self.matrices[name]
                     pv = self.vars[name]
                     matrix.update_transition_matrix(val, ts, pv)
+
+        for name in self.vars:
+            self.matrices[name].compute_clusters()
 
     def detect_suspect_transition(self):
         if self.detection_store is not None:
@@ -354,101 +391,6 @@ class TimeChecker(Checker):
                         matrix = self.matrices[name]
                         pv = self.vars[name]
                         matrix.compute_transition_time(val, ts, pv)
-
-    def compute_frame(self, detection=False):
-        finish_run = {}
-        current_cond = {}
-
-        while True:
-            msg = self.store.get()
-            self.done = isinstance(msg, str)
-            if self.done:
-                break
-
-            key = msg.key()
-
-            if key not in finish_run:
-                finish_run[key] = False
-
-            pv = self.get_variable(msg, key)
-
-            if pv.first is None:
-                pv.last_transition = msg.res_timestamp
-                pv.first = msg.res_timestamp
-
-            frame = self.get_transition_matrix(key, pv, detection)
-
-            pv.current_ts = msg.res_timestamp
-            pv.value = msg.value
-
-            if key not in current_cond and not finish_run[key]:
-                begin = pv.first
-                end = pv.first + self.frame_size
-                cond = (begin, end)
-                current_cond[key] = cond
-                frame.add_value(msg.value, msg.res_timestamp)
-
-            elif finish_run[key]:
-                frame.add_value(msg.value, msg.res_timestamp)
-
-            elif key in current_cond:
-                begin, end = current_cond[key]
-                if pv.current_ts > end:
-                    new_frame = TransitionMatrix(pv)
-                    new_frame.add_value(msg.value, msg.res_timestamp)
-                    if not detection:
-                        self.map_var_frame[key].append(new_frame)
-                    else:
-                        self.detection_cond[key].append(new_frame)
-                    pv.first = msg.res_timestamp
-                    pv.last_transition = msg.res_timestamp
-                    finish_run[key] = True
-                    del current_cond[key]
-                else:
-                    frame.add_value(msg.value, msg.res_timestamp)
-
-            if all(finish_run.values()):
-                break
-
-    def update_condition(self, nbr_frame):
-        for key, frames in self.map_var_frame.items():
-            cond = TimeCond()
-            for frame in frames[0:nbr_frame]:
-                cond.add_expected_value(frame.nbr_transition())
-                elapsed_time = frame.compute_elapsed_time()
-                cond.add_expected_avg_var(elapsed_time)
-            self.map_pv_cond[key] = cond
-
-    def distance_matrix(self, a, b):
-        acc = 0
-        for i in range(len(a.header)):
-            for j in range(len(b.header)):
-                val1 = a.transitions[i][j]
-                val2 = b.transitions[i][j]
-                acc += (val1 - val2)**2
-        return math.sqrt(acc)
-
-    def check_condition(self):
-        for key, frames in self.detection_cond.items():
-            if key not in self.map_pv_cond:
-                print("Alert for unknown PV {}".format(key))
-                continue
-
-            cond = self.map_pv_cond[key]
-            #pdb.set_trace()
-            frame = frames.pop(0)
-            matrices = self.map_var_frame[key]
-            try:
-                dist = min([self.distance_matrix(frame, x) for x in matrices])
-                print("Key:{}, Distance: {}".format(key, dist))
-            except ValueError as err:
-                print(err)
-
-            res = cond.test_cond(frame)
-            if not res:
-                print("Alert for {}\n".format(key))
-                print("Got: {}\n".format(repr(frame)))
-                print("Expected: {}\n".format(cond))
 
     def display_message(self):
         s = ""
@@ -463,23 +405,7 @@ class TimeChecker(Checker):
         return s
 
     def run(self):
-        self.get_values_timestamp()
+        self.fill_matrices()
         print("Passing in detection mode")
         pdb.set_trace()
         self.detect_suspect_transition()
-        """
-        i = 0
-        nbr_frame = 5
-        print("Creating condition")
-        while not self.done and i < nbr_frame:
-            self.compute_frame()
-            i += 1
-        pdb.set_trace()
-        self.update_condition(nbr_frame)
-
-        print("Running detection")
-        while not self.done:
-            self.compute_frame(True)
-            self.check_condition()
-            break
-        """

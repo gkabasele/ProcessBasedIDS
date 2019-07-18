@@ -12,24 +12,27 @@ Clustering of 1-D array
 """
 class TimePattern(object):
 
-    def __init__(self, value):
-        self.values = [value]
-        self.wel = Welford(value)
+    def __init__(self):
+        self.values = []
+        self.breakpoints = None
+        self.clusters = None
 
     def update(self, value):
         self.values.append(value)
-        self.wel(value)
+
+    def create_clusters(self):
+        clusters, breakpoints = clustering_1D(self.values)
+        self.breakpoints = breakpoints
+        self.clusters = cluster_property(clusters)
+        self.values.clear()
 
 def find_minima_local(data):
     minima = []
-    maxima = []
     for i in range(1, len(data)-1):
         if data[i-1] >= data[i] and data[i+1] >= data[i]:
             minima.append(i)
 
-        if data[i-1] <= data[i] and data[i+1] <= data[i]:
-            maxima.append(i)
-    return minima, maxima
+    return minima
 
 def clustering_1D(data):
     density = gaussian_kde(data)
@@ -37,38 +40,36 @@ def clustering_1D(data):
     density.covariance_factor = lambda : .25
     density._compute_covariance()
     y_data = density(xs)
-    plt.hist(data, 100, density=True)
-    plt.plot(xs, y_data)
-    #plt.show()
-    minimas, maximas = find_minima_local(y_data)
-    print("Min:{}, Max:{}".format(minimas, maximas))
+    minimas = find_minima_local(y_data)
+    breakpoints = [xs[i] for i in minimas]
     clusters = [list() for i in range(len(minimas)+1)]
-    print([xs[i] for i in minimas])
-
     for x in data:
-        for i, index in enumerate(minimas):
-            if x <= xs[index]:
+        for i, limit in enumerate(breakpoints):
+            if x <= limit:
                 clusters[i].append(x)
                 break
-            elif i == len(minimas)-1:
+            elif i == len(breakpoints)-1:
                 clusters[i+1].append(x)
+
+    return clusters, breakpoints
+
+def cluster_property(clusters):
+    properties = []
     for cluster in clusters:
-        print(cluster)
-    """
-    kde = KernelDensity(bandwidth=0.1, kernel='gaussian')
-    kde.fit(data)
-
-    # score samples returns the log of the probability density
-    logprob = kde.score_samples(data)
-    plt.hist(data, bins=100)
-    plt.plot(data, np.full_like(data, 
-    """
-
+        wel = Welford()
+        wel(cluster)
+        properties.append(wel)
+    return properties
 def main(filename):
 
     with open(filename, "r") as f:
         tmp = f.read().split(",")[:-1]
         data = [float(x) for x in tmp]
+        pattern = TimePattern()
+        for val in data:
+            pattern.update(val)
+        pattern.create_clusters()
+        pdb.set_trace()
 
-        clustering_1D(data)
-main("./time.txt")
+if __name__ == "__main__":
+    main("./time.txt")

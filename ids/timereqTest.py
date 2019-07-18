@@ -1,19 +1,80 @@
 import math
 from datetime import datetime, timedelta
-from timeChecker import TransitionMatrix, TimeChecker
-from utils import *
-import numpy as np
 import pdb
+import matplotlib
+import matplotlib.pyplot as plt
+from scipy.stats import gaussian_kde
+import numpy as np
+from utils import *
+from timeChecker import TransitionMatrix, TimeChecker
 
 start_date = datetime.strptime("2018-12-25 15:10:00","%Y-%m-%d %H:%M:%S")
 
 vars_store = "./process_variables_limit.yml"
 
-mu = 10
-sigma = 2
+pv = ProcessSWaTVar("lit101", "hr", limit_values=[100, 700], min_val=94, max_val=703)
+
+def show_kde(data):
+    density = gaussian_kde(data)
+    xs = np.linspace(min(data), max(data), 100)
+    density.covariance_factor = lambda: .25
+    density._compute_covariance()
+    y_data = density(xs)
+
+    n, bins, patches = plt.hist(data, 100, density=True)
+    plt.plot(xs, y_data)
+    plt.show()
+
+def test_transition_matrix():
+    mu = 140
+    sigma = 20
+
+    tmp = np.random.normal(mu, sigma, 20)
+
+    mu = 1000
+    sigma = 300
+
+    trans_time = np.concatenate((tmp, np.random.normal(mu, sigma, 100)))
+
+    matrix = TransitionMatrix(pv)
+
+    timestamp = datetime.strptime("2018-12-25 15:10:00", "%Y-%m-%d %H:%M:%S")
+
+    #fill matrices
+    for i in trans_time:
+        matrix.update_transition_matrix(100, timestamp, pv)
+        timestamp = timestamp + timedelta(seconds=i)
+        matrix.update_transition_matrix(700, timestamp, pv)
+        timestamp = timestamp + timedelta(seconds=200)
+
+    matrix.compute_clusters()
+
+    mu = 140
+    sigma = 20
+    val = 0
+    try:
+        for i in range(5):
+            val = np.random.normal(mu, sigma, 1)
+            resp, _ = matrix.check_transition_time(700, 100, val, pv)
+            assert resp == TransitionMatrix.SAME
+
+        mu = 1000
+        sigma = 300
+
+        for i in range(5):
+            val = np.random.normal(mu, sigma, 1)
+            resp, _ = matrix.check_transition_time(700, 100, val, pv)
+            assert resp == TransitionMatrix.SAME
+
+    except AssertionError:
+        print("AssertionError: {}".format(val))
+
+test_transition_matrix()
 
 def test_matrix():
 
+    mu = 10
+    sigma = 2
     datas = []
     round_val_sens_start = [120.439, 120.46, 179.46, 248.234, 325.46]
     round_val_act_start = [1, 0, 2, 2, 2]
@@ -97,73 +158,4 @@ def test_matrix():
     time_checker.detection_store = datas_atk
     time_checker.detect_suspect_transition()
 
-test_matrix()
-
-def test_transition_matrix():
-    pv = ProcessVariable('127.0.0.1', 5020, HOL_REG, 0, limit_values=[0, 20, 40])
-    t = TransitionMatrix(pv)
-    val = [0, 5, 20, 35, 40]
-    acc = 0
-    for i, v in enumerate(val):
-        acc = i * 5
-        t.add_value(v, start_date + timedelta(seconds=acc), pv)
-
-    val1 = 30
-    val2 = 32
-    val3 = 42
-
-    assert not t.is_diff_reading(val1, val2)
-
-    assert t.is_diff_reading(val1, val3)
-
-    assert len(t.historic_val) == 5
-
-    prob = t.compute_change_prob()
-
-    assert prob == 1.0
-
-    val = [40, 35, 30]
-    for i, v in enumerate(val):
-        acc = i * 5
-        t.add_value(v, start_date + timedelta(seconds=acc))
-
-    prob = t.compute_change_prob()
-
-    assert prob == 6/7
-
-    t.update_transition_matrix()
-
-
-def distance_matrix(a, b):
-    acc = 0
-    for i in range(len(a.header)):
-        for j in range(len(b.header)):
-            val1 = a.transitions[i][j]
-            val2 = b.transitions[i][j]
-            acc += (val1 - val2)**2
-    return math.sqrt(acc)
-
-def test_distance_matrix():
-    pv = ProcessVariable('127.0.0.1', 5020, HOL_REG, 0, limit_values=[1, 2, 3])
-    t = TransitionMatrix(pv)
-    t.transitions[0][1] = 20
-    t.transitions[0][2] = 40
-
-    t.transitions[1][0] = 30
-    t.transitions[1][2] = 30
-    t.transitions[2][0] = 20
-    t.transitions[2][1] = 15
-
-    m = TransitionMatrix(pv)
-
-    m.transitions[0][1] = 17
-    m.transitions[0][2] = 43
-
-    m.transitions[1][0] = 29
-    m.transitions[1][2] = 32
-    m.transitions[2][0] = 16
-    m.transitions[2][1] = 17
-
-    d = distance_matrix(t, m)
-
-    assert d == math.sqrt(43)
+#test_matrix()

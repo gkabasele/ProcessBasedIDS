@@ -157,18 +157,16 @@ class TransitionMatrix(object):
         for i, limit in enumerate(bpoints):
             if elapsed_time <= limit:
                 if i == 0:
-                    cluster = pattern.cluster[i]
+                    cluster = pattern.clusters[i]
                 else:
-                    prev = pattern.cluster[i-1]
+                    prev = pattern.clusters[i-1]
                     index = self._find_closest(elapsed_time, prev, limit, i)
-                    cluster = pattern.cluster[index]
+                    cluster = pattern.clusters[index]
                 break
-
             else:
-                if i == len()-1:
-                    cluster = pattern.cluster[i+1]
+                if i == len(bpoints)-1:
+                    cluster = pattern.clusters[i+1]
         return cluster
-                
 
     def check_transition_time(self, newval, oldval, elapsed_time, pv):
         row = self.val_pos[oldval]
@@ -178,9 +176,9 @@ class TransitionMatrix(object):
             return TransitionMatrix.UNKNOWN, expected
 
         cluster = self.find_cluster(expected, elapsed_time)
-
+        print("Elapsed: {}, Cluster:{}".format(elapsed_time, cluster))
         z = (elapsed_time - cluster.M)/cluster.k
-        # How likely a elapsed time diff from the mean to be from the same 
+        # How likely a elapsed time diff from the mean to be from the same
         # group of observation
         prob_same = 1 - stats.norm.cdf(z)
         if prob_same < 0.05:
@@ -263,9 +261,11 @@ class TransitionMatrix(object):
         return elapsed_time
 
     def compute_clusters(self):
-        for row in self.transitions:
-            for column in self.transitions[row]:
-                self.transitions[row][column].create_clusters()
+        for row in range(len(self.header)):
+            for column in range(len(self.header)):
+                entry = self.transitions[row][column]
+                if not isinstance(entry, int):
+                    entry.create_clusters()
 
 class TimeCond(object):
 

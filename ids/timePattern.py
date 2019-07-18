@@ -26,6 +26,12 @@ class TimePattern(object):
         self.clusters = cluster_property(clusters)
         self.values.clear()
 
+    def __str__(self):
+        return "(BP:{} C:{})".format(self.breakpoints, self.clusters)
+
+    def __repr__(self):
+        return self.__str__()
+
 def find_minima_local(data):
     minima = []
     for i in range(1, len(data)-1):

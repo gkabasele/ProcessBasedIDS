@@ -177,7 +177,13 @@ class TransitionMatrix(object):
 
         cluster = self.find_cluster(expected, elapsed_time)
         print("Elapsed: {}, Cluster:{}".format(elapsed_time, cluster))
-        z = (elapsed_time - cluster.M)/cluster.k
+        z = (elapsed_time - cluster.mean)/cluster.std
+        if abs(z) > 3:
+            return TransitionMatrix.DIFF, cluster
+        else:
+            return TransitionMatrix.SAME, cluster
+        """
+        #z = (elapsed_time - cluster.mean)/cluster.k
         # How likely a elapsed time diff from the mean to be from the same
         # group of observation
         prob_same = 1 - stats.norm.cdf(z)
@@ -185,7 +191,7 @@ class TransitionMatrix(object):
             return TransitionMatrix.DIFF, cluster
         else:
             return TransitionMatrix.SAME, cluster
-
+        """
     def compute_transition_time(self, newval, ts, pv):
         if not self.same_value(newval, self.header[0], pv) and newval < self.header[0]:
 

@@ -25,14 +25,25 @@ def show_kde(data):
     plt.plot(xs, y_data)
     plt.show()
 
+def _test_transition_matrix(val1, val2, matrix, mu, sigma, res, nb_round, pv):
+
+    for i in range(nb_round):
+        try:
+            t = np.random.normal(mu, sigma, 1)
+            resp, _ = matrix.check_transition_time(val1, val2, t, pv)
+            assert resp == res
+        except AssertionError:
+            print("AssertionError: {}".format(t))
+
 def test_transition_matrix():
+
     mu = 140
     sigma = 20
 
     tmp = np.random.normal(mu, sigma, 20)
 
-    mu = 1000
-    sigma = 300
+    mu = 2000
+    sigma = 120
 
     trans_time = np.concatenate((tmp, np.random.normal(mu, sigma, 100)))
 
@@ -52,22 +63,27 @@ def test_transition_matrix():
     mu = 140
     sigma = 20
     val = 0
-    try:
-        for i in range(5):
-            val = np.random.normal(mu, sigma, 1)
-            resp, _ = matrix.check_transition_time(700, 100, val, pv)
-            assert resp == TransitionMatrix.SAME
+    print("Normal mode")
 
-        mu = 1000
-        sigma = 300
+    _test_transition_matrix(700, 100, matrix, mu, sigma, 
+                            TransitionMatrix.SAME, 5, pv)
+    mu = 2000
+    sigma = 120
 
-        for i in range(5):
-            val = np.random.normal(mu, sigma, 1)
-            resp, _ = matrix.check_transition_time(700, 100, val, pv)
-            assert resp == TransitionMatrix.SAME
+    _test_transition_matrix(700, 100, matrix, mu, sigma,
+                            TransitionMatrix.SAME, 5, pv)
 
-    except AssertionError:
-        print("AssertionError: {}".format(val))
+    print("Attack mode")
+    mu = 500
+    sigma = 20
+
+    _test_transition_matrix(700, 100, matrix, mu, sigma,
+                            TransitionMatrix.DIFF, 5, pv)
+    mu = 1200
+    sigma = 100
+
+    _test_transition_matrix(700, 100, matrix, mu, sigma,
+                            TransitionMatrix.DIFF, 5, pv)
 
 test_transition_matrix()
 

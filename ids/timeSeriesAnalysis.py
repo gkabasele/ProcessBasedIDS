@@ -225,9 +225,41 @@ def create_graph(res):
 
     return g
 
+def _periodicity_test(partition, cont_vars_part):
+
+    for state in partition:
+        for k in cont_vars_part:
+            cont_vars_part[k].append(state[k])
+
+def periodicity_test(data, store, slen, thresh=utils.DIST):
+
+    cont_vars = store.continous_vars()
+    cont_vars_part = {x: [] for x in cont_vars}
+    vars_means = {x: [] for x in cont_vars}
+    nbr_partition = math.ceil(len(data)/slen)
+
+    for i in range(nbr_partition):
+
+        _periodicity_test(data[i*slen:(i+1)*slen], cont_vars_part)
+
+        for k, v in cont_vars_part.items():
+            vars_means[k].append(np.mean(v))
+            cont_vars_part[k] = []
+
+    for k, v in vars_means.items():
+        var = store[k]
+        diff_means = []
+        for i in range(len(v) - 1):
+            for j in range(i+1, len(v)):
+                diff = math.fabs(v[i] - v[j])
+                diff_means.append(diff)
+        same_dist_test = (var.max_val - var.min_val)*thresh
+        if np.mean(diff_means) <= same_dist_test:
+            print("Name:{}".format(k))
+
 def partition_statistic(data, store, pv_name, slen, thresh=utils.DIST):
 
-    vals = utils.get_all_values_pv(data[utils.COOL_TIME:], pv_name)
+    vals = utils.get_all_values_pv(data, pv_name)
     nbr_partition = math.ceil(len(vals)/slen)
 
     means = []
@@ -237,6 +269,8 @@ def partition_statistic(data, store, pv_name, slen, thresh=utils.DIST):
         partition = vals[i*slen:(i+1)*slen]
         means.append(np.mean(partition))
         var_s.append(np.var(partition))
+
+    print(means)
 
     diff_means = []
 
@@ -273,10 +307,11 @@ if __name__ == "__main__":
     parser.add_argument("--conf", action="store", dest="conf")
 
     args = parser.parse_args()
-    data = utils.read_state_file(args.input)
+    data = utils.read_state_file(args.input)[utils.COOL_TIME:]
     store = PVStore(args.conf)
 
-    partition_statistic(data, store, "ait201", utils.DAY_IN_SEC)
+    #partition_statistic(data, store, "lit101", utils.DAY_IN_SEC)
+    periodicity_test(data, store, utils.DAY_IN_SEC)
 
     """
     main(data, store)

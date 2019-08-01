@@ -36,6 +36,12 @@ class PVStore(object):
 
                 self.vars[pv.name] = pv
 
+    def continous_vars(self):
+        return [x for x, j in self.items() if j.kind in [utils.HOL_REG, utils.INP_REG]]
+
+    def discrete_vars(self):
+        return [x for x, j in self.items() if j.kind in [utils.DIS_COIL, utils.DIS_INP]]
+
     def __getitem__(self, key):
         return self.vars[key]
 

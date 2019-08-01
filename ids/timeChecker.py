@@ -92,15 +92,13 @@ class TransitionMatrix(object):
         return transitions
 
     def display_matrix(self):
-        s = " "
-        for val in self.header:
-            s += " {}".format(val)
-        s += "\n"
-
-        for index, val in enumerate(self.header):
-            for v in self.transitions[index]:
-                s += " {}".format(v)
-            s += "\n"
+        s = ""
+        for row in range(len(self.header)):
+            from_val = self.header[row]
+            for column in range(len(self.header)):
+                to_val = self.header[column]
+                s += "{}->{}: {}\n".format(from_val, to_val, 
+                                           self.transitions[row][column])
         return s
 
     def __str__(self):
@@ -267,11 +265,17 @@ class TransitionMatrix(object):
         return elapsed_time
 
     def compute_clusters(self):
-        for row in range(len(self.header)):
-            for column in range(len(self.header)):
-                entry = self.transitions[row][column]
-                if not isinstance(entry, int):
-                    entry.create_clusters()
+        try:
+            #if self.name == "lit101":
+            #    pdb.set_trace()
+            for row in range(len(self.header)):
+                for column in range(len(self.header)):
+                    entry = self.transitions[row][column]
+                    if not isinstance(entry, int):
+                        entry.create_clusters()
+        except np.linalg.LinAlgError:
+            pdb.set_trace()
+
 
 class TimeCond(object):
 

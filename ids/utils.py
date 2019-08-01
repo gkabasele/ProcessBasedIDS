@@ -3,8 +3,12 @@ import sys
 import random
 import string
 import yaml
+import pickle
 import math
 import numpy as np
+import matplotlib 
+import matplotlib.pyplot as plt
+from scipy.stats import gaussian_kde
 from scapy.all import *
 
 # PORT
@@ -39,6 +43,10 @@ INP_REG = "ir"
 WRITE_FUNCODE = [5, 6]
 
 TS = "timestamp"
+
+DIST = 0.01
+DAY_IN_SEC = 86400
+COOL_TIME = 11000
 
 class ProcessSWaTVar():
 
@@ -252,8 +260,33 @@ def is_number(s):
     """ Returns Truse if string s is a number """
     return s.replace('.','',1).isdigit()
 
+def same_value(max_val, min_val, val1, val2, thresh=DIST):
+    return normalized_dist(max_val, min_val, val1, val2) <= thresh
+
 def normalized_dist(max_val, min_val, val1, val2):
     return (math.sqrt((val1-val2)**2)/math.sqrt((max_val - min_val)**2))
 
 def moving_average(data, window):
     return np.convolve(data, np.ones(window), 'valid')/window
+
+def show_kde(data):
+    density = gaussian_kde(data)
+    xs = np.linspace(min(data), max(data), 100)
+    density.covariance_factor = lambda: .25
+    density._compute_covariance()
+    y_data = density(xs)
+
+    n, bins, patches = plt.hist(data, 100, density=True)
+    plt.plot(xs, y_data)
+    plt.show()
+
+def read_state_file(name):
+    with open(name, "rb") as filename:
+        data = pickle.load(filename)
+    return data
+
+def get_all_values_pv(data, pvname, limit=None):
+    if limit is None:
+        return np.array([x[pvname] for x in data])
+    else:
+        return np.array([x[pvname] for x in data[:limit]])

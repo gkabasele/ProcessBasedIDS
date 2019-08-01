@@ -13,6 +13,7 @@ from utils import *
 from lexer import Lexer
 from parser import Parser
 from interpreter import Interpreter 
+from pvStore import PVStore
 
 class Requirement(object):
 
@@ -35,16 +36,19 @@ class Checker(threading.Thread):
     def __init__(self, descFile, queue, network=False):
         threading.Thread.__init__(self)
         # name -> Process Variable
-        self.vars = {}
+        self.vars = PVStore(descFile)
         #key -> name
         self.map_key_name = {}
 
         self.store = queue
         self.network = network
+
+        """
         if network:
             self.setup(descFile)
         else:
             self.setupSWaT(descFile)
+        """
 
     def setup(self, descFile):
         fh = open(descFile)

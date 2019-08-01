@@ -8,6 +8,7 @@ from reader import Reader
 from pvStore import PVStore
 from reqChecker import ReqChecker
 from timeChecker import TimeChecker
+import utils
 
 parser = argparse.ArgumentParser()
 
@@ -49,18 +50,19 @@ def main_network(conf, infile):
         thr.join()
 
 def main(conf, infile, malicious):
-    with open(infile, "rb") as filename:
-        data = pickle.load(filename)
-
     print("Read Normal mode file")
-    with open(malicious, "rb") as mal_filename:
-        data_mal = pickle.load(mal_filename)
+    data = utils.read_state_file(infile)
+    time_checker = TimeChecker(conf, data)
+    time_checker.fill_matrices()
+    pdb.set_trace()
+
     print("Read Attack mode file")
+    data_mal = utils.read_state_file(malicious)
     data_mv = data_mal
 
-    time_checker = TimeChecker(conf, data, detection_store=data_mv[:SECOND_WAVE])
-    time_checker.start()
-    time_checker.join()
+    time_checker.detection_store = data_mv[:SECOND_WAVE]
+    #time_checker.start()
+    #time_checker.join()
 
 if __name__ == "__main__":
     args = parser.parse_args()

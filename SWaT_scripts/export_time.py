@@ -29,6 +29,7 @@ def main(data, pv, from_val, to_val, conf, output):
         if utils.same_value(var['max'], var['min'], from_val, val, dist_thresh):
             if from_ts is None:
                 from_ts = state['timestamp']
+                continue
         if utils.same_value(var['max'], var['min'], to_val, val, dist_thresh):
             if from_ts is not None and to_ts is None:
                 to_ts = state['timestamp']
@@ -38,7 +39,8 @@ def main(data, pv, from_val, to_val, conf, output):
                 to_ts = None
 
     with open(output, "w") as fh:
-        fh.write(str(recorded_ts))
+        for ts in recorded_ts:
+            fh.write("{},".format(ts))
 
 if __name__ == "__main__":
 

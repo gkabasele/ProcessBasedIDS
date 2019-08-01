@@ -1,18 +1,58 @@
 import pdb
+import math
 import argparse
 from matplotlib import pyplot
 import numpy as np
 import utils
 import string
+from scipy import stats
 from pvStore import PVStore
+
+ALPHA = string.ascii_lowercase
+
+class Graph(object):
+
+    def __init__(self):
+        self.graph = {}
+
+    def add_edge(self, node, neigh):
+        if node not in self.graph:
+            self.graph[node] = set([neigh])
+        else:
+            self.graph[node].add(neigh)
+
+    def show_edges(self):
+        for node in self.graph:
+            for neigh in self.graph[node]:
+                print("(", node, ", ", neigh, ")")
+
+    def find_path(self, start, end, path=[]):
+        path = path + [start]
+        if start == end:
+            return path
+        for node in self.graph[start]:
+            if node not in path:
+                newPath = self.find_path(node, end, path)
+                if newPath:
+                    return newPath
+                return None
 
 class Symbol(object):
     i = 0
+    j = 0
 
     def __init__(self, val=None):
         if val is None:
-            self.val = string.ascii_lowercase[Symbol.i]
+            s = ALPHA[Symbol.i]
+            k = 0
+            for _ in range(Symbol.j):
+                s += ALPHA[k]
+                k += 1
+            self.val = s
             Symbol.i += 1
+            if Symbol.i == len(ALPHA):
+                Symbol.j += 1
+                Symbol.i = 0
         else:
             self.val = val
 
@@ -27,11 +67,19 @@ class Symbol(object):
 
 class SymbolEntry(object):
 
-    def __init__(self, symbol):
+    def __init__(self, symbol, time=None):
         self.symbol = symbol
+        self.start_time = time
+        self.end_time = time
 
     def same_symbol(self, other):
         return self.symbol.val == other.val
+    
+    def val(self):
+        return self.symbol.val
+
+    def __hash__(self):
+        return hash(self.symbol.val)
 
     def __eq__(self, other):
         return self.symbol.val == other.symbol.val
@@ -78,9 +126,15 @@ class Digitizer(object):
         res = []
 
         for i, value in enumerate(data):
-            symbol = self.get_symbol(value)
-            res.append(SymbolEntry(symbol))
-
+            sym = self.get_symbol(value)
+            if len(res) == 0:
+                res.append(SymbolEntry(sym, i))
+            else:
+                last_symbol = res[-1]
+                if last_symbol.same_symbol(sym):
+                    last_symbol.end_time = i
+                else:
+                    res.append(SymbolEntry(sym, i))
         return res
 
 def symbol(val):
@@ -89,16 +143,16 @@ def symbol(val):
 def test_digitize():
     digitizer = Digitizer([3, 6, 9], 0, 1)
     print(digitizer.mapping)
-    input_l = [2, 5, 8, 1, 11, 10, 7, 2, 9, 13, 6, 11, 9]
+    input_l = [2, 5, 8, 1, 11, 3, 7, 2, 9, 13, 6, 11, 9]
     res = digitizer.digitize(input_l)
-
-    assert [x.symbol.val for x in res] == ['a', 'c', 'e', 'a', 'g', 'g', 'e', 'a', 'f', 'g', 'd', 'g', 'f']
+    print(res)
+    assert [x.symbol.val for x in res] == ['a', 'c', 'e', 'a', 'g', 'b', 'e', 'a', 'f', 'g', 'd', 'g', 'f']
 
     prefix = [symbol('e'), symbol('a')]
 
-    periods = search_symbols_periodicity(res, prefix) 
+    freq = search_symbols_periodicity(res, prefix) 
 
-    print(periods)
+    print(freq)
 
 def _search_symbols_periodicity(subsequence, prefix):
     res = True
@@ -121,16 +175,96 @@ def search_symbols_periodicity(sequence, prefix):
                 i += 1
         else:
             i += 1
-    return periods
+    freq = [] 
+    for i in range(len(periods) - 1):
+        freq.append(periods[i+1] - periods[i]) 
+    return freq
+
+def _test_symbol_periodicity_search(sequence, prefix, pos, step):
+
+    if sequence[pos + step] == prefix[0]:
+        res = True
+        print("Candidate subsequence")
+        for s, j in zip(range(len(prefix)), range(pos + step, pos + step + len(prefix))):
+            res = prefix[s] == sequence[j]
+            if not res:
+                print("Wrong candidate")
+                break
+        if res:
+            print("Find subsequence at: {}".format(pos + step))
+            return pos + step
+        else:
+            return -1
+    else:
+        return -1
+
+
+def test_symbol_periodicity_search(sequence, prefix, freq):
+
+    f = 0
+    i = 0
+    while i < len(sequence) - len(prefix):
+        sym = sequence[i]
+        if sym == prefix[0] and _search_symbols_periodicity(sequence[i:i+len(prefix)], prefix):
+            res = _test_symbol_periodicity_search(sequence, prefix, i, freq[f])
+            if res > 0:
+                i = res
+                if f < len(freq)-1:
+                    f += 1
+                else:
+                    break
+            else:
+                i += 1
+        else:
+            i += 1
+
+def create_graph(res):
+    g = Graph()
+    for i in range(len(res) - 1):
+        g.add_edge(res[i].val(), res[i+1].val())
+
+    return g
+
+def partition_statistic(data, store, pv_name, slen, thresh=utils.DIST):
+
+    vals = utils.get_all_values_pv(data[utils.COOL_TIME:], pv_name)
+    nbr_partition = math.ceil(len(vals)/slen)
+
+    means = []
+    var_s = []
+
+    for i in range(nbr_partition):
+        partition = vals[i*slen:(i+1)*slen]
+        means.append(np.mean(partition))
+        var_s.append(np.var(partition))
+
+    diff_means = []
+
+    for i in range(len(means) - 1):
+        for j in range(i+1, len(means)):
+            diff = math.fabs(means[i] - means[j])
+            diff_means.append(diff)
+
+    var = store[pv_name]
+    same_dist_test = (var.max_val - var.min_val)*thresh
+    print("Name:{}".format(pv_name))
+    print("MeanDiff:{}, {}".format(np.mean(diff_means), same_dist_test))
 
 def main(data, store):
     pv_name = "lit101"
-    lit_ts = utils.get_all_values_pv(data, pv_name, 86400)
+    lit_ts = utils.get_all_values_pv(data, pv_name, utils.DAY_IN_SEC)
     print("Length of input: {}".format(len(lit_ts)))
     pv = store[pv_name]
     digitizer = Digitizer(pv.limit_values, pv.min_val, pv.max_val)
     print(digitizer.mapping)
     res = digitizer.digitize(lit_ts)
+    print(res) 
+
+    """
+    g = create_graph(res)
+    print(g.find_path("b", "h"))
+    print(g.find_path("h", "b"))
+    """
 
 if __name__ == "__main__":
 
@@ -138,11 +272,12 @@ if __name__ == "__main__":
     parser.add_argument("--input", action="store", dest="input")
     parser.add_argument("--conf", action="store", dest="conf")
 
-    test_digitize()
-
-    """
     args = parser.parse_args()
     data = utils.read_state_file(args.input)
     store = PVStore(args.conf)
+
+    partition_statistic(data, store, "ait201", utils.DAY_IN_SEC)
+
+    """
     main(data, store)
     """

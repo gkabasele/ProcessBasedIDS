@@ -6,6 +6,7 @@ from sklearn.neighbors import KernelDensity
 from scipy.stats import gaussian_kde
 
 from welford import Welford
+import utils
 
 """
 Clustering of 1-D array
@@ -66,6 +67,8 @@ def cluster_property(clusters):
         wel(cluster)
         properties.append(wel)
     return properties
+
+
 def main(filename):
 
     with open(filename, "r") as f:
@@ -78,4 +81,4 @@ def main(filename):
         pdb.set_trace()
 
 if __name__ == "__main__":
-    main("./time.txt")
+    main("./fit101dot027.txt")

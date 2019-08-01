@@ -1,52 +1,58 @@
-from datetime import timedelta, datetime
-from queue import Queue
-import copy
-
-from utils import ProcessVariable
-from reader import Reader
+import yaml
+import utils
 
 class PVStore(object):
 
-    def __init__(self, queue):
-        self.queue = queue
-        self.store = [] 
-        self.pv_indices = {}
-        self.end = False
+    def __init__(self, descFile):
+        # name -> Process Variable
+        self.vars = {}
+        self.setup(descFile)
 
-    def update_store(self):
-        msg = self.queue.get()    
-        self.end = type(msg) == str
-        if not self.end:
-            key = msg.key()
-            if key in self.pv_indices:
-                self.update_variable(key, msg)
-            else:
-                self.store.append(self.create_var(msg))
-                self.pv_indices[key] = len(self.store) - 1
+    def setup(self, descFile):
+        with open(descFile) as fh:
+            content = fh.read()
+            desc = yaml.load(content, Loader=yaml.Loader)
+            for var_desc in desc['variables']:
+                var = var_desc['variable']
+                if var['type'] == utils.DIS_COIL or var['type'] == utils.DIS_INP:
+                    limit_values = [0, 1, 2]
+                    pv = utils.ProcessSWaTVar(var['name'], var['type'],
+                                              limit_values=limit_values,
+                                              min_val=0,
+                                              max_val=2)
+                else:
+                    if 'critical' in var:
+                        limit_values = var['critical']
+                        if len(limit_values) == 0:
+                            limit_values.extend([var['min'], var['max']])
+                        limit_values.sort()
+                    else:
+                        limit_values = [var['min'], var['max']]
+                        limit_values.sort()
+                    pv = utils.ProcessSWaTVar(var['name'], var['type'],
+                                              limit_values=limit_values,
+                                              min_val=var['min'],
+                                              max_val=var['max'])
 
-    def update_variable(self, key, msg):
-        pv = copy.deepcopy(self.store[self.pv_indices[key]])
-        if msg.value != pv.value:
-            pv.nbr_transition += 1
-            diff = msg.last_transition - pv.last_transition
-            pv.last_transition = msg.res_timestamp
-            pv.elapsed_time_transition.append(diff)
+                self.vars[pv.name] = pv
 
-        if pv.first is None:
-            pv.first = msg.res_timestamp
+    def __getitem__(self, key):
+        return self.vars[key]
 
-        pv.last_ts = msg.res_timestamp
-        pv.value = msg.value
+    def __setitem__(self, key, value):
+        self.vars[key] = value
 
-        self.store.append(pv)
-        self.pv_indices[key] = len(self.store) - 1
+    def __delitem__(self, key):
+        self.vars.__delitem__(key)
 
-    def create_var(self, msg):
-        pv = ProcessVariable(msg.host, msg.port, msg.kind, msg.addr)
-        pv.value = msg.value
-        pv.last_transition = msg.res_timestamp
-        pv.first = msg.res_timestamp
-        self.store[msg.key()] = pv
+    def __iter__(self):
+        return self.vars.__iter__()
+
+    def values(self):
+        return self.vars.values()
+
+    def keys(self):
+        return self.vars.keys()
 
     def items(self):
-        return self.store.items()
+        return self.vars.items()

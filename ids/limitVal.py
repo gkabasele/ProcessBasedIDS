@@ -41,9 +41,30 @@ class RangeVal(object):
         return self.__str__()
 
 
+def find_inflection_point(data):
+    maximas = []
+    minimas = []
+
+    for i in range(len(data)):
+        if i == 0:
+            if data[i] > data[i+1]:
+                maximas.append(i)
+            elif data[i] < data[i+1]:
+                minimas.append(i)
+        elif i == len(data)-1:
+            if data[i] > data[i-1]:
+                maximas.append(i)
+            elif data[i] < data[i-1]:
+                minimas.append(i)
+        else:
+            if data[i-1] < data[i] and data[i+1] < data[i]:
+                maximas.append(i)
+            elif data[i-1] > data[i] and data[i+1] > data[i]:
+                minimas.append(i)
+    return maximas, minimas
+
 def compute_ranges(values):
     hist, bin_edges = np.histogram(values, bins=100)
-
     ranges = []
     for i in range(len(bin_edges) - 1):
         lower = bin_edges[i]
@@ -57,6 +78,9 @@ def compute_ranges(values):
 def merge_ranges(ranges, number):
 
     blocks = []
+    if len(ranges) <= 1:
+        return ranges 
+
     start_block = ranges[0].lower
     end_block = ranges[0].upper
     count = 0
@@ -89,9 +113,16 @@ def merge_ranges(ranges, number):
 
     return blocks
 
-def divide_and_conquer(data, pv, limit=None):
-    values, _ = get_values(data, pv, limit)
+def find_limit_values(data, pv):
+    values, _ = get_values(data, pv)
+    xs, y_data = compute_kde(values)
+    maxima_indices, minima_indices = find_inflection_point(y_data)
+    minimas = [xs[i] for i in minima_indices]
+    minimas.extend([xs[i] for i in maxima_indices])
+    minimas.sort()
+    return minimas
 
+def divide_and_conquer(values):
     ranges = compute_ranges(values)
     blocks = merge_ranges(ranges, len(values))
     return blocks
@@ -107,15 +138,13 @@ def get_values(data, pv, limit=None):
 
     return values, times
 
-
-
 def compute_window_average(data, i, win):
     low = max(0, i - win)
     high = min(len(data)-1, i + win)
     mv_avg = sum(data[low:high])/(high - low)
     return mv_avg
 
-def moving_average(values, win):
+def compute_trends(values, win):
     trends = []
     for i in range(len(values)):
         new_val = compute_window_average(values, i, win)
@@ -128,9 +157,9 @@ def limit_values(data, pv, win, limit=None):
 
     seconds = np.arange(len(times))
     
-    ma = moving_average(values, win)
+    ma = compute_trends(values, win)
 
-    slopes = moving_average(slope_graph(seconds, ma), win)
+    slopes = compute_trends(slope_graph(seconds, ma), win)
     change_points = np.diff(slopes)
 
     plt.subplot(4, 1, 1)
@@ -163,19 +192,28 @@ def slope_graph(times, values):
 
     return slopes
 
-def main(data, conf, output):
+def main(data, conf, output, strategy):
     with open(conf) as fh:
         content = fh.read()
         desc = yaml.load(content, Loader=yaml.Loader)
         for variable in desc['variables']:
             var = variable['variable']
             if var["type"] == "hr" or var["type"] == "ir":
-                blocks = divide_and_conquer(data, var['name'])
-                vals = []
-                for block in blocks:
-                    vals.append(block.lower.item())
-                    vals.append(block.upper.item())
+                values, _ = get_values(data, var['name'])
+                min_val = np.min(values)
+                max_val = np.max(values)
+                if strategy == "hist":
+                    blocks = divide_and_conquer(data[COOL_TIME:])
+                    vals = []
+                    for block in blocks:
+                        vals.append(block.lower.item())
+                        vals.append(block.upper.item())
+                elif strategy == "kde":
+                    vals = [float(x) for x in find_limit_values(data[COOL_TIME:], var['name'])]
+
                 var['critical'] = vals
+                var['min'] = float(min_val)
+                var['max'] = float(max_val)
 
         with open(output, "w") as ofh:
             content = yaml.dump(desc)
@@ -186,13 +224,13 @@ if __name__ == "__main__":
     parser.add_argument("--input", dest="filename", action="store")
     parser.add_argument("--conf", dest="conf", action="store")
     parser.add_argument("--output", dest="output", action="store")
+    parser.add_argument("--strategy", default="all", choices=["kde", "hist"])
     args = parser.parse_args()
-    
+
     with open(args.filename, "rb") as filename:
         data = pickle.load(filename)
 
-    main(data, args.conf, args.output)
-    
+    main(data, args.conf, args.output, args.strategy)
     """
     variables = globals().copy()
     variables.update(locals())

@@ -2,6 +2,7 @@ import argparse
 import csv
 import pickle
 import pdb
+from collections import OrderedDict
 from datetime import datetime
 
 """
@@ -20,23 +21,42 @@ parser.add_argument("--output", dest="output", action="store")
 
 args = parser.parse_args()
 
-states = []
-with open(args.input, mode='r') as csv_file:
-    csv_reader = csv.DictReader(csv_file, delimiter=',')
-    for i, row in enumerate(csv_reader):
-        state = {}
-        for x in row:
-            key = x.lower().replace(" ", "")
-            if key == 'timestamp':
-                ts = datetime.strptime(row[x], " %d/%m/%Y %I:%M:%S %p")
-                state[key] = ts
-            elif key == 'normal/attack':
-                state[key] = row[x]
-            else:
-                value = float(row[x].replace(",", "."))
-                state[key] = value
-        states.append(state)
+def export_multiple_read(infile, outfile):
+    states = []
+    with open(infile, mode='r') as csv_file:
+        csv_reader = csv.DictReader(csv_file, delimiter=',')
+        for i, row in enumerate(csv_reader):
+            state = {}
+            for x in row:
+                key = x.lower().replace(" ", "")
+                if key == 'timestamp':
+                    ts = datetime.strptime(row[x], " %d/%m/%Y %I:%M:%S %p")
+                    state[key] = ts
+                elif key == 'normal/attack':
+                    state[key] = row[x]
+                else:
+                    value = float(row[x].replace(",", "."))
+                    state[key] = value
+            states.append(state)
+    with open(outfile, mode="wb") as bin_file:
+        pickle.dump(states, bin_file)
 
-with open(args.output, mode="wb") as bin_file:
-    pickle.dump(states, bin_file)
+def export_one_read(infile, outfile):
 
+    with open(infile, mode="r") as csv_file:
+        csv_reader = csv.DictReader(csv_file, delimiter=',')
+        column = OrderedDict((x.lower().replace(" ", ""), []) for x in csv_reader.fieldnames)
+        for i, row in enumerate(csv_reader):
+            for x in row:
+                key = x.lower().replace(" ", "")
+                if key == 'timestamp':
+                    ts = datetime.strptime(row[x], " %d/%m/%Y %I:%M:%S %p")
+                    column[key].append(ts)
+                elif key == 'normal/attack':
+                    column[key].append(row[x])
+                else:
+                    value = float(row[x].replace(",", "."))
+                    column[key].append(value)
+
+    with open(outfile, mode="wb") as bin_file:
+        pickle.dump(column, bin_file)

@@ -1,3 +1,4 @@
+import sys
 import os
 import argparse
 import pickle
@@ -11,6 +12,10 @@ from statsmodels.graphics.tsaplots import plot_acf
 from statsmodels.tsa.seasonal import seasonal_decompose
 import readline 
 import code
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import ids
+import ids.utils as utils
 
 matplotlib.use('TkAgg')
 

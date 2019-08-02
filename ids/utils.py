@@ -269,16 +269,22 @@ def normalized_dist(max_val, min_val, val1, val2):
 def moving_average(data, window):
     return np.convolve(data, np.ones(window), 'valid')/window
 
-def show_kde(data):
+def show_kde(data, name=None):
+    xs, y_data = compute_kde(data) 
+    n, bins, patches = plt.hist(data, 150, density=True)
+    if name is not None:
+        plt.title(name)
+    plt.plot(xs, y_data)
+    plt.show()
+
+def compute_kde(data):
     density = gaussian_kde(data)
-    xs = np.linspace(min(data), max(data), 100)
+    xs = np.linspace(min(data), max(data), 150)
     density.covariance_factor = lambda: .25
     density._compute_covariance()
     y_data = density(xs)
+    return xs, y_data
 
-    n, bins, patches = plt.hist(data, 100, density=True)
-    plt.plot(xs, y_data)
-    plt.show()
 
 def read_state_file(name):
     with open(name, "rb") as filename:

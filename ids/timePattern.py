@@ -42,11 +42,7 @@ def find_minima_local(data):
     return minima
 
 def clustering_1D(data):
-    density = gaussian_kde(data)
-    xs = np.linspace(min(data), max(data), 150)
-    density.covariance_factor = lambda : .25
-    density._compute_covariance()
-    y_data = density(xs)
+    xs_, y_data = utils.compute_kde(data)
     minimas = find_minima_local(y_data)
     breakpoints = [xs[i] for i in minimas]
     clusters = [list() for i in range(len(minimas)+1)]

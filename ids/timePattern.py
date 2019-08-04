@@ -23,8 +23,11 @@ class TimePattern(object):
 
     def create_clusters(self):
         clusters, breakpoints = clustering_1D(self.values)
-        self.breakpoints = breakpoints
-        self.clusters = cluster_property(clusters)
+        if breakpoints is not None:
+            self.breakpoints = breakpoints
+            self.clusters = cluster_property(clusters)
+        else:
+            self.clusters = clusters
         self.values.clear()
 
     def __str__(self):
@@ -42,17 +45,32 @@ def find_minima_local(data):
     return minima
 
 def clustering_1D(data):
-    xs_, y_data = utils.compute_kde(data)
-    minimas = find_minima_local(y_data)
-    breakpoints = [xs[i] for i in minimas]
-    clusters = [list() for i in range(len(minimas)+1)]
-    for x in data:
-        for i, limit in enumerate(breakpoints):
-            if x <= limit:
-                clusters[i].append(x)
-                break
-            elif i == len(breakpoints)-1:
-                clusters[i+1].append(x)
+    try:
+        xs, y_data = utils.compute_kde(data)
+        minimas = find_minima_local(y_data)
+        breakpoints = [xs[i] for i in minimas]
+        clusters = [list() for i in range(len(minimas)+1)]
+        for x in data:
+            for i, limit in enumerate(breakpoints):
+                if x <= limit:
+                    clusters[i].append(x)
+                    break
+                elif i == len(breakpoints)-1:
+                    clusters[i+1].append(x)
+    except np.linalg.LinAlgError:
+        wel = Welford()
+        wel(data)
+        clusters = [wel]
+        breakpoints = None
+
+    except ValueError as err:
+        if len(data) == 1:
+            wel = Welford()
+            wel(data)
+            clusters = [wel]
+            breakpoints = None
+        else:
+            raise(err)
 
     return clusters, breakpoints
 

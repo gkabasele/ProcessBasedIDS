@@ -51,7 +51,7 @@ def main_network(conf, infile):
 
 def main(conf, infile, malicious):
     print("Read Normal mode file")
-    data = utils.read_state_file(infile)
+    data = utils.read_state_file(infile)[:50000]
     time_checker = TimeChecker(conf, data)
     time_checker.fill_matrices()
     pdb.set_trace()

@@ -1,5 +1,6 @@
 import yaml
 import utils
+import pdb
 
 class PVStore(object):
 
@@ -33,7 +34,6 @@ class PVStore(object):
                                               limit_values=limit_values,
                                               min_val=var['min'],
                                               max_val=var['max'])
-
                 self.vars[pv.name] = pv
 
     def continous_vars(self):

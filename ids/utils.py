@@ -45,6 +45,7 @@ WRITE_FUNCODE = [5, 6]
 TS = "timestamp"
 
 DIST = 0.01
+DIFF = 0.05
 DAY_IN_SEC = 86400
 COOL_TIME = 11000
 
@@ -60,20 +61,20 @@ class ProcessSWaTVar():
         self.last_transition = None
         self.elapsed_time_transition = []
 
-        if min_val:
-            self.min_val = min_val
-        else:
+        if min_val is None:
             self.min_val = 1
-
-        if max_val:
-            self.max_val = max_val
         else:
+            self.min_val = min_val
+
+        if max_val is None:
             self.max_val = 2
-
-        if limit_values:
-            self.limit_values = limit_values
         else:
+            self.max_val = max_val
+
+        if limit_values is None:
             self.limit_values = []
+        else:
+            self.limit_values = limit_values
 
     def __hash__(self):
         return hash(self.name)

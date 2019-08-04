@@ -15,13 +15,11 @@ import matplotlib.pyplot as plt
 from sklearn.neighbors import KernelDensity
 from scipy import stats
 
-from utils import ProcessVariable, randomName
+import utils
 from reqChecker import Checker
 from timePattern import TimePattern
 
-ValueTS = collections.namedtuple('ValueTS', ['value', 'ts'])
-DIST = 0.01
-DIFF = 0.05
+ValueTS = collections.namedtuple('ValueTS', ['value', 'start', 'end'])
 
 class TransitionMatrix(object):
 
@@ -57,6 +55,11 @@ class TransitionMatrix(object):
         self.transitions = self.compute_transition(self.header)
         self.last_value = None
         self.last_val_train = None
+        self.start_same_train = None
+        self.end_same_train = None
+        self.end_time = None
+        # flag to know if an elapsed time must be computed
+        self.computation_trigger = False
 
     def compute_header(self, variable):
         header = []
@@ -109,10 +112,10 @@ class TransitionMatrix(object):
         return self.__str__()
 
     def same_value(self, val1, val2, pv):
-        return pv.normalized_dist(val1, val2) <= DIST
+        return pv.normalized_dist(val1, val2) <= utils.DIST
 
     def great_diff(self, val1, val2, pv):
-        return pv.normalized_dist(val1, val2) >= DIFF
+        return pv.normalized_dist(val1, val2) >= utils.DIFF
 
     def nbr_transition(self):
         return len(self.historic_val) - 1
@@ -143,7 +146,7 @@ class TransitionMatrix(object):
 
     def _find_closest(self, elapsed_time, prev, curr, i):
         dist_prev = elapsed_time - prev
-        dst = curr - elapsed_time
+        dist = curr - elapsed_time
         if dist < dist_prev:
             return i
         else:
@@ -238,23 +241,42 @@ class TransitionMatrix(object):
         for crit_val in self.header:
             if self.same_value(value, crit_val, pv):
                 if self.last_val_train is not None:
-                    elapsed_time = (ts - self.last_val_train.ts).total_seconds()
                     row = self.val_pos[self.last_val_train.value]
                     column = self.val_pos[crit_val]
-                    if self.transitions[row][column] == -1 or self.transitions[row][column] == 0:
+
+                    if self.transitions[row][column] == -1:
                         self.transitions[row][column] = TimePattern()
 
-                    self.transitions[row][column].update(elapsed_time)
+                    if self.transitions[row][row] == 0:
+                        self.transitions[row][row] = TimePattern()
 
-                    if self.last_val_train.value != crit_val:
-                        self.last_val_train = ValueTS(value=crit_val, ts=ts)
+                    if self.last_val_train.value == crit_val:
+                        self.last_val_train = ValueTS(value=crit_val,
+                                                      start=self.last_val_train.start,
+                                                      end=ts)
+                        self.computation_trigger = False
+                    else:
+                        same_value_t = (self.last_val_train.end - self.last_val_train.start).total_seconds()
+                        self.transitions[row][row].update(same_value_t)
+                        self.computation_trigger = True
+                        elapsed_trans_t = (ts - self.last_val_train.end).total_seconds()
+                        self.last_val_train = ValueTS(value=crit_val, start=ts, end=ts)
+                        self.transitions[row][column].update(elapsed_trans_t)
                 else:
-                    self.last_val_train = ValueTS(value=crit_val, ts=ts)
-
+                    self.last_val_train = ValueTS(value=crit_val, start=ts, end=ts)
+                    self.computation_trigger = False
                 break
+            else:
+                self.computation_trigger = False
+                if value < crit_val:
+                    break
 
-            elif value < crit_val:
-                break
+        # The case where the end training period was reached and no computation
+        # of transition time was done because no transition time was reach
+        if ts == self.end_time and not self.computation_trigger:
+            row = self.val_pos[self.last_val_train.value]
+            same_value_t = (self.last_val_train.end - self.last_val_train.start).total_seconds()
+            self.transitions[row][row].update(same_value_t)
 
     def compute_elapsed_time(self):
         elapsed_time = []
@@ -266,71 +288,13 @@ class TransitionMatrix(object):
 
     def compute_clusters(self):
         try:
-            #if self.name == "lit101":
-            #    pdb.set_trace()
             for row in range(len(self.header)):
                 for column in range(len(self.header)):
                     entry = self.transitions[row][column]
                     if not isinstance(entry, int):
                         entry.create_clusters()
-        except np.linalg.LinAlgError:
+        except ValueError:
             pdb.set_trace()
-
-
-class TimeCond(object):
-
-    def __init__(self):
-        self.expected_values = set()
-        self.avg_elapsed_val = set()
-        self.var_elapsed_val = set()
-
-    def add_expected_value(self, val):
-        self.expected_values.add(val)
-
-    def add_expected_avg_var(self, elapsed_time):
-        if len(elapsed_time) != 0:
-            avg = np.average(elapsed_time)
-            var = np.var(elapsed_time)
-            self.avg_elapsed_val.add(avg)
-            self.var_elapsed_val.add(var)
-        else:
-            self.avg_elapsed_val.add(-1)
-            self.var_elapsed_val.add(-1)
-
-    def compute_t(self, avg, var, ex_avg, n):
-        if n > 0:
-            t_score = (avg - ex_avg)/math.sqrt(var/n)
-            df = n - 1
-            alpha = 0.01
-            crit_byte = stats.t.ppf(1-alpha, df=df)
-            return t_score < crit_byte
-
-    def test_cond(self, frame):
-        value = frame.nbr_transition()
-        elapsed_time = frame.compute_elapsed_time()
-        res = value in self.expected_values
-        if res:
-            if len(elapsed_time) == 0:
-                avg, var = -1, -1
-            else:
-                avg = np.average(elapsed_time)
-                var = np.var(elapsed_time)
-
-            for ex_avg in self.avg_elapsed_val:
-                if avg == -1 or ex_avg == -1:
-                    res = avg == ex_avg
-                else:
-                    res = self.compute_t(avg, var, ex_avg, len(elapsed_time))
-                if res:
-                    return res
-        return res
-
-    def __str__(self):
-        return "Val: {}, Avg: {}, Var: {}".format(self.expected_values,
-                                                  self.avg_elapsed_val,
-                                                  self.var_elapsed_val)
-    def __repr__(self):
-        return self.__str__()
 
 class TimeChecker(Checker):
 
@@ -356,7 +320,7 @@ class TimeChecker(Checker):
         return matrices
 
     def create_var(self, host, port, kind, addr):
-        pv = ProcessVariable(host, port, kind, addr, name=randomName())
+        pv = utils.ProcessVariable(host, port, kind, addr, name=utils.randomName())
         self.vars[pv.name] = pv
         self.map_key_name[pv.key()] = pv.name
         return pv
@@ -380,12 +344,16 @@ class TimeChecker(Checker):
             return self.detection_cond[key][-1]
 
     def fill_matrices(self):
-
-        for state in self.store:
+        for i, state in enumerate(self.store):
             ts = state['timestamp']
             for name, val in state.items():
                 if name != 'timestamp' and name != 'normal/attack':
                     matrix = self.matrices[name]
+                    if i == 0:
+                        # If value is constant
+                        matrix.start_time = ts
+                    if i == len(self.store) - 1:
+                        matrix.end_time = ts
                     pv = self.vars[name]
                     matrix.update_transition_matrix(val, ts, pv)
 

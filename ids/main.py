@@ -30,6 +30,7 @@ def main_network(conf, infile):
     queue_req = queue.Queue()
     queue_time = queue.Queue()
 
+    filename = "detection_v2.txt"
     threads = []
 
     reader = Reader(infile, [queue_req, queue_time])
@@ -42,7 +43,7 @@ def main_network(conf, infile):
     req_checker.start()
     """
 
-    time_checker = TimeChecker(conf, queue_time)
+    time_checker = TimeChecker(conf, filename, queue_time)
     threads.append(time_checker)
     time_checker.start()
 
@@ -50,17 +51,22 @@ def main_network(conf, infile):
         thr.join()
 
 def main(conf, infile, malicious):
+    
+    filename = "detection_v3.txt"
     print("Read Normal mode file")
     data = utils.read_state_file(infile)[:50000]
-    time_checker = TimeChecker(conf, data)
+    time_checker = TimeChecker(conf, filename, data)
     time_checker.fill_matrices()
     pdb.set_trace()
 
     print("Read Attack mode file")
-    data_mal = utils.read_state_file(malicious)
+    #data_mal = utils.read_state_file(malicious)
+    data_mal = utils.read_state_file(infile)[50000:100000]
     data_mv = data_mal
 
-    time_checker.detection_store = data_mv[:SECOND_WAVE]
+    time_checker.detection_store = data_mv
+    time_checker.detect_suspect_transition()
+    time_checker.close()
     #time_checker.start()
     #time_checker.join()
 

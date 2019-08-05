@@ -69,7 +69,8 @@ def main(data, pv, from_val, to_val, conf, output):
     else:
         recorded_ts = transition_time(data, pv, var['max'], var['min'], from_val, to_val)
 
-    
+    pdb.set_trace()
+
     with open(output, "w") as fh:
         for ts in recorded_ts:
             fh.write("{},".format(ts))

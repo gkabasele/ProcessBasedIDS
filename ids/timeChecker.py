@@ -60,6 +60,8 @@ class TransitionMatrix(object):
         self.end_time = None
         # flag to know if an elapsed time must be computed
         self.computation_trigger = False
+        # flad to know when to detect
+        self.detection_trigger = False
 
     def compute_header(self, variable):
         header = []
@@ -100,7 +102,7 @@ class TransitionMatrix(object):
             from_val = self.header[row]
             for column in range(len(self.header)):
                 to_val = self.header[column]
-                s += "{}->{}: {}\n".format(from_val, to_val, 
+                s += "{}->{}: {}\n".format(from_val, to_val,
                                            self.transitions[row][column])
         return s
 
@@ -145,7 +147,7 @@ class TransitionMatrix(object):
                 return crit_val
 
     def _find_closest(self, elapsed_time, prev, curr, i):
-        dist_prev = elapsed_time - prev
+        dist_prev = elapsed_time - prev.mean
         dist = curr - elapsed_time
         if dist < dist_prev:
             return i
@@ -153,6 +155,9 @@ class TransitionMatrix(object):
             return i-1
 
     def find_cluster(self, pattern, elapsed_time):
+        if len(pattern.clusters) == 1:
+            return pattern.clusters[0]
+        
         cluster = None
         bpoints = pattern.breakpoints
         for i, limit in enumerate(bpoints):
@@ -177,12 +182,18 @@ class TransitionMatrix(object):
             return TransitionMatrix.UNKNOWN, expected
 
         cluster = self.find_cluster(expected, elapsed_time)
-        print("Elapsed: {}, Cluster:{}".format(elapsed_time, cluster))
-        z = (elapsed_time - cluster.mean)/cluster.std
-        if abs(z) > 3:
-            return TransitionMatrix.DIFF, cluster
+        #print("Elapsed: {}, Cluster:{}".format(elapsed_time, cluster))
+        if cluster.std == 0:
+            if elapsed_time == cluster.mean:
+                return TransitionMatrix.SAME, cluster
+            else:
+                return TransitionMatrix.DIFF, cluster
         else:
-            return TransitionMatrix.SAME, cluster
+            z = (elapsed_time - cluster.mean)/cluster.std
+            if abs(z) > 3:
+                return TransitionMatrix.DIFF, cluster
+            else:
+                return TransitionMatrix.SAME, cluster
         """
         #z = (elapsed_time - cluster.mean)/cluster.k
         # How likely a elapsed time diff from the mean to be from the same
@@ -193,49 +204,65 @@ class TransitionMatrix(object):
         else:
             return TransitionMatrix.SAME, cluster
         """
-    def compute_transition_time(self, newval, ts, pv):
+
+    def write_msg(self, filehandler, res, ts, pv_name, got, expected, crit_val=None, last_val=None):
+
+        if res == TransitionMatrix.UNEXPECT:
+            filehandler.write("[{}][{}] Unexpected value for {}, expected:{}, got {}\n".format(ts, res, pv_name,
+                                                                                              expected, got))
+
+        else:
+            filehandler.write("[{}][{}]transitions for {} {}->{}, expected:{}, got:{}\n".format(ts, res, pv_name,
+                                                                                                last_val, crit_val,
+                                                                                                expected, got))
+
+    def compute_transition_time(self, newval, ts, pv, filehandler):
         if not self.same_value(newval, self.header[0], pv) and newval < self.header[0]:
 
-            print("[{}][{}] Unexpected value for {}, got {}".format(ts, TransitionMatrix.UNEXPECT,
-                                                                    pv.name, newval))
-            if self.last_value is None or self.last_value.value != "-inf":
-                self.last_value = ValueTS("-inf", ts)
-            return
+            self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name, newval, self.header[0])
 
         elif not self.same_value(newval, self.header[-1], pv) and newval > self.header[-1]:
 
-            print("[{}][{}] Unexpected value for {}, got {}".format(ts, TransitionMatrix.UNEXPECT,
-                                                                    pv.name, newval))
-            if self.last_value is None or self.last_value.value != "inf":
-                self.last_value = ValueTS("inf", ts)
-            return
+            self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name, newval, self.header[-1])
 
+        # If no critical value was found, we need to compute how long the last
+        # critical value remained
+        found = False
         for crit_val in self.header:
             if self.same_value(newval, crit_val, pv):
+                self.detection_trigger = True
+                found = True
                 if self.last_value is not None:
-                    elapsed_time = (ts - self.last_value.ts).total_seconds()
-                    if self.last_value.value == "inf" or self.last_value.value == "-inf":
-                        print("[{}][{}]transition from illegal position for {} {}->{},  {}".format(ts,
-                                                                                              TransitionMatrix.ILLEGAL,
-                                                                                              pv.name,
-                                                                                              self.last_value.value,
-                                                                                              crit_val,
-                                                                                              elapsed_time))
+                    if self.last_value.value == crit_val:
+                        self.last_value = ValueTS(value=crit_val,
+                                                  start=self.last_value.start,
+                                                  end=ts)
                     else:
+                        elapsed_trans_t = (ts - self.last_value.end).total_seconds()
                         res, expected = self.check_transition_time(crit_val, self.last_value.value,
-                                                                   elapsed_time, pv)
+                                                                   elapsed_trans_t, pv)
                         if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
-                            print("[{}][{}]transitions for {} {}->{}, expected: {}, got:{}".format(ts, res, pv.name,
-                                                                                                   self.last_value.value
-                                                                                                   , crit_val, expected,
-                                                                                                   elapsed_time))
-                    if self.last_value.value != crit_val:
-                        self.last_value = ValueTS(value=crit_val, ts=ts)
+                            self.write_msg(filehandler, res, ts, pv.name, elapsed_trans_t, expected,
+                                           self.last_value.value, crit_val)
+
+                        self.last_value = ValueTS(value=crit_val, start=ts, end=ts)
                 else:
-                    self.last_value = ValueTS(value=crit_val, ts=ts)
+                    self.last_value = ValueTS(value=crit_val, start=ts, end=ts)
                 break
-            elif newval < crit_val:
+
+            if newval < crit_val:
                 break
+
+        if not found or ts == self.end_time:
+
+            if self.detection_trigger and self.last_value is not None:
+                self.detection_trigger = False
+                same_value_t = (self.last_value.end - self.last_value.start).total_seconds()
+                res, expected = self.check_transition_time(self.last_value.value,
+                                                           self.last_value.value, same_value_t, pv)
+                if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
+                    self.write_msg(filehandler, res, ts, pv.name, same_value_t, expected,
+                                   self.last_value.value, self.last_value.value)
     @Decorators
     def update_transition_matrix(self, value, ts, pv):
         for crit_val in self.header:
@@ -298,7 +325,7 @@ class TransitionMatrix(object):
 
 class TimeChecker(Checker):
 
-    def __init__(self, descFile, store, detection_store=None, network=False,
+    def __init__(self, descFile, filename, store, detection_store=None, network=False,
                  frameSize=10):
         Checker.__init__(self, descFile, store, network)
         self.done = False
@@ -310,65 +337,63 @@ class TimeChecker(Checker):
         self.map_var_frame = {}
 
         self.detection_cond = {}
+        self.filehandler = open(filename, "w")
 
         self.matrices = self.create_matrices()
+
+    def close(self):
+        self.filehandler.close()
 
     def create_matrices(self):
         matrices = {}
         for name, variable in self.vars.items():
-            matrices[name] = TransitionMatrix(variable)
+            if variable.is_periodic:
+                matrices[name] = TransitionMatrix(variable)
         return matrices
 
-    def create_var(self, host, port, kind, addr):
-        pv = utils.ProcessVariable(host, port, kind, addr, name=utils.randomName())
-        self.vars[pv.name] = pv
-        self.map_key_name[pv.key()] = pv.name
-        return pv
+    def is_var_of_interest(self, name):
+        return name != 'timestamp' and name != 'normal/attack' and self.vars[name].is_periodic
 
-    def get_variable(self, msg, key):
-        if key not in self.map_key_name:
-            pv = self.create_var(msg.host, msg.port, msg.kind, msg.addr)
-        else:
-            name = self.map_key_name[key]
-            pv = self.vars[name]
-        return pv
-
-    def get_transition_matrix(self, key, variable, detection):
-        if not detection:
-            if key not in self.map_var_frame:
-                self.map_var_frame[key] = [TransitionMatrix(variable)]
-            return self.map_var_frame[key][-1]
-        else:
-            if key not in self.detection_cond:
-                self.detection_cond[key] = [TransitionMatrix(variable)]
-            return self.detection_cond[key][-1]
-
+    def basic_detection(self, name, value, ts):
+        pv = self.vars[name]
+        if (value > pv.max_val and
+                not utils.same_value(pv.max_val, pv.min_val, value, pv.max_val)):
+            self.filehandler.write("[{}] Value too high for {} expected:{}, got:{}".format(ts, name,
+                                                                                           pv.max_val, value))
+        elif (value < pv.min_val and
+              not utils.same_value(pv.min_val, pv.min_val, value, pv.min, pv.min_val)):
+            self.filehandler.write("[{}] Value too low for {} expected:{}, got:{}".format(ts, name,
+                                                                                          pv.min_val, value))
     def fill_matrices(self):
         for i, state in enumerate(self.store):
             ts = state['timestamp']
             for name, val in state.items():
-                if name != 'timestamp' and name != 'normal/attack':
+                if self.is_var_of_interest(name):
                     matrix = self.matrices[name]
-                    if i == 0:
-                        # If value is constant
-                        matrix.start_time = ts
                     if i == len(self.store) - 1:
                         matrix.end_time = ts
                     pv = self.vars[name]
                     matrix.update_transition_matrix(val, ts, pv)
 
-        for name in self.vars:
-            self.matrices[name].compute_clusters()
+        for name, val in self.vars.items():
+            if val.is_periodic:
+                self.matrices[name].compute_clusters()
 
     def detect_suspect_transition(self):
         if self.detection_store is not None:
-            for state in self.detection_store:
+            for i, state in enumerate(self.detection_store):
                 ts = state['timestamp']
                 for name, val in state.items():
-                    if name != 'timestamp' and name != 'normal/attack':
+                    if self.is_var_of_interest(name):
                         matrix = self.matrices[name]
+                        if i == len(self.detection_store) - 1:
+                            matrix.end_time = ts
                         pv = self.vars[name]
-                        matrix.compute_transition_time(val, ts, pv)
+                        matrix.compute_transition_time(val, ts, pv, self.filehandler)
+                    elif name != 'timestamp' and name != 'normal/attack':
+                        self.basic_detection(name, val, ts)
+        else:
+            raise(ValueError("No data to run on for detection"))
 
     def display_message(self):
         s = ""

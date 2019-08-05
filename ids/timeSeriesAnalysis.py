@@ -292,7 +292,7 @@ def main(data, store):
     digitizer = Digitizer(pv.limit_values, pv.min_val, pv.max_val)
     print(digitizer.mapping)
     res = digitizer.digitize(lit_ts)
-    print(res) 
+    print(res)
 
     """
     g = create_graph(res)

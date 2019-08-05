@@ -38,6 +38,8 @@ DIS_INP = "di"
 HOL_REG = "hr"
 INP_REG = "ir"
 
+DISCRETE = [DIS_COIL, DIS_INP]
+CONTINOUS = [INP_REG, HOL_REG]
 # Funcode write
 
 WRITE_FUNCODE = [5, 6]
@@ -60,6 +62,8 @@ class ProcessSWaTVar():
         self.nbr_transition = 0
         self.last_transition = None
         self.elapsed_time_transition = []
+
+        self.is_periodic = kind in DISCRETE
 
         if min_val is None:
             self.min_val = 1

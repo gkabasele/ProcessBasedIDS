@@ -3,6 +3,9 @@ import math
 import pdb
 import numpy as np
 import utils
+from timeSeriesAnalysis import Digitizer, polynomial_fitting
+
+VAR_PERIOD = 1
 
 class PVStore(object):
 
@@ -11,7 +14,8 @@ class PVStore(object):
         self.vars = {}
         self.setup(descFile)
         if data is not None:
-            self.compute_periodic_vars(data, slen)
+            #self.compute_periodic_vars(data, slen)
+            self.detect_periodic_shape(data)
 
     def setup(self, descFile):
         with open(descFile) as fh:
@@ -39,6 +43,23 @@ class PVStore(object):
                                               min_val=var['min'],
                                               max_val=var['max'])
                 self.vars[pv.name] = pv
+
+    def detect_periodic_shape(self, data):
+        cont_vars = self.continous_vars()
+        cont_vars_digit = {x: Digitizer(self.vars[x].min_val, self.vars[x].max_val) for x in cont_vars}
+
+        for state in data:
+            for k, v in self.vars.items():
+                if not v.is_bool_var():
+                    value = state[k]
+                    d = cont_vars_digit[k]
+                    d.online_digitize(value)
+
+        for k, d in cont_vars_digit.items():
+            x_axis = np.arange(len(d.res))
+            model = polynomial_fitting(x_axis, d.res)
+            self.vars[k].is_periodic = np.var(model) <= VAR_PERIOD
+
 
     def _compute_periodic_vars(self, partition, cont_vars_part):
         for state in partition:

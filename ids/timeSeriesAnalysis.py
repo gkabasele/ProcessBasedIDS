@@ -2,62 +2,13 @@ import pdb
 import math
 import argparse
 import matplotlib.pyplot as plt
-import matplotlib.colors as colors
 import numpy as np
-import networkx as nx
-import igraph as ig
-from networkx.algorithms import community
 import utils
 import string
 from scipy import stats
-from pvStore import PVStore
 from limitVal import RangeVal
 
 NBR_RANGE = 10
-class Edge(object):
-
-    __slots__ = ['neigh', 'score']
-
-    def __init__(self, neigh, score):
-        self.neigh = neigh
-        self.score = score
-
-    def __hash__(self):
-        return hash(self.neigh)
-
-    def __eq__(self, other):
-        return self.neigh == other.neigh
-
-class Graph(object):
-
-    def __init__(self):
-        self.graph = {}
-
-    def add_edge(self, node, neigh):
-        if node not in self.graph:
-            self.graph[node] = set([Edge(neigh,0)])
-        else:
-            if neigh in self.graph[node]:
-                pass
-                #edge = self.gra
-            else:
-                self.graph[node].add(neigh)
-
-    def show_edges(self):
-        for node in self.graph:
-            for neigh in self.graph[node]:
-                print("(", node, ", ", neigh, ")")
-
-    def find_path(self, start, end, path=[]):
-        path = path + [start]
-        if start == end:
-            return path
-        for node in self.graph[start]:
-            if node not in path:
-                newPath = self.find_path(node, end, path)
-                if newPath:
-                    return newPath
-                return None
 
 class Symbol(object):
     i = 0
@@ -103,19 +54,16 @@ class SymbolEntry(object):
     def __repr__(self):
         return self.__str__()
 
-
 class Digitizer(object):
 
-    def __init__(self, len_dataset, min_val, max_val, graph):
-        self.mapping = {}
+    def __init__(self, min_val, max_val):
         self.min_val = min_val
         self.max_val = max_val
-        self.ranges = self.compute_ranges(len_dataset)
-        self.graph = graph
+        self.ranges = self.compute_ranges()
+        self.res = list()
 
-    def compute_ranges(self, len_dataset):
-        ranges = []
-        #nbr_ranges = math.ceil(math.sqrt(len_dataset))
+    def compute_ranges(self):
+        ranges = list()
         nbr_ranges = NBR_RANGE
         ranges_width = (self.max_val - self.min_val)/nbr_ranges
 
@@ -127,53 +75,30 @@ class Digitizer(object):
 
         return ranges
 
-    def nodes(self):
-        return self.graph.nodes
-
-    def edges(self):
-        return self.graph.edges
-
     def get_range(self, x):
+        if x <= self.ranges[0].lower:
+            return 0, self.ranges[0]
+        
+        if x >= self.ranges[-1].upper:
+            return len(self.ranges)-1, self.ranges[-1]
+
         for i, rangeval in enumerate(self.ranges):
             if x >= rangeval.lower and x <= rangeval.upper:
                 return i, rangeval
 
-    def create_graph(self, data):
-
-        for i in range(len(data) - 1):
-            x, curr_range = self.get_range(data[i])
-            y, next_range = self.get_range(data[i+1])
-
-            if curr_range != next_range:
-                if self.graph.has_edge(x, y):
-                    self.graph[x][y]['score'] += 1
-                else:
-                    self.graph.add_edge(x, y, score=1)
+    def online_digitize(self, x):
+        i, _ = self.get_range(x)
+        self.res.append(i)
 
     def digitize(self, data):
-        res = []
-
+        res = list()
         for val in data:
-            i, rangeval = self.get_range(val)
+            i, _ = self.get_range(val)
             res.append(i)
         return res
 
 def symbol(val):
     return SymbolEntry(Symbol(val))
-
-def test_digitize():
-    digitizer = Digitizer([3, 6, 9], 0, 1)
-    print(digitizer.mapping)
-    input_l = [2, 5, 8, 1, 11, 3, 7, 2, 9, 13, 6, 11, 9]
-    res = digitizer.digitize(input_l)
-    print(res)
-    assert [x.symbol.val for x in res] == ['a', 'c', 'e', 'a', 'g', 'b', 'e', 'a', 'f', 'g', 'd', 'g', 'f']
-
-    prefix = [symbol('e'), symbol('a')]
-
-    freq = search_symbols_periodicity(res, prefix) 
-
-    print(freq)
 
 def _search_symbols_periodicity(subsequence, prefix):
     res = True
@@ -245,23 +170,6 @@ def get_community(communities, digitizer, x):
         if i in communities:
             return c
 
-def periodicity_detection(data, digitizer):
-    edges_from_nx = list(digitizer.graph.edges())
-    graph = ig.Graph(edges=edges_from_nx, directed=True)
-    communities = graph.community_infomap()
-
-    com_visited = []
-    periods = []
-    com_first = get_community(communities, digitizer, data[0])
-
-    for i in range(1, len(data)):
-        com_curr = get_community(communities, digitizer, data[i])
-        com_visited.append(com_curr)
-        if com_curr == com_first and len(com_visited) == len(communities):
-            periods.append(i)
-            com_visited = []
-    return periods
-
 def polynomial_fitting(x, y, deg=2):
 
     coef = np.polyfit(x, y, deg)
@@ -275,31 +183,24 @@ def polynomial_fitting(x, y, deg=2):
         res.append(z)
     return res
 
-def main(data, store, pv_name):
-    lit_ts = utils.get_all_values_pv(data, pv_name)
+def main(data, pv_name):
+    lit_ts = utils.get_all_values_pv(data, pv_name)[:utils.DAY_IN_SEC]
     min_val = np.min(lit_ts)
     max_val = np.max(lit_ts)
     print("Length of input: {}, range:{}".format(len(lit_ts), (max_val-min_val)))
-    pv = store[pv_name]
-    d = Digitizer(max_val-min_val, min_val, max_val, nx.DiGraph())
-    #d.create_graph(lit_ts)
+    d = Digitizer(min_val, max_val)
     res = d.digitize(lit_ts)
     x_axis = np.arange(len(res))
     model = polynomial_fitting(x_axis, res)
     print("Model mean:{} , variance:{}".format(np.mean(model), np.var(model)))
-    plt.plot(x_axis, res)
-    plt.plot(x_axis, model)
-    plt.show()
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", action="store", dest="input")
-    parser.add_argument("--conf", action="store", dest="conf")
 
     args = parser.parse_args()
     data = utils.read_state_file(args.input)[utils.COOL_TIME:]
-    store = PVStore(args.conf)
-    pv_name = "lit101"
-    main(data, store, pv_name)
+    pv_name = "dpit301"
+    main(data,pv_name)
     pdb.set_trace()

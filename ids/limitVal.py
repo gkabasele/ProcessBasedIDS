@@ -40,6 +40,11 @@ class RangeVal(object):
     def __repr__(self):
         return self.__str__()
 
+    def __eq__(self, other):
+        return self.lower == other.lower and self.upper == other.upper
+    
+    def hash(self):
+        return hash(self.__str__())
 
 def find_inflection_point(data):
     maximas = []

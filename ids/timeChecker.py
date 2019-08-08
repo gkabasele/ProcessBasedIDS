@@ -361,7 +361,7 @@ class TimeChecker(Checker):
             self.filehandler.write("[{}] Value too high for {} expected:{}, got:{}".format(ts, name,
                                                                                            pv.max_val, value))
         elif (value < pv.min_val and
-              not utils.same_value(pv.min_val, pv.min_val, value, pv.min, pv.min_val)):
+              not utils.same_value(pv.max_val, pv.min_val, value, pv.min_val)):
             self.filehandler.write("[{}] Value too low for {} expected:{}, got:{}".format(ts, name,
                                                                                           pv.min_val, value))
     def fill_matrices(self):

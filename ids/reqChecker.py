@@ -33,14 +33,14 @@ class Requirement(object):
 
 class Checker(threading.Thread):
 
-    def __init__(self, descFile, queue, network=False):
+    def __init__(self, descFile, data, network=False):
         threading.Thread.__init__(self)
         # name -> Process Variable
-        self.vars = PVStore(descFile)
+        self.vars = PVStore(descFile, data[COOL_TIME:])
         #key -> name
         self.map_key_name = {}
 
-        self.store = queue
+        self.store = data
         self.network = network
 
         """

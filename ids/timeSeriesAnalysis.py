@@ -1,14 +1,32 @@
 import pdb
 import math
 import argparse
-from matplotlib import pyplot
+import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 import numpy as np
+import networkx as nx
+import igraph as ig
+from networkx.algorithms import community
 import utils
 import string
 from scipy import stats
 from pvStore import PVStore
+from limitVal import RangeVal
 
-ALPHA = string.ascii_lowercase
+NBR_RANGE = 10
+class Edge(object):
+
+    __slots__ = ['neigh', 'score']
+
+    def __init__(self, neigh, score):
+        self.neigh = neigh
+        self.score = score
+
+    def __hash__(self):
+        return hash(self.neigh)
+
+    def __eq__(self, other):
+        return self.neigh == other.neigh
 
 class Graph(object):
 
@@ -17,9 +35,13 @@ class Graph(object):
 
     def add_edge(self, node, neigh):
         if node not in self.graph:
-            self.graph[node] = set([neigh])
+            self.graph[node] = set([Edge(neigh,0)])
         else:
-            self.graph[node].add(neigh)
+            if neigh in self.graph[node]:
+                pass
+                #edge = self.gra
+            else:
+                self.graph[node].add(neigh)
 
     def show_edges(self):
         for node in self.graph:
@@ -39,20 +61,11 @@ class Graph(object):
 
 class Symbol(object):
     i = 0
-    j = 0
 
     def __init__(self, val=None):
         if val is None:
-            s = ALPHA[Symbol.i]
-            k = 0
-            for _ in range(Symbol.j):
-                s += ALPHA[k]
-                k += 1
-            self.val = s
+            self.val = str(Symbol.i)
             Symbol.i += 1
-            if Symbol.i == len(ALPHA):
-                Symbol.j += 1
-                Symbol.i = 0
         else:
             self.val = val
 
@@ -74,7 +87,7 @@ class SymbolEntry(object):
 
     def same_symbol(self, other):
         return self.symbol.val == other.val
-    
+
     def val(self):
         return self.symbol.val
 
@@ -90,51 +103,59 @@ class SymbolEntry(object):
     def __repr__(self):
         return self.__str__()
 
+
 class Digitizer(object):
 
-    def __init__(self, bins, min_val, max_val):
-        self.bins = bins
+    def __init__(self, len_dataset, min_val, max_val, graph):
         self.mapping = {}
         self.min_val = min_val
         self.max_val = max_val
-        for i, val in enumerate(bins):
-            if i == 0:
-                self.mapping["<{}".format(val)] = Symbol()
+        self.ranges = self.compute_ranges(len_dataset)
+        self.graph = graph
 
-            self.mapping[str(val)] = Symbol()
+    def compute_ranges(self, len_dataset):
+        ranges = []
+        #nbr_ranges = math.ceil(math.sqrt(len_dataset))
+        nbr_ranges = NBR_RANGE
+        ranges_width = (self.max_val - self.min_val)/nbr_ranges
 
-            if i < len(bins)-1:
-                self.mapping["[{},{}]".format(val, bins[i+1])] = Symbol()
-            else:
-                self.mapping[">{}".format(val)] = Symbol()
+        for i in range(nbr_ranges):
+            lower = self.min_val + i * ranges_width
+            upper = self.min_val + (i+1)*ranges_width
+            r = RangeVal(lower, upper, 0)
+            ranges.append(r)
 
-    def get_symbol(self, value):
-        for i, v in enumerate(self.bins):
-            if utils.same_value(self.max_val, self.min_val, v, value):
-                return self.mapping[str(v)]
+        return ranges
 
-            elif value < v:
-                if i == 0:
-                    return self.mapping["<{}".format(v)]
+    def nodes(self):
+        return self.graph.nodes
+
+    def edges(self):
+        return self.graph.edges
+
+    def get_range(self, x):
+        for i, rangeval in enumerate(self.ranges):
+            if x >= rangeval.lower and x <= rangeval.upper:
+                return i, rangeval
+
+    def create_graph(self, data):
+
+        for i in range(len(data) - 1):
+            x, curr_range = self.get_range(data[i])
+            y, next_range = self.get_range(data[i+1])
+
+            if curr_range != next_range:
+                if self.graph.has_edge(x, y):
+                    self.graph[x][y]['score'] += 1
                 else:
-                    return self.mapping["[{},{}]".format(self.bins[i-1], v)]
-            else:
-                if i == len(self.bins)-1:
-                    return self.mapping[">{}".format(v)]
+                    self.graph.add_edge(x, y, score=1)
 
     def digitize(self, data):
         res = []
 
-        for i, value in enumerate(data):
-            sym = self.get_symbol(value)
-            if len(res) == 0:
-                res.append(SymbolEntry(sym, i))
-            else:
-                last_symbol = res[-1]
-                if last_symbol.same_symbol(sym):
-                    last_symbol.end_time = i
-                else:
-                    res.append(SymbolEntry(sym, i))
+        for val in data:
+            i, rangeval = self.get_range(val)
+            res.append(i)
         return res
 
 def symbol(val):
@@ -218,87 +239,57 @@ def test_symbol_periodicity_search(sequence, prefix, freq):
         else:
             i += 1
 
-def create_graph(res):
-    g = Graph()
-    for i in range(len(res) - 1):
-        g.add_edge(res[i].val(), res[i+1].val())
+def get_community(communities, digitizer, x):
+    i, _ = digitizer.get_range(x)
+    for c in communities:
+        if i in communities:
+            return c
 
-    return g
+def periodicity_detection(data, digitizer):
+    edges_from_nx = list(digitizer.graph.edges())
+    graph = ig.Graph(edges=edges_from_nx, directed=True)
+    communities = graph.community_infomap()
 
-def _periodicity_test(partition, cont_vars_part):
+    com_visited = []
+    periods = []
+    com_first = get_community(communities, digitizer, data[0])
 
-    for state in partition:
-        for k in cont_vars_part:
-            cont_vars_part[k].append(state[k])
+    for i in range(1, len(data)):
+        com_curr = get_community(communities, digitizer, data[i])
+        com_visited.append(com_curr)
+        if com_curr == com_first and len(com_visited) == len(communities):
+            periods.append(i)
+            com_visited = []
+    return periods
 
-def periodicity_test(data, store, slen, thresh=utils.DIST):
+def polynomial_fitting(x, y, deg=2):
 
-    cont_vars = store.continous_vars()
-    cont_vars_part = {x: [] for x in cont_vars}
-    vars_means = {x: [] for x in cont_vars}
-    nbr_partition = math.ceil(len(data)/slen)
+    coef = np.polyfit(x, y, deg)
+    res = []
+    exp = [i for i in range(deg+1)]
+    exp.reverse()
+    for val in x:
+        z = 0
+        for i, j in zip(range(deg+1), exp):
+            z += coef[i]*(val**j)
+        res.append(z)
+    return res
 
-    for i in range(nbr_partition):
-
-        _periodicity_test(data[i*slen:(i+1)*slen], cont_vars_part)
-
-        for k, v in cont_vars_part.items():
-            vars_means[k].append(np.mean(v))
-            cont_vars_part[k] = []
-
-    for k, v in vars_means.items():
-        var = store[k]
-        diff_means = []
-        for i in range(len(v) - 1):
-            for j in range(i+1, len(v)):
-                diff = math.fabs(v[i] - v[j])
-                diff_means.append(diff)
-        same_dist_test = (var.max_val - var.min_val)*thresh
-        if np.mean(diff_means) <= same_dist_test:
-            print("Name:{}".format(k))
-
-def partition_statistic(data, store, pv_name, slen, thresh=utils.DIST):
-
-    vals = utils.get_all_values_pv(data, pv_name)
-    nbr_partition = math.ceil(len(vals)/slen)
-
-    means = []
-    var_s = []
-
-    for i in range(nbr_partition):
-        partition = vals[i*slen:(i+1)*slen]
-        means.append(np.mean(partition))
-        var_s.append(np.var(partition))
-
-    print(means)
-
-    diff_means = []
-
-    for i in range(len(means) - 1):
-        for j in range(i+1, len(means)):
-            diff = math.fabs(means[i] - means[j])
-            diff_means.append(diff)
-
-    var = store[pv_name]
-    same_dist_test = (var.max_val - var.min_val)*thresh
-    print("Name:{}".format(pv_name))
-    print("MeanDiff:{}, {}".format(np.mean(diff_means), same_dist_test))
-
-def main(data, store):
-    pv_name = "lit101"
-    lit_ts = utils.get_all_values_pv(data, pv_name, utils.DAY_IN_SEC)
-    print("Length of input: {}".format(len(lit_ts)))
+def main(data, store, pv_name):
+    lit_ts = utils.get_all_values_pv(data, pv_name)
+    min_val = np.min(lit_ts)
+    max_val = np.max(lit_ts)
+    print("Length of input: {}, range:{}".format(len(lit_ts), (max_val-min_val)))
     pv = store[pv_name]
-    digitizer = Digitizer(pv.limit_values, pv.min_val, pv.max_val)
-    print(digitizer.mapping)
-    res = digitizer.digitize(lit_ts)
-    print(res)
-
-    """
-    g = create_graph(res)
-    print(g.find_path("b", "h"))
-    print(g.find_path("h", "b"))
-    """
+    d = Digitizer(max_val-min_val, min_val, max_val, nx.DiGraph())
+    #d.create_graph(lit_ts)
+    res = d.digitize(lit_ts)
+    x_axis = np.arange(len(res))
+    model = polynomial_fitting(x_axis, res)
+    print("Model mean:{} , variance:{}".format(np.mean(model), np.var(model)))
+    plt.plot(x_axis, res)
+    plt.plot(x_axis, model)
+    plt.show()
 
 if __name__ == "__main__":
 
@@ -309,10 +300,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     data = utils.read_state_file(args.input)[utils.COOL_TIME:]
     store = PVStore(args.conf)
-
-    #partition_statistic(data, store, "lit101", utils.DAY_IN_SEC)
-    periodicity_test(data, store, utils.DAY_IN_SEC)
-
-    """
-    main(data, store)
-    """
+    pv_name = "lit101"
+    main(data, store, pv_name)
+    pdb.set_trace()

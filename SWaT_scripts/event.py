@@ -98,6 +98,22 @@ def plot_timeseries(data, pv):
     ax.set_ylabel(pv)
 
     ax.plot(x, vals)
+
+    min_val = np.min(vals)
+    max_val = np.max(vals)
+
+    #nbr_ranges = math.ceil(math.sqrt(max_val - min_val))
+    #range_width = (max_val - min_val)/nbr_ranges
+    #split = set()
+
+    #for i in range(nbr_ranges):
+    #    lower = min_val + i * range_width
+    #    upper = min_val + (i+1) * range_width
+    #    split.add(lower)
+    #    split.add(upper)
+
+    for h in np.linspace(min_val, max_val, 10):
+        ax.axhline(h, color='black', lw=0.2)
     plt.show()
 
 def plot_variable_timeseries_corr(data, act, sens):

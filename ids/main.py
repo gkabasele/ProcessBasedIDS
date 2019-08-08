@@ -52,16 +52,15 @@ def main_network(conf, infile):
 
 def main(conf, infile, malicious):
     
-    filename = "detection_v3.txt"
+    filename = "detection_v2.txt"
     print("Read Normal mode file")
-    data = utils.read_state_file(infile)[:50000]
+    data = utils.read_state_file(infile)
     time_checker = TimeChecker(conf, filename, data)
     time_checker.fill_matrices()
     pdb.set_trace()
 
     print("Read Attack mode file")
-    #data_mal = utils.read_state_file(malicious)
-    data_mal = utils.read_state_file(infile)[50000:100000]
+    data_mal = utils.read_state_file(malicious)[:SECOND_WAVE]
     data_mv = data_mal
 
     time_checker.detection_store = data_mv

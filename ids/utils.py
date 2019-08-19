@@ -290,6 +290,10 @@ def compute_kde(data):
     y_data = density(xs)
     return xs, y_data
 
+def plot_1d(data):
+    val = 0.
+    plt.plot(data, np.zeros_like(data) + val, 'x')
+    plt.show()
 
 def read_state_file(name):
     with open(name, "rb") as filename:

@@ -1,4 +1,5 @@
 import pdb
+import math
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -36,27 +37,89 @@ class TimePattern(object):
     def __repr__(self):
         return self.__str__()
 
-def find_minima_local(data):
+def find_extreme_local(data):
     minima = []
-    for i in range(1, len(data)-1):
-        if data[i-1] >= data[i] and data[i+1] >= data[i]:
+    maxima = []
+    for i in range(len(data)):
+        if i == 0:
+            if data[i+1] > data[i]:
+                minima.append(i)
+            elif data[i+1] < data[i]:
+                maxima.append(i)
+            continue
+
+        if i == len(data)-1:
+            if data[i-1] > data[i]:
+                minima.append(i)
+            elif data[i-1] < data[i]:
+                maxima.append(i)
+            continue
+
+        if data[i-1] > data[i] and data[i+1] > data[i]:
             minima.append(i)
 
-    return minima
+        if data[i-1] < data[i] and data[i+1] < data[i]:
+            maxima.append(i)
+
+    return minima, maxima
+
+def get_closest(arr, pos1, pos2, target):
+    val1 = arr[pos1]
+    val2 = arr[pos2]
+    if target - val1 >= val2 - target:
+        return pos2
+    else:
+        return pos1
+
+def find_closest_bp(arr, target):
+    n = len(arr)
+
+    if target <= arr[0]:
+        return 0
+    if target >= arr[n-1]:
+        return n-1
+
+    i = 0
+    j = n
+    mid = 0
+
+    while i < j:
+        mid = math.floor((i + j)/2)
+
+        if arr[mid] == target:
+            return mid
+
+        if target < arr[mid]:
+            # Case for non integer value
+            if mid > 0 and target > arr[mid-1]:
+                return get_closest(arr, mid-1, mid, target)
+            j = mid
+        else:
+            if mid < n-1 and target < arr[mid + 1]:
+                return get_closest(arr, mid, mid + 1, target)
+            i = mid + 1
+    return mid
 
 def clustering_1D(data):
+    # Cluster are created by looking for minimal local in the KDE
+    # Then each data are associated to a cluster to compute the mean
+    # and variance of the cluster
     try:
         xs, y_data = utils.compute_kde(data)
-        minimas = find_minima_local(y_data)
-        breakpoints = [xs[i] for i in minimas]
-        clusters = [list() for i in range(len(minimas)+1)]
+        minimas, maximas = find_extreme_local(y_data)
+        #breakpoints = [xs[i] for i in minimas]
+        #clusters = [list() for i in range(len(minimas)+1)]
+        breakpoints = [xs[i] for i in maximas]
+        clusters = [list() for i in range(len(maximas))]
         for x in data:
-            for i, limit in enumerate(breakpoints):
-                if x <= limit:
-                    clusters[i].append(x)
-                    break
-                elif i == len(breakpoints)-1:
-                    clusters[i+1].append(x)
+            i = find_closest_bp(breakpoints, x)
+            clusters[i].append(x)
+            #for i, limit in enumerate(breakpoints):
+            #    if x <= limit:
+            #        clusters[i].append(x)
+            #        break
+            #    elif i == len(breakpoints)-1:
+            #        clusters[i+1].append(x)
     except np.linalg.LinAlgError:
         wel = Welford()
         wel(data)

@@ -31,6 +31,12 @@ class TimePattern(object):
             self.clusters = clusters
         self.values.clear()
 
+    def get_cluster(self, data):
+        arr = [x.mean for x in self.clusters]
+        i = find_closest_bp(arr, data)
+        cluster = self.clusters[i]
+        return cluster
+
     def __str__(self):
         return "(BP:{} C:{})".format(self.breakpoints, self.clusters)
 
@@ -107,19 +113,20 @@ def clustering_1D(data):
     try:
         xs, y_data = utils.compute_kde(data)
         minimas, maximas = find_extreme_local(y_data)
-        #breakpoints = [xs[i] for i in minimas]
-        #clusters = [list() for i in range(len(minimas)+1)]
-        breakpoints = [xs[i] for i in maximas]
-        clusters = [list() for i in range(len(maximas))]
-        for x in data:
-            i = find_closest_bp(breakpoints, x)
-            clusters[i].append(x)
-            #for i, limit in enumerate(breakpoints):
-            #    if x <= limit:
-            #        clusters[i].append(x)
-            #        break
-            #    elif i == len(breakpoints)-1:
-            #        clusters[i+1].append(x)
+        # No maximas has been found, can occur if constant value
+        if len(maximas) == 0:
+            wel = Welford()
+            wel(data)
+            clusters = [wel]
+            breakpoints = None
+        else:
+            breakpoints = [xs[i] for i in maximas]
+            clusters = [list() for i in range(len(maximas))]
+            if len(breakpoints) == 0:
+                pdb.set_trace()
+            for x in data:
+                i = find_closest_bp(breakpoints, x)
+                clusters[i].append(x)
     except np.linalg.LinAlgError:
         wel = Welford()
         wel(data)

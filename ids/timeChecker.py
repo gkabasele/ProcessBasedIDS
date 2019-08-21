@@ -157,23 +157,9 @@ class TransitionMatrix(object):
     def find_cluster(self, pattern, elapsed_time):
         if len(pattern.clusters) == 1:
             return pattern.clusters[0]
-
-        cluster = None
-        bpoints = pattern.breakpoints
-        for i, limit in enumerate(bpoints):
-            if elapsed_time <= limit:
-                if i == 0:
-                    cluster = pattern.clusters[i]
-                else:
-                    prev = pattern.clusters[i-1]
-                    index = self._find_closest(elapsed_time, prev, limit, i)
-                    cluster = pattern.clusters[index]
-                break
-            else:
-                if i == len(bpoints)-1:
-                    cluster = pattern.clusters[i+1]
-        return cluster
-
+        else:
+            return pattern.get_cluster(elapsed_time)
+        
     def check_transition_time(self, newval, oldval, elapsed_time, pv):
         row = self.val_pos[oldval]
         column = self.val_pos[newval]

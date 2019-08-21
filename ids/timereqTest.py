@@ -7,12 +7,62 @@ from scipy.stats import gaussian_kde
 import numpy as np
 from utils import *
 from timeChecker import TransitionMatrix, TimeChecker
+from timePattern import TimePattern
 
 start_date = datetime.strptime("2018-12-25 15:10:00","%Y-%m-%d %H:%M:%S")
 
 vars_store = "./process_variables_limit.yml"
 
 pv = ProcessSWaTVar("lit101", "hr", limit_values=[100, 700], min_val=94, max_val=703)
+
+def test_setup():
+
+    mu = 140
+    sigma = 20
+
+    tmp = np.random.normal(mu, sigma, 20)
+
+    mu = 2000
+    sigma = 120
+
+    trans_time = np.concatenate((tmp, np.random.normal(mu, sigma, 100)))
+    return trans_time
+
+def test_time_pattern():
+    print("Starting Test time pattern")
+
+    time_pattern = TimePattern()
+
+    times = test_setup()
+
+    for x in times:
+        time_pattern.update(x)
+
+    time_pattern.create_clusters()
+
+    assert len(time_pattern.clusters) == 2
+
+    mu = 140
+    sigma = 20
+    t = np.random.normal(mu, sigma, 1)
+    c = time_pattern.get_cluster(t)
+    assert c == time_pattern.clusters[0]
+
+    mu = 2000
+    sigma = 120
+    t = np.random.normal(mu, sigma, 1)
+    c = time_pattern.get_cluster(t)
+    assert c == time_pattern.clusters[1]
+
+    mu = 600
+    sigma = 19
+    t = np.random.normal(mu, sigma, 1)
+    c = time_pattern.get_cluster(t)
+    assert c == time_pattern.clusters[0]
+
+    print("Ending Test time pattern")
+
+test_time_pattern()
 
 def show_kde(data):
     density = gaussian_kde(data)
@@ -37,16 +87,9 @@ def _test_transition_matrix(val1, val2, matrix, mu, sigma, res, nb_round, pv):
 
 def test_transition_matrix():
 
-    mu = 140
-    sigma = 20
+    print("Starting Transition Matrix test")
 
-    tmp = np.random.normal(mu, sigma, 20)
-
-    mu = 2000
-    sigma = 120
-
-    trans_time = np.concatenate((tmp, np.random.normal(mu, sigma, 100)))
-
+    trans_time = test_setup()
     matrix = TransitionMatrix(pv)
 
     timestamp = datetime.strptime("2018-12-25 15:10:00", "%Y-%m-%d %H:%M:%S")
@@ -65,7 +108,7 @@ def test_transition_matrix():
     val = 0
     print("Normal mode")
 
-    _test_transition_matrix(700, 100, matrix, mu, sigma, 
+    _test_transition_matrix(700, 100, matrix, mu, sigma,
                             TransitionMatrix.SAME, 5, pv)
     mu = 2000
     sigma = 120
@@ -85,6 +128,7 @@ def test_transition_matrix():
     _test_transition_matrix(700, 100, matrix, mu, sigma,
                             TransitionMatrix.DIFF, 5, pv)
 
+    print("End Transition Matrix test")
 test_transition_matrix()
 
 def test_matrix():

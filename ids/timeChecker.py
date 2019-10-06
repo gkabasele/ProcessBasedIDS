@@ -7,6 +7,7 @@ import threading
 from datetime import datetime, timedelta
 import pickle
 import pdb
+from collections import OrderedDict
 from copy import copy
 
 import numpy as np
@@ -60,7 +61,7 @@ class TransitionMatrix(object):
         self.end_time = None
         # flag to know if an elapsed time must be computed
         self.computation_trigger = False
-        # flad to know when to detect
+        # flag to know when to detect
         self.detection_trigger = False
 
     def compute_header(self, variable):
@@ -141,6 +142,13 @@ class TransitionMatrix(object):
             elif val < crit_val:
                 break
 
+    def add_malicious_activities(self, malicious_activities, ts, pv):
+        if ts not in malicious_activities:
+            malicious_activities[ts] = set()
+
+        malicious_activities[ts].add(pv)
+
+
     def find_crit_val(self, val, pv):
         for crit_val in self.header:
             if self.same_value(crit_val, val, pv):
@@ -191,25 +199,31 @@ class TransitionMatrix(object):
             return TransitionMatrix.SAME, cluster
         """
 
-    def write_msg(self, filehandler, res, ts, pv_name, got, expected, crit_val=None, last_val=None):
+    def write_msg(self, filehandler, res, ts, pv_name, got, expected, 
+                  malicious_activities,crit_val=None, last_val=None):
 
         if res == TransitionMatrix.UNEXPECT:
             filehandler.write("[{}][{}] Unexpected value for {}, expected:{}, got {}\n".format(ts, res, pv_name,
                                                                                               expected, got))
+            self.add_malicious_activities(malicious_activities, ts, pv_name)
 
         else:
             filehandler.write("[{}][{}]transitions for {} {}->{}, expected:{}, got:{}\n".format(ts, res, pv_name,
                                                                                                 last_val, crit_val,
                                                                                                 expected, got))
+            self.add_malicious_activities(malicious_activities, ts, pv_name)
 
-    def compute_transition_time(self, newval, ts, pv, filehandler):
+    def compute_transition_time(self, newval, ts, pv, filehandler, malicious_activities):
+        # Value greater (resp. lower) than max (resp. min)
         if not self.same_value(newval, self.header[0], pv) and newval < self.header[0]:
 
-            self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name, newval, self.header[0])
+            self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name,
+                           newval, self.header[0], malicious_activities)
 
         elif not self.same_value(newval, self.header[-1], pv) and newval > self.header[-1]:
 
-            self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name, newval, self.header[-1])
+            self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name,
+                           newval, self.header[-1], malicious_activities)
 
         # If no critical value was found, we need to compute how long the last
         # critical value remained
@@ -229,7 +243,20 @@ class TransitionMatrix(object):
                                                                    elapsed_trans_t, pv)
                         if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
                             self.write_msg(filehandler, res, ts, pv.name, elapsed_trans_t, expected,
-                                           self.last_value.value, crit_val)
+                                           malicious_activities, crit_val=self.last_value.value,
+                                           last_val=crit_val)
+                        # Actuator move from one critical value to another without transition value
+                        # so we must compute how long a value remained
+                        if pv.is_bool_var():
+                            same_value_t = (self.last_value.end - self.last_value.start).total_seconds()
+                            res, expected = self.check_transition_time(self.last_value.value,
+                                                                       self.last_value.value,
+                                                                       same_value_t, pv)
+
+                            if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
+                                self.write_msg(filehandler, res, ts, pv.name, elapsed_trans_t, expected,
+                                               malicious_activities, crit_val=self.last_value.value,
+                                               last_val=crit_val)
 
                         self.last_value = ValueTS(value=crit_val, start=ts, end=ts)
                 else:
@@ -248,7 +275,8 @@ class TransitionMatrix(object):
                                                            self.last_value.value, same_value_t, pv)
                 if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
                     self.write_msg(filehandler, res, ts, pv.name, same_value_t, expected,
-                                   self.last_value.value, self.last_value.value)
+                                   malicious_activities, crit_val=self.last_value.value,
+                                   last_val=self.last_value.value)
     @Decorators
     def update_transition_matrix(self, value, ts, pv):
         for crit_val in self.header:
@@ -327,6 +355,9 @@ class TimeChecker(Checker):
 
         self.matrices = self.create_matrices()
 
+        # state considered as activities {<ts>:[target1, target2]}
+        self.malicious_activities = OrderedDict()
+
     def close(self):
         self.filehandler.close()
 
@@ -375,7 +406,8 @@ class TimeChecker(Checker):
                         if i == len(self.detection_store) - 1:
                             matrix.end_time = ts
                         pv = self.vars[name]
-                        matrix.compute_transition_time(val, ts, pv, self.filehandler)
+                        matrix.compute_transition_time(val, ts, pv, self.filehandler,
+                                                       self.malicious_activities)
                     elif name != 'timestamp' and name != 'normal/attack':
                         self.basic_detection(name, val, ts)
         else:

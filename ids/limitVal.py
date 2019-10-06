@@ -20,7 +20,7 @@ take some time so those critical values appear more often. Histogram from
 y-axis
 """
 
-TRESH = 0.01
+TRESH = 0.10
 
 class RangeVal(object):
 
@@ -68,8 +68,13 @@ def find_inflection_point(data):
                 minimas.append(i)
     return maximas, minimas
 
-def compute_ranges(values):
-    hist, bin_edges = np.histogram(values, bins=100)
+def compute_ranges(values, inputtype):
+    if inputtype == "cont":
+        hist, bin_edges = np.histogram(values, bins=100)
+    elif inputtype == "disc":
+        min_val = np.min(values)
+        max_val = np.max(values)
+        hist, bin_edges = np.histogram(values, bins=max_val - min_val)
     ranges = []
     for i in range(len(bin_edges) - 1):
         lower = bin_edges[i]
@@ -118,8 +123,7 @@ def merge_ranges(ranges, number):
 
     return blocks
 
-def find_limit_values(data, pv):
-    values, _ = get_values(data, pv)
+def find_limit_values(values):
     xs, y_data = compute_kde(values)
     maxima_indices, minima_indices = find_inflection_point(y_data)
     minimas = [xs[i] for i in minima_indices]
@@ -127,8 +131,8 @@ def find_limit_values(data, pv):
     minimas.sort()
     return minimas
 
-def divide_and_conquer(values):
-    ranges = compute_ranges(values)
+def divide_and_conquer(values, inputtype):
+    ranges = compute_ranges(values, inputtype)
     blocks = merge_ranges(ranges, len(values))
     return blocks
 
@@ -197,7 +201,7 @@ def slope_graph(times, values):
 
     return slopes
 
-def main(data, conf, output, strategy):
+def main(data, conf, output, strategy, cool_time, inputtype):
     with open(conf) as fh:
         content = fh.read()
         desc = yaml.load(content, Loader=yaml.Loader)
@@ -208,13 +212,13 @@ def main(data, conf, output, strategy):
                 min_val = np.min(values)
                 max_val = np.max(values)
                 if strategy == "hist":
-                    blocks = divide_and_conquer(data[COOL_TIME:])
+                    blocks = divide_and_conquer(values[cool_time:], inputtype)
                     vals = []
                     for block in blocks:
                         vals.append(block.lower.item())
                         vals.append(block.upper.item())
                 elif strategy == "kde":
-                    vals = [float(x) for x in find_limit_values(data[COOL_TIME:], var['name'])]
+                    vals = [float(x) for x in find_limit_values(values[cool_time:])]
 
                 var['critical'] = vals
                 var['min'] = float(min_val)
@@ -230,12 +234,14 @@ if __name__ == "__main__":
     parser.add_argument("--conf", dest="conf", action="store")
     parser.add_argument("--output", dest="output", action="store")
     parser.add_argument("--strategy", default="all", choices=["kde", "hist"])
+    parser.add_argument("--cool", default=COOL_TIME, type=int, dest="cool_time")
+    parser.add_argument("--inputtype", default="cont", choices=["cont", "disc"])
     args = parser.parse_args()
 
     with open(args.filename, "rb") as filename:
         data = pickle.load(filename)
 
-    main(data, args.conf, args.output, args.strategy)
+    main(data, args.conf, args.output, args.strategy, args.cool_time, args.inputtype)
     """
     variables = globals().copy()
     variables.update(locals())

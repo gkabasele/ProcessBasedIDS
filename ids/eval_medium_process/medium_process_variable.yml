@@ -1,0 +1,107 @@
+variables:
+        - variable:
+                name: approvisioning1
+                type: hr
+                values: [0, 500]
+                min: 0
+                max: 500
+
+        - variable:
+                name: approvisioning2
+                type: hr
+                values: [0, 500]
+                min: 0
+                max: 500
+
+        - variable:
+                name: motor1
+                type: co
+
+        - variable:
+                name: motor2
+                type: co
+
+        - variable:
+                name: silo1
+                type: hr
+                values: [0, 40]
+                min: 0
+                max: 60
+
+        - variable:
+                name: silo2
+                type: hr
+                values: [0, 60]
+                min: 0
+                max: 80
+
+        - variable:
+                name: tank1
+                type: hr
+                values: [0, 40]
+                min: 0
+                max: 60
+
+        - variable:
+                name: tankCharcoal
+                type: hr
+                values: [0, 500]
+                min: 0
+                max: 500
+
+        - variable:
+                name: tankFinal
+                type: hr
+                values: [0, 60]
+                min: 0
+                max: 80
+
+        - variable:
+                name: valve1
+                type: co
+
+        - variable:
+                name: valve2
+                type: co
+
+        - variable:
+                name: valveSilo1
+                type: co
+
+        - variable:
+                name: valveSilo2
+                type: co
+
+        - variable:
+                name: valveTank1
+                type: co
+
+        - variable:
+                name: valveTankCharcoal
+                type: co
+
+        - variable:
+                name: valveTankFinal
+                type: co
+
+        - variable:
+                name: wagonCar
+                type: hr
+                values: [0, 20]
+                min: 0
+                max: 40
+        - variable:
+                name: wagonEnd
+                type: co
+
+        - variable:
+                name: wagonlidOpen
+                type: co
+
+        - variable:
+                name: wagonMoving
+                type: co
+
+        - variable:
+                name: wagonStart
+                type: co

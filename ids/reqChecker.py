@@ -36,7 +36,7 @@ class Checker(threading.Thread):
     def __init__(self, descFile, data, network=False):
         threading.Thread.__init__(self)
         # name -> Process Variable
-        self.vars = PVStore(descFile, data[COOL_TIME:])
+        self.vars = PVStore(descFile, data)
         #key -> name
         self.map_key_name = {}
 

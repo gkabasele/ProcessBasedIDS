@@ -14,7 +14,6 @@ class PVStore(object):
         self.vars = {}
         self.setup(descFile)
         if data is not None:
-            #self.compute_periodic_vars(data, slen)
             self.detect_periodic_shape(data)
 
     def setup(self, descFile):
@@ -65,30 +64,6 @@ class PVStore(object):
         for state in partition:
             for k in cont_vars_part:
                 cont_vars_part[k].append(state[k])
-
-    def compute_periodic_vars(self, data, slen, thresh=utils.DIST):
-        cont_vars = self.continous_vars()
-        cont_vars_part = {x: [] for x in cont_vars}
-        vars_means = {x:[] for x in cont_vars}
-        nbr_partition = math.ceil(len(data)/slen)
-
-        for i in range(nbr_partition):
-
-            self._compute_periodic_vars(data[i*slen:(i+1)*slen], cont_vars_part)
-
-            for k, v in cont_vars_part.items():
-                vars_means[k].append(np.mean(v))
-                cont_vars_part[k] = []
-
-        for k, v in vars_means.items():
-            var = self[k]
-            diff_means = []
-            for i in range(len(v) - 1):
-                for j in range(i+1, len(v)):
-                    diff = math.fabs(v[i] - v[j])
-                    diff_means.append(diff)
-            same_dist_test = (var.max_val - var.min_val)*thresh
-            self.vars[k].is_periodic = (np.mean(diff_means) <= same_dist_test)
 
     def continous_vars(self):
         return [x for x, j in self.items() if j.kind in [utils.HOL_REG, utils.INP_REG]]

@@ -78,7 +78,7 @@ class Digitizer(object):
     def get_range(self, x):
         if x <= self.ranges[0].lower:
             return 0, self.ranges[0]
-        
+
         if x >= self.ranges[-1].upper:
             return len(self.ranges)-1, self.ranges[-1]
 
@@ -183,8 +183,8 @@ def polynomial_fitting(x, y, deg=2):
         res.append(z)
     return res
 
-def main(data, pv_name):
-    lit_ts = utils.get_all_values_pv(data, pv_name)[:utils.DAY_IN_SEC]
+def main(data, pv_name, training_size):
+    lit_ts = utils.get_all_values_pv(data, pv_name)[:training_size]
     min_val = np.min(lit_ts)
     max_val = np.max(lit_ts)
     print("Length of input: {}, range:{}".format(len(lit_ts), (max_val-min_val)))
@@ -198,9 +198,12 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", action="store", dest="input")
+    parser.add_argument("--size", type=int, default=utils.DAY_IN_SEC, action="store", dest="training_size",
+                        help="number of sample to consider")
+    parser.add_argument("--cool", type=int, default=utils.COOL_TIME, action="store", dest="cool")
 
     args = parser.parse_args()
-    data = utils.read_state_file(args.input)[utils.COOL_TIME:]
+    data = utils.read_state_file(args.input)[args.cool:]
     pv_name = "dpit301"
-    main(data,pv_name)
+    main(data,pv_name, args.training_size)
     pdb.set_trace()

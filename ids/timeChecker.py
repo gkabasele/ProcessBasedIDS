@@ -47,10 +47,12 @@ class TransitionMatrix(object):
             return res
 
 
-    def __init__(self, variable):
+    def __init__(self, variable, noisy=True):
+        self.noisy = noisy
         self.header = self.compute_header(variable)
         self.name = variable.name
         self.historic_val = []
+
         # map value -> position to row or column of the value in the matrix
         self.val_pos = {}
         self.transitions = self.compute_transition(self.header)
@@ -115,10 +117,16 @@ class TransitionMatrix(object):
         return self.__str__()
 
     def same_value(self, val1, val2, pv):
-        return pv.normalized_dist(val1, val2) <= utils.DIST
+        if self.noisy:
+            return pv.normalized_dist(val1, val2) <= utils.DIST
+        else:
+            return val1 == val2
 
     def great_diff(self, val1, val2, pv):
-        return pv.normalized_dist(val1, val2) >= utils.DIFF
+        if self.noisy:
+            return pv.normalized_dist(val1, val2) >= utils.DIFF
+        else:
+            return val1 != val2
 
     def nbr_transition(self):
         return len(self.historic_val) - 1
@@ -178,7 +186,12 @@ class TransitionMatrix(object):
         cluster = self.find_cluster(expected, elapsed_time)
         #print("Elapsed: {}, Cluster:{}".format(elapsed_time, cluster))
         if cluster.std == 0:
-            if elapsed_time == cluster.mean:
+            #FIXME number of time a value has been seen consider it meaningfull
+            if cluster.k < 3:
+                return TransitionMatrix.SAME, cluster
+
+            elif  cluster.k >= 3 and elapsed_time == cluster.mean:
+
                 return TransitionMatrix.SAME, cluster
             else:
                 return TransitionMatrix.DIFF, cluster
@@ -243,8 +256,8 @@ class TransitionMatrix(object):
                                                                    elapsed_trans_t, pv)
                         if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
                             self.write_msg(filehandler, res, ts, pv.name, elapsed_trans_t, expected,
-                                           malicious_activities, crit_val=self.last_value.value,
-                                           last_val=crit_val)
+                                           malicious_activities, crit_val=crit_val,
+                                           last_val=self.last_value.value)
                         # Actuator move from one critical value to another without transition value
                         # so we must compute how long a value remained
                         if pv.is_bool_var():
@@ -254,9 +267,9 @@ class TransitionMatrix(object):
                                                                        same_value_t, pv)
 
                             if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
-                                self.write_msg(filehandler, res, ts, pv.name, elapsed_trans_t, expected,
+                                self.write_msg(filehandler, res, ts, pv.name, same_value_t, expected,
                                                malicious_activities, crit_val=self.last_value.value,
-                                               last_val=crit_val)
+                                               last_val=self.last_value.value)
 
                         self.last_value = ValueTS(value=crit_val, start=ts, end=ts)
                 else:
@@ -339,13 +352,16 @@ class TransitionMatrix(object):
 
 class TimeChecker(Checker):
 
-    def __init__(self, descFile, filename, store, detection_store=None, network=False,
-                 frameSize=10):
+    def __init__(self, descFile, filename, store, noisy=True , detection_store=None,
+                 network=False, frameSize=10):
+                 
         Checker.__init__(self, descFile, store, network)
         self.done = False
         self.frame_size = timedelta(seconds=frameSize)
         self.detection_store = detection_store
         self.messages = {}
+
+        self.noisy = noisy
 
         self.map_pv_cond = {}
         self.map_var_frame = {}
@@ -365,7 +381,7 @@ class TimeChecker(Checker):
         matrices = {}
         for name, variable in self.vars.items():
             if variable.is_periodic:
-                matrices[name] = TransitionMatrix(variable)
+                matrices[name] = TransitionMatrix(variable, self.noisy)
         return matrices
 
     def is_var_of_interest(self, name):
@@ -374,11 +390,11 @@ class TimeChecker(Checker):
     def basic_detection(self, name, value, ts):
         pv = self.vars[name]
         if (value > pv.max_val and
-                not utils.same_value(pv.max_val, pv.min_val, value, pv.max_val)):
+                not utils.same_value(pv.max_val, pv.min_val, value, pv.max_val, noisy=self.noisy)):
             self.filehandler.write("[{}] Value too high for {} expected:{}, got:{}".format(ts, name,
                                                                                            pv.max_val, value))
         elif (value < pv.min_val and
-              not utils.same_value(pv.max_val, pv.min_val, value, pv.min_val)):
+              not utils.same_value(pv.max_val, pv.min_val, value, pv.min_val, noisy=self.noisy)):
             self.filehandler.write("[{}] Value too low for {} expected:{}, got:{}".format(ts, name,
                                                                                           pv.min_val, value))
     def fill_matrices(self):

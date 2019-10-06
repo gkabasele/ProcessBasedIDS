@@ -265,8 +265,11 @@ def is_number(s):
     """ Returns Truse if string s is a number """
     return s.replace('.','',1).isdigit()
 
-def same_value(max_val, min_val, val1, val2, thresh=DIST):
-    return normalized_dist(max_val, min_val, val1, val2) <= thresh
+def same_value(max_val, min_val, val1, val2, thresh=DIST, noisy=True):
+    if noisy:
+        return normalized_dist(max_val, min_val, val1, val2) <= thresh
+    else:
+        return val1 == val2
 
 def normalized_dist(max_val, min_val, val1, val2):
     return (math.sqrt((val1-val2)**2)/math.sqrt((max_val - min_val)**2))

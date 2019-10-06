@@ -45,7 +45,7 @@ def main_network(conf, infile):
     for thr in threads:
         thr.join()
 
-def main(conf, infile, malicious, detect_file, cool, stop):
+def main(conf, infile, malicious, detect_file, cool, stop, noisy):
 
     filename = detect_file
     print("Read Normal mode file")
@@ -53,7 +53,7 @@ def main(conf, infile, malicious, detect_file, cool, stop):
         data = utils.read_state_file(infile)[cool:]
     else:
         data = utils.read_state_file(infile)
-    time_checker = TimeChecker(conf, filename, data)
+    time_checker = TimeChecker(conf, filename, data, noisy=noisy)
     time_checker.fill_matrices()
     pdb.set_trace()
 
@@ -78,7 +78,9 @@ if __name__ == "__main__":
     parser.add_argument("--stop", type=int, dest="stop", help="where to stop in the attack file")
     parser.add_argument("--detection", dest="detect_file", default="detection.txt")
     parser.add_argument("--cool", type=int, dest="cool", default=utils.COOL_TIME, help="size of cool time")
+    parser.add_argument("--noisy", dest="noisy", action="store_true",
+                        help="numeric value considered as noisy or not")
 
     args = parser.parse_args()
     main(args.conf, args.infile, args.malicious, args.detect_file,
-         args.cool, args.stop)
+         args.cool, args.stop, args.noisy)

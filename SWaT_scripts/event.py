@@ -88,7 +88,12 @@ def main(filename, pv, ts):
                                                           diff))
     return off_reading, on_reading
 
-def plot_timeseries(data, pv):
+def plot_timeseries(data, pv, label=None):
+
+    if label is None:
+        title = pv
+    else:
+        title = label
 
     vals = np.array([x[pv] for x in data])
     x = np.array([x['timestamp'] for x in data])
@@ -114,6 +119,8 @@ def plot_timeseries(data, pv):
 
     for h in np.linspace(min_val, max_val, 10):
         ax.axhline(h, color='black', lw=0.2)
+
+    plt.title(title)
     plt.show()
 
 def plot_variable_timeseries_corr(data, act, sens):
@@ -186,6 +193,11 @@ def plot_data(on_reading, off_reading):
         plt.plot([key]*len(values), values, 'o')
 
     plt.show()
+
+def list_variable(data):
+
+    for key in data[0].keys():
+        print(key)
 
 def get_values(data, pv):
     return np.array([x[pv] for x in data])

@@ -14,6 +14,8 @@ OFF = 1
 
 TURNON = "turnOn"
 TURNOFF = "turnOff"
+GT = "greater"
+LS = "lesser"
 
 class Predicate(object):
     ops = {
@@ -35,6 +37,8 @@ class Predicate(object):
         except KeyError:
             raise KeyError("Unknown operator for a Predicate")
 
+        self.support = 0
+
         self.value = value
 
         Predicate.pred_id += 1
@@ -54,6 +58,24 @@ class Predicate(object):
 
     def __eq__(self, other):
         return self.__hash__() == other.__hash__()
+
+    def __lt__(self, other):
+        if self.varname != other.varname:
+            raise ValueError("Cannot compare two predicates of different variable")
+
+        if self.op_label != other.op_label:
+            return self.op_label < other.op_label
+
+        return self.value < other.value
+
+    def __gt__(self, other):
+        if self.varname != other.varname:
+            raise ValueError("Cannot compare two predicates of different variable")
+
+        if self.op_label != other.op_label:
+            return self.op_label > other.op_label
+
+        return self.value > other.value
 
 class Event(object):
 
@@ -77,10 +99,11 @@ class Event(object):
 def generate_actuators_predicates(actuators, predicates):
 
     for var in actuators:
-        predicates[var] = set([Predicate(var, "==", ON), Predicate(var, "==", OFF)])
+        predicates[var] = {ON : [Predicate(var, "==", ON)],
+                           OFF: [Predicate(var, "==", OFF)]}
 
 def generate_sensors_predicates(sensors, events, states, 
-                                predicates, error_thresh = 0.005):
+                                predicates, error_thresh=0.005):
 
     for act, act_state in events.items():
         for update, event in act_state.items():
@@ -127,9 +150,9 @@ def predicate_from_model(model, X, sens, event, states, predicates,
             pred_gt = Predicate(sens, ">", prediction + error_thresh)
             pred_lt = Predicate(sens, "<", prediction - error_thresh)
             if sens not in predicates:
-                predicates[sens] = set()
-            predicates[sens].add(pred_gt)
-            predicates[sens].add(pred_lt)
+                predicates[sens] = {GT : set(), LS: set()}
+            predicates[sens][GT].add(pred_gt)
+            predicates[sens][LS].add(pred_lt)
         related_sensors.add(sens)
 
 def is_turn_on_event(from_value, to_value):
@@ -167,9 +190,7 @@ def retrieve_update_timestamps(actuators, states):
 
     return events
 
-
-def main(conf, infile):
-    data = read_state_file(infile)
+def generate_all_predicates(conf, data):
     store = PVStore(conf)
 
     actuators = store.discrete_vars()
@@ -182,6 +203,16 @@ def main(conf, infile):
 
     generate_sensors_predicates(sensors, events, data, predicates, error_thresh=0)
 
+    for sens in sensors:
+        predicates[sens][GT] = sorted(list(predicates[sens][GT]), reverse=True)
+        predicates[sens][LS] = sorted(list(predicates[sens][LS]))
+
+    return predicates
+
+
+def main(conf, infile):
+    data = read_state_file(infile)
+    predicates = generate_all_predicates(conf, data)    
     pdb.set_trace()
 
 if __name__ == "__main__":

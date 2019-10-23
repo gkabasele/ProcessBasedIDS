@@ -1,11 +1,12 @@
 import argparse
+import pdb
 import yaml
 from py4j.java_gateway import JavaGateway
 import predicate as pred
 from pvStore import PVStore
 from utils import TS
 from utils import read_state_file
-import pdb
+from idsInvariants import IDSInvariant
 
 TRANSACTIONS = "transactions"
 MINSUPPORT = "minsupport"
@@ -78,7 +79,7 @@ def get_transactions(states, predicates, mapping_id_pred):
     return transactions
 
 def export_files(outfile, transactions, supportfile, predicates,
-                 mappingfile, mapping_id_pred):
+                 mappingfile, mapping_id_pred, gamma, theta):
 
     with open(outfile, "w") as fname:
         for transaction in transactions:
@@ -92,47 +93,68 @@ def export_files(outfile, transactions, supportfile, predicates,
         for varname in predicates:
             for cond in predicates[varname]:
                 for p in predicates[varname][cond]:
-                    fname.write("{} {}\n".format(p.id, p.support))
+                    fname.write("{} {}\n".format(p.id,
+                                                 max(int(gamma*p.support),
+                                                     int(theta))))
 
     with open(mappingfile, "w") as fname:
         for pred_id, pred in mapping_id_pred.items():
             fname.write("{}:{}\n".format(pred_id, pred))
 
 def main(conf, infile, outfile, supportfile, mappingfile,
-         invariants, freqfile):
+         invariants, freqfile, minsup_ratio, gamma, theta,
+         ids_input, do_mining):
+
+
+    if gamma < 0 and gamma > 1:
+        raise ValueError("Gamma must be between 0 and 1")
+
+    if theta < 0 and theta > gamma:
+        raise ValueError("Theta must be between 0 and gamma")
+
     data = read_state_file(infile)
     predicates = pred.generate_all_predicates(conf, data)
     mapping_id_pred = {}
     transactions = get_transactions(data, predicates, mapping_id_pred)
-    export_files(outfile, transactions, supportfile, predicates, mappingfile,
-                 mapping_id_pred)
+        
+    if do_mining:
+        export_files(outfile, transactions, supportfile, predicates, mappingfile,
+                     mapping_id_pred, gamma, theta)
 
-    print("Export transaction to {}".format(outfile))
-    print("Export Support  to {}".format(supportfile))
-    print("Create Java Gateway")
+        print("Export transaction to {}".format(outfile))
+        print("Export Support  to {}".format(supportfile))
+        print("Create Java Gateway")
 
-    # Mining invariants
-    gateway = JavaGateway()
+        # Mining invariants
+        gateway = JavaGateway()
 
-    cfp = gateway.entry_point.getCFP()
-    miner = gateway.entry_point.getMiner()
+        cfp = gateway.entry_point.getCFP()
+        miner = gateway.entry_point.getMiner()
 
-    print("Running CFPGrowth Algorithm, exporting to {}".format(freqfile))
+        print("Running CFPGrowth Algorithm, exporting to {}".format(freqfile))
 
-    cfp.runAlgorithm(outfile, freqfile, supportfile)
+        cfp.runAlgorithm(outfile, freqfile, supportfile)
 
-    minsup = 0.1 * cfp.getDatabaseSize()
+        minsup = minsup_ratio * cfp.getDatabaseSize()
 
-    filtered_output = "_filter_{}".format(minsup).join([freqfile[:-4], ".txt"])
+        filtered_output = "_filter_{}".format(minsup).join([freqfile[:-4], ".txt"])
 
-    print("Filtering Frequent Itemset to {} (minsup: {})".format(filtered_output,
-                                                                 minsup))
-    miner.filterItemSets(freqfile, filtered_output, minsup)
+        print("Filtering Frequent Itemset to {} (minsup: {})".format(filtered_output,
+                                                                     minsup))
+        miner.filterItemSets(freqfile, filtered_output, minsup)
 
-    print("Mining invariants")
-    miner.fillItemSet(filtered_output)
-    miner.miningRules()
-    miner.exportRule(invariants)
+        print("Mining invariants")
+        miner.fillItemSet(filtered_output)
+        miner.miningRules()
+        miner.exportRule(invariants)
+
+    print("Running the ids")
+    ids = IDSInvariant(mapping_id_pred, invariants)
+    data = read_state_file(ids_input)
+    for state in data:
+        ids.valid_state(state)
+
+    pdb.set_trace()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -144,10 +166,18 @@ if __name__ == "__main__":
                         help="File containing the parameter for CFP")
     parser.add_argument("--map", action="store", dest="map_pred",
                         help="File where to write the mapping id to predicate")
+    parser.add_argument("--ids", action="store", dest="ids_input",
+                        help="File to run the ids on")
+    parser.add_argument("--mine", action="store_true", dest="do_mining",
+                        help="should the invariant be mined")
+    parser.add_argument("--minsup", action="store", type=float, default=0.1, dest="minsup")
+    parser.add_argument("--gamma", action="store", type=float, default=1.0, dest="gamma")
+    parser.add_argument("--theta", action="store", type=float, default=0.0, dest="theta")
 
     args = parser.parse_args()
     with open(args.params, "r") as yamlfile:
-        cfg = yaml.load(yamlfile, Loader=yaml.BaseLoader) 
+        cfg = yaml.load(yamlfile, Loader=yaml.BaseLoader)
 
     main(args.conf, args.infile, cfg[TRANSACTIONS], cfg[MINSUPPORT],
-         args.map_pred, cfg[INVARIANTS], cfg[FREQITEMSETS])
+         args.map_pred, cfg[INVARIANTS], cfg[FREQITEMSETS],
+         args.minsup, args.gamma, args.theta, args.ids_input, args.do_mining)

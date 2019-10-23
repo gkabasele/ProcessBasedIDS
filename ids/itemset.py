@@ -1,9 +1,16 @@
 import argparse
+import yaml
+from py4j.java_gateway import JavaGateway
 import predicate as pred
 from pvStore import PVStore
 from utils import TS
 from utils import read_state_file
 import pdb
+
+TRANSACTIONS = "transactions"
+MINSUPPORT = "minsupport"
+FREQITEMSETS = "freqItemSets"
+INVARIANTS = "invariants"
 
 class ItemSet(object):
 
@@ -70,11 +77,9 @@ def get_transactions(states, predicates, mapping_id_pred):
     transactions = [get_sastisfied_predicate(state, predicates, mapping_id_pred) for state in states]
     return transactions
 
-def main(conf, infile, outfile, supportfile, mappingfile):
-    data = read_state_file(infile)
-    predicates = pred.generate_all_predicates(conf, data)
-    mapping_id_pred = {}
-    transactions = get_transactions(data, predicates, mapping_id_pred)
+def export_files(outfile, transactions, supportfile, predicates,
+                 mappingfile, mapping_id_pred):
+
     with open(outfile, "w") as fname:
         for transaction in transactions:
             for item in transaction:
@@ -82,25 +87,67 @@ def main(conf, infile, outfile, supportfile, mappingfile):
                 p = predicates[varname][cond][index]
                 fname.write("{} ".format(p.id))
             fname.write("\n")
+
     with open(supportfile, "w") as fname:
         for varname in predicates:
             for cond in predicates[varname]:
                 for p in predicates[varname][cond]:
                     fname.write("{} {}\n".format(p.id, p.support))
+
     with open(mappingfile, "w") as fname:
         for pred_id, pred in mapping_id_pred.items():
             fname.write("{}:{}\n".format(pred_id, pred))
 
+def main(conf, infile, outfile, supportfile, mappingfile,
+         invariants, freqfile):
+    data = read_state_file(infile)
+    predicates = pred.generate_all_predicates(conf, data)
+    mapping_id_pred = {}
+    transactions = get_transactions(data, predicates, mapping_id_pred)
+    export_files(outfile, transactions, supportfile, predicates, mappingfile,
+                 mapping_id_pred)
+
+    print("Export transaction to {}".format(outfile))
+    print("Export Support  to {}".format(supportfile))
+    print("Create Java Gateway")
+
+    # Mining invariants
+    gateway = JavaGateway()
+
+    cfp = gateway.entry_point.getCFP()
+    miner = gateway.entry_point.getMiner()
+
+    print("Running CFPGrowth Algorithm, exporting to {}".format(freqfile))
+
+    cfp.runAlgorithm(outfile, freqfile, supportfile)
+
+    minsup = 0.1 * cfp.getDatabaseSize()
+
+    filtered_output = "_filter_{}".format(minsup).join([freqfile[:-4], ".txt"])
+
+    print("Filtering Frequent Itemset to {} (minsup: {})".format(filtered_output,
+                                                                 minsup))
+    miner.filterItemSets(freqfile, filtered_output, minsup)
+
+    print("Mining invariants")
+    miner.fillItemSet(filtered_output)
+    miner.miningRules()
+    miner.exportRule(invariants)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--conf", action="store", dest="conf")
-    parser.add_argument("--infile", action="store", dest="infile")
-    parser.add_argument("--database", action="store", dest="database",
-                        help="File where to output the transaction")
+    parser.add_argument("--conf", action="store", dest="conf",
+                        help="File with the process variable")
+    parser.add_argument("--infile", action="store", dest="infile",
+                        help="states of the system over time")
+    parser.add_argument("--params", action="store", dest="params",
+                        help="File containing the parameter for CFP")
     parser.add_argument("--map", action="store", dest="map_pred",
                         help="File where to write the mapping id to predicate")
-    parser.add_argument("--support", action="store", dest="support",
-                        help="File where to output the support")
 
     args = parser.parse_args()
-    main(args.conf, args.infile, args.database, args.support, args.map_pred)
+    with open(args.params, "r") as yamlfile:
+        cfg = yaml.load(yamlfile, Loader=yaml.BaseLoader) 
+
+    main(args.conf, args.infile, cfg[TRANSACTIONS], cfg[MINSUPPORT],
+         args.map_pred, cfg[INVARIANTS], cfg[FREQITEMSETS])

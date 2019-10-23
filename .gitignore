@@ -107,3 +107,11 @@ venv.bak/
 *.swp
 
 *.bin
+
+# Java
+*.class
+
+# IntellIJ
+*.DS_Store
+*.idea
+*.iml

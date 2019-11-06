@@ -12,6 +12,8 @@ TRANSACTIONS = "transactions"
 MINSUPPORT = "minsupport"
 FREQITEMSETS = "freqItemSets"
 INVARIANTS = "invariants"
+OUTPUT_RES = "output"
+LOG = "log"
 
 class ItemSet(object):
 
@@ -105,7 +107,6 @@ def main(conf, infile, outfile, supportfile, mappingfile,
          invariants, freqfile, minsup_ratio, gamma, theta,
          ids_input, do_mining):
 
-
     if gamma < 0 and gamma > 1:
         raise ValueError("Gamma must be between 0 and 1")
 
@@ -116,13 +117,13 @@ def main(conf, infile, outfile, supportfile, mappingfile,
     predicates = pred.generate_all_predicates(conf, data)
     mapping_id_pred = {}
     transactions = get_transactions(data, predicates, mapping_id_pred)
-        
-    if do_mining:
-        export_files(outfile, transactions, supportfile, predicates, mappingfile,
-                     mapping_id_pred, gamma, theta)
 
-        print("Export transaction to {}".format(outfile))
-        print("Export Support  to {}".format(supportfile))
+    if do_mining:
+        export_files(cfg[TRANSACTIONS], transactions, cfg[MINSUPPORT],
+                     predicates, mappingfile, mapping_id_pred, gamma, theta)
+
+        print("Export transaction to {}".format(cfg[TRANSACTIONS]))
+        print("Export Support  to {}".format(cfg[MINSUPPORT]))
         print("Create Java Gateway")
 
         # Mining invariants
@@ -131,30 +132,32 @@ def main(conf, infile, outfile, supportfile, mappingfile,
         cfp = gateway.entry_point.getCFP()
         miner = gateway.entry_point.getMiner()
 
-        print("Running CFPGrowth Algorithm, exporting to {}".format(freqfile))
+        print("Running CFPGrowth Algorithm, exporting to {}".format(cfg[FREQITEMSETS]))
 
-        cfp.runAlgorithm(outfile, freqfile, supportfile)
+        cfp.runAlgorithm(cfg[TRANSACTIONS], cfg[FREQITEMSETS], cfg[MINSUPPORT])
 
         minsup = minsup_ratio * cfp.getDatabaseSize()
 
-        filtered_output = "_filter_{}".format(minsup).join([freqfile[:-4], ".txt"])
+        filtered_output = "_filter_{}".format(minsup).join([cfg[FREQITEMSETS][:-4], ".txt"])
 
         print("Filtering Frequent Itemset to {} (minsup: {})".format(filtered_output,
                                                                      minsup))
-        miner.filterItemSets(freqfile, filtered_output, minsup)
+        miner.filterItemSets(cfg[FREQITEMSETS], filtered_output, minsup)
 
         print("Mining invariants")
         miner.fillItemSet(filtered_output)
         miner.miningRules()
-        miner.exportRule(invariants)
+        miner.exportRule(cfg[INVARIANTS])
 
     print("Running the ids")
-    ids = IDSInvariant(mapping_id_pred, invariants)
+    ids = IDSInvariant(mapping_id_pred, cfg[INVARIANTS], cfg[LOG])
     data = read_state_file(ids_input)
-    for state in data:
-        ids.valid_state(state)
-
-    pdb.set_trace()
+    with open(cfg[OUTPUT_RES], "w") as fname:
+        for state in data:
+            invalid = ids.valid_state(state)
+            if invalid is not None:
+                fname.write("{}\n".format(str(invalid)))
+                fname.write("{}\n\n".format(str(state)))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

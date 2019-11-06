@@ -352,7 +352,7 @@ class TransitionMatrix(object):
 
 class TimeChecker(Checker):
 
-    def __init__(self, descFile, filename, store, noisy=True , detection_store=None,
+    def __init__(self, descFile, filename, store, noisy=True, detection_store=None,
                  network=False, frameSize=10):
                  
         Checker.__init__(self, descFile, store, network)
@@ -367,7 +367,7 @@ class TimeChecker(Checker):
         self.map_var_frame = {}
 
         self.detection_cond = {}
-        self.filehandler = open(filename, "w")
+        self.filehandler = open(filename, "w+")
 
         self.matrices = self.create_matrices()
 
@@ -391,12 +391,12 @@ class TimeChecker(Checker):
         pv = self.vars[name]
         if (value > pv.max_val and
                 not utils.same_value(pv.max_val, pv.min_val, value, pv.max_val, noisy=self.noisy)):
-            self.filehandler.write("[{}] Value too high for {} expected:{}, got:{}".format(ts, name,
-                                                                                           pv.max_val, value))
+            self.filehandler.write("[{}] Value too high for {} expected:{}, got:{}\n".format(ts, name,
+                                                                                             pv.max_val, value))
         elif (value < pv.min_val and
               not utils.same_value(pv.max_val, pv.min_val, value, pv.min_val, noisy=self.noisy)):
-            self.filehandler.write("[{}] Value too low for {} expected:{}, got:{}".format(ts, name,
-                                                                                          pv.min_val, value))
+            self.filehandler.write("[{}] Value too low for {} expected:{}, got:{}\n".format(ts, name,
+                                                                                            pv.min_val, value))
     def fill_matrices(self):
         for i, state in enumerate(self.store):
             ts = state['timestamp']

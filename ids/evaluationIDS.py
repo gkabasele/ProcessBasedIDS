@@ -6,12 +6,25 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pdb
 import yaml
+import predicate as pred
+from itemset import get_transactions
+from idsInvariants import IDSInvariant
 from timeChecker import TimeChecker
 import utils
 
-MAL_CACHE = "malicious_activities.bin"
-MATRIX = "matrices.bin"
-LOG = "res.log"
+#MAL_CACHE = "malicious_activities.bin"
+#MATRIX = "matrices.bin"
+#LOG = "res.log"
+
+MAL_CACHE = "malicious_cache"
+MATRIX = "matrix"
+TIME_LOG = "time_log"
+OUTPUT_RES = "output_res"
+
+TEST_INVARIANTS = "test_with_invariant"
+INV_FILE = "invariants_file"
+OUTPUT_RES_INV = "invariant_output"
+INV_LOG = "invariant_log"
 
 START = 'start'
 END = 'end'
@@ -19,7 +32,8 @@ TS = 'timestamp'
 
 class EvalResult(object):
 
-    def __init__(self, tp, fp, tn, fn, nbr_attack, missed_atk, false_atk):
+    def __init__(self, tp, fp, tn, fn, nbr_attack, missed_atk=None,
+                 false_atk=None):
 
         self.tp = tp
         self.fp = fp
@@ -30,25 +44,31 @@ class EvalResult(object):
         self.false_atk = false_atk
 
     def fpr(self):
-        return self.fp/(self.tp + self.fp)
+        # Among everything that was detected, what is the ratio of false alert
+        try:
+            return self.fp/(self.tp + self.fp)
+        except ZeroDivisionError:
+            return -1
 
     def tpr(self):
-        return self.tp/(self.tp + self.fn)
+        # Among all the existing attack, how much were you able to detect
+        try:
+            return self.tp/(self.tp + self.fn)
+        except ZeroDivisionError:
+            return -1
 
-def compare_activities(mal_expected, mal_computed, attack_store):
+def invariant_comparison(mal_expected, attack_store, detect_timestamps,
+                         just_after):
     i = 0
     j = 0
     true_positive = 0
     false_positive = 0
-    false_negative = 0
     true_negative = 0
-
+    false_negative = 0
     nbr_attack = 0
 
     attack_missed = set()
     attack_false = set()
-
-    detect_timestamps = sorted(list(mal_computed.keys()))
 
     for state in attack_store:
         if i < len(mal_expected):
@@ -56,10 +76,13 @@ def compare_activities(mal_expected, mal_computed, attack_store):
         if j < len(detect_timestamps):
             detect = detect_timestamps[j]
 
-        ts = state[TS]
-        key = (ts.year, ts.month, ts.day, ts.hour, ts.minute)
+        tmp = state[TS]
+        ts = datetime(year=tmp.year, month=tmp.month, day=tmp.day,
+                      hour=tmp.hour, minute=tmp.minute, second=tmp.second)
+        key = (ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second)
 
         attack_detected = ts == detect
+
         if attack_detected:
             j += 1
 
@@ -82,12 +105,20 @@ def compare_activities(mal_expected, mal_computed, attack_store):
 
         # end of attack phase
         elif ts == attack[END]:
-            nbr_attack += 1
-            if attack_detected:
-                true_positive += 1
+            if not just_after:
+                nbr_attack += 1
+
+                if attack_detected:
+                    true_positive += 1
+                else:
+                    false_negative += 1
+                    attack_missed.add(key)
             else:
-                false_negative += 1
-                attack_missed.add(key)
+                if attack_detected:
+                    false_positive += 1
+                    attack_false.add(key)
+                else:
+                    true_negative += 1
             i += 1
 
         # When last attack was done
@@ -98,11 +129,81 @@ def compare_activities(mal_expected, mal_computed, attack_store):
             else:
                 true_negative += 1
 
-    res = EvalResult(true_positive, false_positive, true_negative,
-                     false_negative, nbr_attack, attack_missed,
-                     attack_false)
+    return EvalResult(true_positive, false_positive, true_negative,
+                      false_negative, nbr_attack, attack_missed,
+                      attack_false)
 
-    return res 
+def time_pattern_comparison(mal_expected, attack_store, detect_timestamps,
+                            just_after):
+    i = 0
+    j = 0
+    true_positive = 0
+    false_positive = 0
+    true_negative = 0
+    false_negative = 0
+    nbr_attack = 0
+
+    for state in attack_store:
+        if i < len(mal_expected):
+            attack = mal_expected[i]
+        if j < len(detect_timestamps):
+            detect= detect_timestamps[j]
+        tmp = state[TS]
+        ts = datetime(year=tmp.year, month=tmp.month, day=tmp.day,
+                      hour=tmp.hour, minute=tmp.minute, second=tmp.second)
+        key = (ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second)
+
+        attack_detected = ts == detect
+        if attack_detected:
+            j += 1
+
+        if ts < attack[START]:
+            if attack_detected:
+                false_positive += 1
+            else:
+                true_negative += 1
+        elif ts >= attack[START] and ts < attack[END]:
+            nbr_attack += 1
+            #if attack_detected:
+            #    true_positive += 1
+            #else:
+            #    false_negative += 1
+        elif ts == attack[END]:
+            if not just_after:
+                nbr_attack += 1
+                # TODO add different scenario
+            else:
+                if attack_detected:
+                    true_positive += 1
+                else:
+                    false_negative += 1
+            i += 1
+        elif ts > attack[END]:
+            if attack_detected:
+                false_positive += 1
+            else:
+                true_negative += 1
+
+    return EvalResult(true_positive, false_positive, true_negative,
+                      false_negative, nbr_attack)
+
+def compare_activities(mal_expected, mal_computed, attack_store, timePattern=True, just_after=False):
+    # Cannot comparte the timestamp sets because the expected time
+    # are only range
+
+    # just_after: the end time may represent the last time the attack occured.
+    #           or the time just after the last occurence of the attack occured.
+    try:
+        detect_timestamps = sorted([datetime(t.year, t.month, t.day, t.hour, t.minute, t.second) for t in mal_computed.keys()])
+    except AttributeError:
+        detect_timestamps = sorted([datetime(t.year, t.month, t.day, t.hour, t.minute, t.second) for t in mal_computed])
+        
+    if timePattern:
+        res = time_pattern_comparison(mal_expected, attack_store, detect_timestamps, just_after)
+    else:
+        res = invariant_comparison(mal_expected, attack_store, detect_timestamps,
+                                   just_after)
+    return res
 
 def create_expected_malicious_activities(atk_period):
     with open(atk_period) as fh:
@@ -115,28 +216,53 @@ def create_expected_malicious_activities(atk_period):
             attack[END] = endtime
     return desc
 
-def main(atk_period, conf, malicious, infile, cache):
+def run_invariant_ids(params, conf, data, data_mal, infile, malicious):
+    if data is None:
+        normal = utils.read_state_file(infile)
+    else:
+        normal = data
+
+    if data_mal is None:
+        malicious = utils.read_state_file(malicious)
+    else:
+        malicious = data_mal
+    predicates = pred.generate_all_predicates(conf, normal)
+    mapping_id_pred = {}
+    _ = get_transactions(normal, predicates, mapping_id_pred)
+    ids = IDSInvariant(mapping_id_pred, params[INV_FILE], params[INV_LOG])
+    for state in malicious:
+        ids.valid_state(state)
+    ids.close()
+    return ids
+
+def main(atk_period, conf, malicious, infile, params, cache):
 
     expected_atk = create_expected_malicious_activities(atk_period)
     data_mal = utils.read_state_file(malicious)
+    data = None
     if not cache:
         data = utils.read_state_file(infile)
-        time_checker = TimeChecker(conf, LOG, data)
+        time_checker = TimeChecker(conf, params[TIME_LOG], data)
         time_checker.fill_matrices()
         pickle.dump(time_checker.matrices, open(MATRIX, "wb"))
         time_checker.detection_store = data_mal
         time_checker.detect_suspect_transition()
-        pickle.dump(time_checker.malicious_activities, open(MAL_CACHE, "wb"))
+        pickle.dump(time_checker.malicious_activities, open(params[MAL_CACHE], "wb"))
         time_checker.close()
         malicious_activities = time_checker.malicious_activities
         time_checker.create_matrices()
     else:
-        matrices = pickle.load(open(MATRIX, "rb"))
-        malicious_activities = pickle.load(open(MAL_CACHE, "rb"))
+        matrices = pickle.load(open(params[MATRIX], "rb"))
+        malicious_activities = pickle.load(open(params[MAL_CACHE], "rb"))
 
-        res = compare_activities(expected_atk, malicious_activities, data_mal)
+    res = compare_activities(expected_atk, malicious_activities, data_mal, True, True)
 
-    with open("res_eval.txt", "w") as fh:
+    if params[TEST_INVARIANTS]:
+        ids = run_invariant_ids(params, conf, data, data_mal, infile, malicious)
+
+        inv_res = compare_activities(expected_atk, ids.malicious_activities, data_mal, False, True)
+
+    with open(params[OUTPUT_RES], "w") as fh:
         fh.write("Total:{}\n".format(len(data_mal)))
         fh.write("Nbr Attack: {}\n".format(res.nbr_attack))
         fh.write("TP:{}\n".format(res.tp))
@@ -144,23 +270,40 @@ def main(atk_period, conf, malicious, infile, cache):
         fh.write("TN:{}\n".format(res.tn))
         fh.write("FN:{}\n".format(res.fn))
 
-        tpr = res.tpr()
-        fpr = res.fpr()
+        fh.write("TPR:{}\n".format(res.tpr()))
+        fh.write("FPR:{}\n".format(res.fpr()))
 
-        fh.write("TPR:{}\n".format(tpr))
-        fh.write("FPR:{}\n".format(fpr))
+        if params[TEST_INVARIANTS]:
+            fh.write("Invariant Based\n")
+            fh.write("Total:{}\n".format(len(data_mal)))
+            fh.write("Nbr Attack: {}\n".format(res.nbr_attack))
+            fh.write("TP:{}\n".format(inv_res.tp))
+            fh.write("FP:{}\n".format(inv_res.fp))
+            fh.write("TN:{}\n".format(inv_res.tn))
+            fh.write("FN:{}\n".format(inv_res.fn))
+            fh.write("TPR:{}\n".format(inv_res.tpr()))
+            fh.write("FPR:{}\n".format(inv_res.fpr()))
 
-    pdb.set_trace()
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--attack", type=str, dest="atk_period")
-    parser.add_argument("--conf", type=str, dest="conf")
-    parser.add_argument("--malicious", type=str, dest="malicious")
-    parser.add_argument("--benign", type=str, dest="infile")
-    parser.add_argument("--cache", action="store_true", dest="cache")
+    parser.add_argument("--attack", type=str, dest="atk_period",
+                        help="File containing the start time and time of the attacks")
+    parser.add_argument("--conf", type=str, dest="conf",
+                        help="File with the description of the process variable")
+    parser.add_argument("--malicious", type=str, dest="malicious",
+                        help="Timeseries of the scenario where an attack occured")
+    parser.add_argument("--benign", type=str, dest="infile",
+                        help="Timeseries of the scenario where no attack occured")
+    parser.add_argument("--cache", action="store_true", dest="cache",
+                        help="Should we use data previously computed")
+    parser.add_argument("--params", type=str, dest="params",
+                        help="Configuration file for the evaluation")
 
     args = parser.parse_args()
-    main(args.atk_period, args.conf, args.malicious, args.infile, args.cache)
+    with open(args.params, "r") as fname:
+        params = yaml.load(fname, Loader=yaml.BaseLoader)
+
+    main(args.atk_period, args.conf, args.malicious, args.infile, params, args.cache)

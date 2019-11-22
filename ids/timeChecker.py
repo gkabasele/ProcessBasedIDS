@@ -151,10 +151,12 @@ class TransitionMatrix(object):
                 break
 
     def add_malicious_activities(self, malicious_activities, ts, pv):
-        if ts not in malicious_activities:
-            malicious_activities[ts] = set()
+        time_key = datetime(ts.year, ts.month, ts.day, 
+                            ts.hour, ts.minute, ts.second)
+        if time_key not in malicious_activities:
+            malicious_activities[time_key] = set()
 
-        malicious_activities[ts].add(pv)
+        malicious_activities[time_key].add(pv)
 
 
     def find_crit_val(self, val, pv):

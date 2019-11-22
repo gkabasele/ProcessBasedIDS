@@ -7,6 +7,7 @@ import numpy as np
 import pdb
 import yaml
 import predicate as pred
+import pvStore
 from itemset import get_transactions
 from idsInvariants import IDSInvariant
 from timeChecker import TimeChecker
@@ -57,8 +58,8 @@ class EvalResult(object):
         except ZeroDivisionError:
             return -1
 
-def invariant_comparison(mal_expected, attack_store, detect_timestamps,
-                         just_after):
+def invariant_comparison(mal_expected, mal_computed, attack_store, just_after):
+
     i = 0
     j = 0
     true_positive = 0
@@ -69,6 +70,9 @@ def invariant_comparison(mal_expected, attack_store, detect_timestamps,
 
     attack_missed = set()
     attack_false = set()
+
+    detect_timestamps = dict_list_ts(mal_computed, False)
+
 
     for state in attack_store:
         if i < len(mal_expected):
@@ -133,21 +137,55 @@ def invariant_comparison(mal_expected, attack_store, detect_timestamps,
                       false_negative, nbr_attack, attack_missed,
                       attack_false)
 
-def time_pattern_comparison(mal_expected, attack_store, detect_timestamps,
-                            just_after):
+def get_pv_state(values, old_values, pv_store):
+    pv_state = {} 
+    for k, v in values.items():
+        if k != "timestamp":
+            if v in pv_store.vars[k].limit_values:
+                pv_state[k] = v
+            else:
+                pv_state[k] = old_values[k]
+    return pv_state
+
+def count_number_transitions(old_values, new_values):
+    nbr_transitions = 0
+    for k, v in old_values.items():
+        if v != new_values[k]:
+            nbr_transitions += 1
+    return nbr_transitions
+
+def dict_list_ts(d, timePattern=True):
+    try:
+        if timePattern:
+            return sorted([datetime(t.year, t.month, t.day, t.hour, t.minute, t.second) for t in d.keys()])
+        else:
+            return sorted([datetime(t.year, t.month, t.day, t.hour, t.minute, t.second) for t in d])
+    except AttributeError:
+        return sorted([datetime(t.year, t.month, t.day, t.hour, t.minute, t.second) for t in d])
+
+            
+def time_pattern_comparison(mal_expected, mal_computed, attack_store, pv_store):
+
+    """
+        mal_expected: ts->expected number of malicious transition in timestamp
+        mal_computed: ts->computed number of malicious transition in timestamp ts
+    """
     i = 0
     j = 0
     true_positive = 0
     false_positive = 0
     true_negative = 0
     false_negative = 0
-    nbr_attack = 0
+    expected_timestamps = dict_list_ts(mal_expected)
+    detect_timestamps = dict_list_ts(mal_computed)
+
+    last_state = None
 
     for state in attack_store:
-        if i < len(mal_expected):
-            attack = mal_expected[i]
+        if i < len(expected_timestamps):
+            attack = expected_timestamps[i]
         if j < len(detect_timestamps):
-            detect= detect_timestamps[j]
+            detect = detect_timestamps[j]
         tmp = state[TS]
         ts = datetime(year=tmp.year, month=tmp.month, day=tmp.day,
                       hour=tmp.hour, minute=tmp.minute, second=tmp.second)
@@ -156,65 +194,65 @@ def time_pattern_comparison(mal_expected, attack_store, detect_timestamps,
         attack_detected = ts == detect
         if attack_detected:
             j += 1
+            nbr_detect = len(mal_computed[ts])
 
-        if ts < attack[START]:
+        nbr_transitions = len(pv_store.vars)
+        if last_state is not None:
+            new_state = get_pv_state(state, last_state, pv_store)
+            nbr_transitions = count_number_transitions(last_state, new_state)
+        else:
+            new_state = get_pv_state(state, state, pv_store)
+
+        last_state = new_state
+
+        if attack != ts:
             if attack_detected:
-                false_positive += 1
+                false_positive += nbr_detect
+                true_negative += max(0, nbr_transitions - nbr_detect)
             else:
-                true_negative += 1
-        elif ts >= attack[START] and ts < attack[END]:
-            nbr_attack += 1
-            #if attack_detected:
-            #    true_positive += 1
-            #else:
-            #    false_negative += 1
-        elif ts == attack[END]:
-            if not just_after:
-                nbr_attack += 1
-                # TODO add different scenario
-            else:
-                if attack_detected:
-                    true_positive += 1
-                else:
-                    false_negative += 1
+                true_negative += nbr_transitions
+
+        elif attack == ts:
             i += 1
-        elif ts > attack[END]:
+            nbr_expect = mal_expected[ts]
             if attack_detected:
-                false_positive += 1
+                true_positive += min(nbr_expect, nbr_detect)
+                false_negative += max(0, nbr_expect - nbr_detect)
+                #detect too much
+                false_positive += max(0, nbr_detect - nbr_expect)
+                true_negative += nbr_transitions - max(nbr_expect, nbr_detect)
             else:
-                true_negative += 1
+                false_negative += nbr_expect
+                true_negative += max(0, nbr_transitions - nbr_expect)
 
     return EvalResult(true_positive, false_positive, true_negative,
-                      false_negative, nbr_attack)
+                      false_negative, 0)
 
-def compare_activities(mal_expected, mal_computed, attack_store, timePattern=True, just_after=False):
+def compare_activities(mal_expected, mal_computed, attack_store, pv_store,
+                       timePattern=True, just_after=False):
     # Cannot comparte the timestamp sets because the expected time
     # are only range
 
     # just_after: the end time may represent the last time the attack occured.
     #           or the time just after the last occurence of the attack occured.
-    try:
-        detect_timestamps = sorted([datetime(t.year, t.month, t.day, t.hour, t.minute, t.second) for t in mal_computed.keys()])
-    except AttributeError:
-        detect_timestamps = sorted([datetime(t.year, t.month, t.day, t.hour, t.minute, t.second) for t in mal_computed])
-        
+            
     if timePattern:
-        res = time_pattern_comparison(mal_expected, attack_store, detect_timestamps, just_after)
+        res = time_pattern_comparison(mal_expected, mal_computed, attack_store, pv_store)
     else:
-        res = invariant_comparison(mal_expected, attack_store, detect_timestamps,
-                                   just_after)
+        res = invariant_comparison(mal_expected, mal_computed, attack_store, just_after)
     return res
 
-def create_expected_malicious_activities(atk_period):
+def create_expected_malicious_activities(atk_period, timePattern=False):
     with open(atk_period) as fh:
         content = fh.read()
         desc = yaml.load(content, Loader=yaml.Loader)
-        for attack in desc:
-            starttime = datetime.strptime(attack[START], '%d/%m/%Y %H:%M:%S')
-            endtime = datetime.strptime(attack[END], '%d/%m/%Y %H:%M:%S')
-            attack[START] = starttime
-            attack[END] = endtime
-    return desc
+        if not timePattern:
+            for attack in desc:
+                starttime = datetime.strptime(attack[START], '%d/%m/%Y %H:%M:%S')
+                endtime = datetime.strptime(attack[END], '%d/%m/%Y %H:%M:%S')
+                attack[START] = starttime
+                attack[END] = endtime
+        return desc
 
 def run_invariant_ids(params, conf, data, data_mal, infile, malicious):
     if data is None:
@@ -235,11 +273,12 @@ def run_invariant_ids(params, conf, data, data_mal, infile, malicious):
     ids.close()
     return ids
 
-def main(atk_period, conf, malicious, infile, params, cache):
+def main(atk_period_time, atk_period_inv, conf, malicious,
+         infile, params, cache):
 
-    expected_atk = create_expected_malicious_activities(atk_period)
     data_mal = utils.read_state_file(malicious)
     data = None
+    pv_store = pvStore.PVStore(conf)
     if not cache:
         data = utils.read_state_file(infile)
         time_checker = TimeChecker(conf, params[TIME_LOG], data)
@@ -255,14 +294,20 @@ def main(atk_period, conf, malicious, infile, params, cache):
         matrices = pickle.load(open(params[MATRIX], "rb"))
         malicious_activities = pickle.load(open(params[MAL_CACHE], "rb"))
 
-    res = compare_activities(expected_atk, malicious_activities, data_mal, True, True)
+    expected_atk = create_expected_malicious_activities(atk_period_time, True)
+    res = compare_activities(expected_atk, malicious_activities, data_mal,
+                             pv_store, True, True)
 
     if params[TEST_INVARIANTS]:
+        
+        expected_atk = create_expected_malicious_activities(atk_period_inv)
         ids = run_invariant_ids(params, conf, data, data_mal, infile, malicious)
 
-        inv_res = compare_activities(expected_atk, ids.malicious_activities, data_mal, False, True)
+        inv_res = compare_activities(expected_atk, ids.malicious_activities,
+                                     data_mal, pv_store, False, True)
 
     with open(params[OUTPUT_RES], "w") as fh:
+        fh.write("Time based\n")
         fh.write("Total:{}\n".format(len(data_mal)))
         fh.write("Nbr Attack: {}\n".format(res.nbr_attack))
         fh.write("TP:{}\n".format(res.tp))
@@ -276,7 +321,7 @@ def main(atk_period, conf, malicious, infile, params, cache):
         if params[TEST_INVARIANTS]:
             fh.write("Invariant Based\n")
             fh.write("Total:{}\n".format(len(data_mal)))
-            fh.write("Nbr Attack: {}\n".format(res.nbr_attack))
+            fh.write("Nbr Attack: {}\n".format(inv_res.nbr_attack))
             fh.write("TP:{}\n".format(inv_res.tp))
             fh.write("FP:{}\n".format(inv_res.fp))
             fh.write("TN:{}\n".format(inv_res.tn))
@@ -284,13 +329,14 @@ def main(atk_period, conf, malicious, infile, params, cache):
             fh.write("TPR:{}\n".format(inv_res.tpr()))
             fh.write("FPR:{}\n".format(inv_res.fpr()))
 
-
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--attack", type=str, dest="atk_period",
-                        help="File containing the start time and time of the attacks")
+    parser.add_argument("--atk-inv", type=str, dest="atk_period_inv",
+                        help="File containing the period time of the attacks for invariant IDS")
+    parser.add_argument("--atk-time", type=str, dest="atk_period_time",
+                        help="File containing the time of the attacks for time IDS")
     parser.add_argument("--conf", type=str, dest="conf",
                         help="File with the description of the process variable")
     parser.add_argument("--malicious", type=str, dest="malicious",
@@ -306,4 +352,5 @@ if __name__ == "__main__":
     with open(args.params, "r") as fname:
         params = yaml.load(fname, Loader=yaml.BaseLoader)
 
-    main(args.atk_period, args.conf, args.malicious, args.infile, params, args.cache)
+    main(args.atk_period_time, args.atk_period_inv, args.conf, args.malicious,
+         args.infile, params, args.cache)

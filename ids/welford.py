@@ -65,4 +65,4 @@ class Welford(object):
             return 0
         return math.sqrt(self.S/(self.k-1))
     def __repr__(self):
-        return "<Welford: {} +- {}>".format(self.mean, self.std)
+        return "<Welford: {} +- {}, ({})>".format(self.mean, self.std, self.k)

@@ -22,6 +22,11 @@ from timePattern import TimePattern
 
 ValueTS = collections.namedtuple('ValueTS', ['value', 'start', 'end'])
 
+BIG_THRESH = 1
+EQ_THRESH = 0.1
+N_OUTLIER = 3
+N_CLUSTERS = 2
+
 class TransitionMatrix(object):
 
     DIFF = "Different"
@@ -151,7 +156,7 @@ class TransitionMatrix(object):
                 break
 
     def add_malicious_activities(self, malicious_activities, ts, pv):
-        time_key = datetime(ts.year, ts.month, ts.day, 
+        time_key = datetime(ts.year, ts.month, ts.day,
                             ts.hour, ts.minute, ts.second)
         if time_key not in malicious_activities:
             malicious_activities[time_key] = set()
@@ -177,33 +182,81 @@ class TransitionMatrix(object):
             return pattern.clusters[0]
         else:
             return pattern.get_cluster(elapsed_time)
-        
+
+    # Comparison for testing with the simulator
+    def is_close_time(self, t1, t2):
+        diff = abs(t1 - t2)
+        return diff <= EQ_THRESH
+
+    def is_big_time(self, t1, t2):
+        diff = abs(t1 -t2)
+        return diff >= BIG_THRESH
+
+    def outlier_handler(self, column, row, elapsed_time, cluster):
+        pattern = self.transitions[row][column]
+        nbr_outlier = 0
+        for c in pattern.clusters:
+            if c.std == 0 and c.k < 3:
+                nbr_outlier += 1
+
+        #Check if cluster is too far from outlier to consolidate cluster or not
+        if (nbr_outlier >= N_OUTLIER and
+                not self.is_big_time(elapsed_time, cluster.mean)):
+            cluster(elapsed_time)
+            return TransitionMatrix.SAME, cluster
+        else:
+            return TransitionMatrix.DIFF, cluster
+
     def check_transition_time(self, newval, oldval, elapsed_time, pv):
         row = self.val_pos[oldval]
         column = self.val_pos[newval]
         expected = self.transitions[row][column]
+        #if pv.name == "tankFinal" or pv.name == "silo2" or pv.name == "wagonlidOpen":
+        #    pdb.set_trace()
         if expected == -1 or expected == 0:
             return TransitionMatrix.UNKNOWN, expected
 
+        if len(expected.clusters) < N_CLUSTERS:
+            # Too few information about that transition to give an opinion
+            # By default we accept the transition
+            return TransitionMatrix.SAME, None
+
         cluster = self.find_cluster(expected, elapsed_time)
-        #print("Elapsed: {}, Cluster:{}".format(elapsed_time, cluster))
+
+        ## FIXME REMOVE Testing with simulator ##
         if cluster.std == 0:
-            #FIXME number of time a value has been seen consider it meaningfull
-            if cluster.k < 3:
-                return TransitionMatrix.SAME, cluster
-
-            elif  cluster.k >= 3 and elapsed_time == cluster.mean:
-
-                return TransitionMatrix.SAME, cluster
+            if cluster.k >= 3:
+                if self.is_close_time(elapsed_time, cluster.mean):
+                    return TransitionMatrix.SAME, cluster
+                else:
+                    return TransitionMatrix.DIFF, cluster
             else:
-                return TransitionMatrix.DIFF, cluster
+                if self.is_close_time(elapsed_time, cluster.mean):
+                    return TransitionMatrix.SAME, cluster
+                else:
+                    return self.outlier_handler(column, row, elapsed_time, cluster)
         else:
+            # Chebyshev's inequality
             z = (elapsed_time - cluster.mean)/cluster.std
-            if abs(z) > 3:
-                return TransitionMatrix.DIFF, cluster
-            else:
+            ztest = abs(z) <= 3
+            close = self.is_close_time(elapsed_time, cluster.mean)
+            if ztest or close:
                 return TransitionMatrix.SAME, cluster
+            else:
+                return TransitionMatrix.DIFF, cluster
+
         """
+        #print("Elapsed: {}, Cluster:{}".format(elapsed_time, cluster))
+        #if cluster.std == 0:
+        #    #FIXME number of time a value has been seen consider it meaningfull
+        #    # If the exact same elapsed_time keep repeating itself then it is constant
+        #    # so the value should always be the same
+        #    # Otherwise there was an outlier in during the training process
+        #    #if  cluster.k >= 3 and elapsed_time == cluster.mean:
+        #        return TransitionMatrix.SAME, cluster
+        #    else:
+        #        return TransitionMatrix.DIFF, cluster
+        #else:
         #z = (elapsed_time - cluster.mean)/cluster.k
         # How likely a elapsed time diff from the mean to be from the same
         # group of observation
@@ -239,7 +292,7 @@ class TransitionMatrix(object):
 
             self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name,
                            newval, self.header[-1], malicious_activities)
-
+        
         # If no critical value was found, we need to compute how long the last
         # critical value remained
         found = False
@@ -248,30 +301,34 @@ class TransitionMatrix(object):
                 self.detection_trigger = True
                 found = True
                 if self.last_value is not None:
+                    # The value did not change
                     if self.last_value.value == crit_val:
                         self.last_value = ValueTS(value=crit_val,
                                                   start=self.last_value.start,
                                                   end=ts)
+                    # The value has changed since last time
                     else:
-                        elapsed_trans_t = (ts - self.last_value.end).total_seconds()
-                        res, expected = self.check_transition_time(crit_val, self.last_value.value,
-                                                                   elapsed_trans_t, pv)
-                        if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
-                            self.write_msg(filehandler, res, ts, pv.name, elapsed_trans_t, expected,
-                                           malicious_activities, crit_val=crit_val,
-                                           last_val=self.last_value.value)
-                        # Actuator move from one critical value to another without transition value
-                        # so we must compute how long a value remained
-                        if pv.is_bool_var():
-                            same_value_t = (self.last_value.end - self.last_value.start).total_seconds()
-                            res, expected = self.check_transition_time(self.last_value.value,
-                                                                       self.last_value.value,
-                                                                       same_value_t, pv)
+                        if not pv.is_bool_var():
+                            elapsed_trans_t = (ts - self.last_value.end).total_seconds()
+                            res, expected = self.check_transition_time(crit_val, self.last_value.value,
+                                                                       elapsed_trans_t, pv)
 
                             if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
-                                self.write_msg(filehandler, res, ts, pv.name, same_value_t, expected,
-                                               malicious_activities, crit_val=self.last_value.value,
+                                self.write_msg(filehandler, res, ts, pv.name, elapsed_trans_t, expected,
+                                               malicious_activities, crit_val=crit_val,
                                                last_val=self.last_value.value)
+                        # When a value change from one critical value to another without transition
+                        # value so we must compute how long a value remained
+                        #if pv.is_bool_var():
+                        same_value_t = (self.last_value.end - self.last_value.start).total_seconds()
+                        res, expected = self.check_transition_time(self.last_value.value,
+                                                                   self.last_value.value,
+                                                                   same_value_t, pv)
+
+                        if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
+                            self.write_msg(filehandler, res, ts, pv.name, same_value_t, expected,
+                                           malicious_activities, crit_val=self.last_value.value,
+                                           last_val=self.last_value.value)
 
                         self.last_value = ValueTS(value=crit_val, start=ts, end=ts)
                 else:
@@ -281,6 +338,8 @@ class TransitionMatrix(object):
             if newval < crit_val:
                 break
 
+
+        # There is no more modification than will occur
         if not found or ts == self.end_time:
 
             if self.detection_trigger and self.last_value is not None:

@@ -214,7 +214,7 @@ def time_pattern_comparison(mal_expected, mal_computed, attack_store, pv_store):
 
         elif attack == ts:
             i += 1
-            nbr_expect = mal_expected[ts]
+            nbr_expect = mal_expected[ts]["count"]
             if attack_detected:
                 true_positive += min(nbr_expect, nbr_detect)
                 false_negative += max(0, nbr_expect - nbr_detect)

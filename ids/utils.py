@@ -45,6 +45,7 @@ CONTINOUS = [INP_REG, HOL_REG]
 WRITE_FUNCODE = [5, 6]
 
 TS = "timestamp"
+CAT = "normal/attack"
 
 DIST = 0.01
 DIFF = 0.05

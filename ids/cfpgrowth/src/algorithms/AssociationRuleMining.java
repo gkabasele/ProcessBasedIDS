@@ -1,28 +1,35 @@
 package  algorithms;
-import java.util.HashMap;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Iterator;
-import java.util.ArrayList;
-import java.util.List;
 import java.lang.Integer;
 
 import java.io.*;
 
 class ItemSet {
-	private List<Integer> items;
-	private int support;
+	private Set<Short> items;
+	private short support;
+	private boolean isClose;
 
-	public ItemSet(List<Integer> items, int support) {
+	public ItemSet(Set<Short> items, short support) {
 		this.items = items;
-		this.support = support;	
-	} 
+		this.support = support;
+		this.isClose = false;
+	}
 
-	public List<Integer> getItems(){
+	public Set<Short> getItems(){
 		return items;	
 	}
 
-	public int getSupport(){
+	public short getSupport(){
 		return support;	
+	}
+
+	public boolean isClose() {
+		return isClose;
+	}
+
+	public void setClose(boolean isClose){
+		this.isClose = isClose;
 	}
 
 	public int length(){
@@ -31,15 +38,36 @@ class ItemSet {
 
 	@Override
 	public int hashCode(){
-		return items.hashCode();	
+		return items.hashCode();
+	}
+
+	public boolean isSupersetOf(ItemSet itemset){
+		return items.containsAll(itemset.getItems());
+	}
+
+	public String toString(){
+		StringBuilder st = new StringBuilder();
+		for (Short i : items){
+			st.append(i).append(" ");
+		}
+		st.append("#SUP: ").append(support);
+		return st.toString();
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+		ItemSet itemSet = (ItemSet) o;
+		return itemSet.support == support && items.equals(itemSet.items);
 	}
 }
 
 class AssociationRule{
-	private List<Integer> cause;
-	private List<Integer> effect;
+	private List<Short> cause;
+	private List<Short> effect;
 
-	public AssociationRule(List<Integer> cause, List<Integer> effect){
+	public AssociationRule(List<Short> cause, List<Short> effect){
 		this.cause = cause;
 		this.effect = effect;	
 	}
@@ -51,54 +79,114 @@ class AssociationRule{
 
 public class AssociationRuleMining {
 
-	private HashMap<Integer,ItemSet> itemsets;
+	private TreeMap<Byte,List<ItemSet>> itemsets;
 	private List<AssociationRule> rules;
 
+	public static short NOTFOUND = -1;
+
 	public AssociationRuleMining(){
-		itemsets = new HashMap<Integer, ItemSet>();
+		itemsets = new TreeMap<Byte, List<ItemSet>>();
 		rules = new ArrayList<AssociationRule>();
 	}
 
 	public void fillItemSet(String input) throws IOException{
-		File rfile = new File(input);
-		BufferedReader br = new BufferedReader(new FileReader(rfile));
-		String st;
-		while((st = br.readLine()) != null){
-			String[] values = st.split(":");
-			int support = Integer.parseInt(values[1].replaceAll("\\s", ""));
-			// ["Itemset", "SUP"]
-			String[] it = values[0].split("#");
-			String[] itemsID = it[0].split(" ");
-			List<Integer> items = new ArrayList<Integer>(itemsID.length);
-			for(String s: itemsID){
-				items.add(Integer.parseInt(s));	
-			}
-		   		
-			ItemSet itemset = new ItemSet(items, support);
-			addItemSet(itemset);
-		}
-		br.close();
+		// Read File line by line
+		FileInputStream inputStream = null;
+		Scanner sc = null;
 
+		String line;
+		String [] values;
+		short support;
+		String[] it;
+		String[] itemsID;
+		Set<Short> items;
+		byte key;
+		List<ItemSet> temp;
+		ItemSet itemset;
+		try{
+			inputStream = new FileInputStream(input);
+			sc = new Scanner(inputStream, "UTF-8");
+			while (sc.hasNextLine()){
+					// Itemsets creation from line
+					line = sc.nextLine();
+					values = line.split(":");
+					support = Short.parseShort(values[1].replaceAll("\\s", ""));
+					// ["Itemset", "SUP"]
+					it = values[0].split("#");
+					itemsID = it[0].split(" ");
+					items = new HashSet<>(itemsID.length);
+					for (String s : itemsID) {
+						items.add(Short.parseShort(s));
+					}
+					itemset = new ItemSet(items, support);
+					key = (byte) itemset.length();
+					if (itemsets.containsKey(key)) {
+						temp = itemsets.get(key);
+						temp.add(itemset);
+					} else {
+						itemsets.put(key, new ArrayList<>(Arrays.asList(itemset)));
+					}
+			}
+			if (sc.ioException() != null){
+				throw sc.ioException();
+			}
+		} finally {
+			if (inputStream != null) {
+				inputStream.close();
+			}
+			if (sc != null){
+				sc.close();
+			}
+		}
+
+		 setCloseFrequentItemSets();
 	}
 
-	public static void filterItemSets(String input, String output, double minsup) throws IOException{
-		File rfile = new File(input);
-		BufferedReader br = new BufferedReader(new FileReader(rfile));
-
+	public void exportTreeMap(String output) throws IOException {
 		File wfile = new File(output);
 		BufferedWriter bw = new BufferedWriter(new FileWriter(wfile));
-
-		String st;
-		while((st = br.readLine()) != null){
-			String[] values = st.split(":");
-			int support = Integer.parseInt(values[1].replaceAll("\\s", ""));
-			if(support >= minsup){
-				bw.write(st);
+		for(Entry<Byte, List<ItemSet>> entry : itemsets.entrySet()){
+			for(ItemSet itemset : entry.getValue()){
+				bw.write(itemset.toString());
 				bw.write("\n");
 			}
 		}
 		bw.close();
-		br.close();
+	}
+
+	public void setCloseFrequentItemSets() {
+		for(int i = itemsets.firstKey(); i <= itemsets.lastKey(); i++){
+			List<ItemSet> currentList = itemsets.get(i);
+			for(ItemSet candidateClose : currentList){
+				boolean close = isCloseFrequent(candidateClose, i);
+				candidateClose.setClose(close);
+			}
+		}
+	}
+
+	public boolean isCloseFrequent(ItemSet candidate, int index){
+		boolean isClose = true;
+		for(int j=index+1; j <=itemsets.lastKey(); j++){
+			boolean hasSuperset = false;
+			List<ItemSet> candidateSuperset = itemsets.get(j);
+			if(candidateSuperset != null) {
+				for (ItemSet itemSet : candidateSuperset) {
+					if (itemSet.isSupersetOf(candidate)) {
+						hasSuperset = true;
+						if (itemSet.getSupport() == candidate.getSupport()) {
+							isClose = false;
+							break;
+						}
+					}
+				}
+			} else{
+				continue;
+			}
+			if (!isClose || !hasSuperset) {
+				break;
+			}
+		}
+		return isClose;
 	}
 
 	public void exportRule(String filename) throws IOException{
@@ -117,47 +205,50 @@ public class AssociationRuleMining {
 	}
 
 	public void miningRules(){
-		Iterator<Entry<Integer, ItemSet>> it = itemsets.entrySet().iterator();
-		while(it.hasNext()){
-			Entry<Integer, ItemSet> pair = it.next();
-			ItemSet itemset = pair.getValue();	
+		for (Entry<Byte, List<ItemSet>> pair : itemsets.entrySet()) {
+			List<ItemSet> itemset = pair.getValue();
 			rulesFromSet(itemset);
 		}
 	}
 
-	private void rulesFromSet(ItemSet itemset){
-		for(int i=1; i < itemset.length(); i++){
-			List<Integer> cause = new ArrayList<Integer>(itemset.getItems().subList(0,i));
-			List<Integer> effect = new ArrayList<Integer>(itemset.getItems().subList(i, itemset.length()));
+	private short findSupport(Set<Short> itemSet){
+		byte key = (byte) itemSet.size();
+		List<ItemSet> itemSetList = itemsets.get(key);
+		if (itemSetList != null){
+			for(ItemSet cand: itemSetList){
+				if (cand.getItems().equals(itemSet)){
+					return cand.getSupport();
+				}
+			}
+		}
+		return NOTFOUND;
+	}
 
-			ItemSet cis = itemsets.get(cause.hashCode());
-			ItemSet eis = itemsets.get(effect.hashCode());
+	private void rulesFromSet(List<ItemSet> itemSetList){
+		for(ItemSet itemset : itemSetList){
+			if(itemset.isClose()){
+				for(int i=1; i < itemset.length(); i++){
+					Set<Short> cause = new HashSet<>(new ArrayList<>(itemset.getItems()).subList(0,i));
+					Set<Short> effect = new HashSet<>(new ArrayList<>(itemset.getItems()).subList(i, itemset.length()));
 
-			if( cis != null && eis != null){
-				if (cis.getSupport() == eis.getSupport()){
-					AssociationRule rule = new AssociationRule(cause, effect);
-					rules.add(rule);
-					break;			
-				}	
+					short cisSupport = findSupport(cause);
+					short eisSupport = findSupport(cause);
+
+					if (cisSupport == eisSupport){
+						AssociationRule rule = new AssociationRule(new ArrayList<>(cause), new ArrayList<>(effect));
+						rules.add(rule);
+						break;
+					}
+				}
 			}
 		}
 	}
 	
-	
-	private void addItemSet(ItemSet itemset){
-		itemsets.put(itemset.hashCode(), itemset);	
-	}
-
-	public static void print(String msg){
-		System.out.println(msg);
-	}
-
-	public void run(String input, String output) throws Exception {
+	public void run(String input, String outputItemSet, String outputRules) throws Exception {
 
 		AssociationRuleMining miner = new AssociationRuleMining();	
 		miner.fillItemSet(input);
 		miner.miningRules();
-		miner.exportRule(output);
-			
+		miner.exportRule(outputRules);
 	}
 }

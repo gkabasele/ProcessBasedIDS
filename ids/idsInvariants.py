@@ -74,7 +74,6 @@ class IDSInvariant(object):
                 self.filehandler.write(msg)
                 invalid.append(i)
         if len(invalid) != 0:
-                
             return invalid
 
     def write(self, timestamp, line):

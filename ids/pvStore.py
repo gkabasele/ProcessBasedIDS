@@ -27,7 +27,8 @@ class PVStore(object):
                     pv = utils.ProcessSWaTVar(var['name'], var['type'],
                                               limit_values=limit_values,
                                               min_val=0,
-                                              max_val=2)
+                                              max_val=2,
+                                              ignore=var['ignore'])
                 else:
                     if 'critical' in var:
                         limit_values = var['critical']
@@ -40,7 +41,8 @@ class PVStore(object):
                     pv = utils.ProcessSWaTVar(var['name'], var['type'],
                                               limit_values=limit_values,
                                               min_val=var['min'],
-                                              max_val=var['max'])
+                                              max_val=var['max'],
+                                              ignore=var['ignore'])
                 self.vars[pv.name] = pv
 
     def detect_periodic_shape(self, data):
@@ -70,6 +72,16 @@ class PVStore(object):
 
     def discrete_vars(self):
         return [x for x, j in self.items() if j.kind in [utils.DIS_COIL, utils.DIS_INP]]
+
+    def monitor_vars(self):
+        return [x for x, j in self.items() if not j.kind]
+
+    def continuous_monitor_vars(self):
+        return [x for x, j in self.items() if (j.kind in [utils.HOL_REG, utils.INP_REG] and not j.ignore)]
+
+    def discrete_monitor_vars(self):
+        return [x for x, j in self.items() if (j.kind in [utils.DIS_COIL, utils.DIS_INP] and not j.ignore)]
+
 
     def periodic_vars(self):
         return [x for x, j in self.items() if j.is_periodic]

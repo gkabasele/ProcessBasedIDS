@@ -14,6 +14,7 @@ FREQITEMSETS = "freqItemSets"
 INVARIANTS = "invariants"
 OUTPUT_RES = "output"
 LOG = "log"
+CLOSE = "closeItemset"
 
 class ItemSet(object):
 
@@ -70,10 +71,14 @@ def get_sastisfied_predicate(state, predicates, mapping_id_pred):
     satisfied_pred = []
     for varname, val in state.items():
         if varname != TS:
-            if pred.ON in predicates[varname]:
-                actuator_predicates(varname, val, predicates, satisfied_pred, mapping_id_pred)
-            else:
-                sensor_predicates(varname, val, predicates, satisfied_pred, mapping_id_pred)
+            try:
+                if pred.ON in predicates[varname]:
+                    actuator_predicates(varname, val, predicates, satisfied_pred, mapping_id_pred)
+                else:
+                    sensor_predicates(varname, val, predicates, satisfied_pred, mapping_id_pred)
+            except KeyError:
+                # Variable must be ignored
+                pass
     return ItemSet(satisfied_pred)
 
 def get_transactions(states, predicates, mapping_id_pred):
@@ -95,8 +100,9 @@ def export_files(outfile, transactions, supportfile, predicates,
         for varname in predicates:
             for cond in predicates[varname]:
                 for p in predicates[varname][cond]:
-                    fname.write("{} {}\n".format(p.id,
-                                                 max(int(gamma*p.support),
+                    if p.support > 0:
+                        fname.write("{} {}\n".format(p.id,
+                                                     max(int(gamma*p.support),
                                                      int(theta))))
 
     with open(mappingfile, "w") as fname:
@@ -104,8 +110,8 @@ def export_files(outfile, transactions, supportfile, predicates,
             fname.write("{}:{}\n".format(pred_id, pred))
 
 def main(conf, infile, outfile, supportfile, mappingfile,
-         invariants, freqfile, minsup_ratio, gamma, theta,
-         ids_input, do_mining):
+         invariants, freqfile, closefile, minsup_ratio, gamma, theta,
+         ids_input, do_mining, do_detection):
 
     if gamma < 0 and gamma > 1:
         raise ValueError("Gamma must be between 0 and 1")
@@ -117,13 +123,13 @@ def main(conf, infile, outfile, supportfile, mappingfile,
     predicates = pred.generate_all_predicates(conf, data)
     mapping_id_pred = {}
     transactions = get_transactions(data, predicates, mapping_id_pred)
+    export_files(cfg[TRANSACTIONS], transactions, cfg[MINSUPPORT],
+                 predicates, mappingfile, mapping_id_pred, gamma, theta)
+
+    print("Export transaction to {}".format(cfg[TRANSACTIONS]))
+    print("Export Support  to {}".format(cfg[MINSUPPORT]))
 
     if do_mining:
-        export_files(cfg[TRANSACTIONS], transactions, cfg[MINSUPPORT],
-                     predicates, mappingfile, mapping_id_pred, gamma, theta)
-
-        print("Export transaction to {}".format(cfg[TRANSACTIONS]))
-        print("Export Support  to {}".format(cfg[MINSUPPORT]))
         print("Create Java Gateway")
 
         # Mining invariants
@@ -134,30 +140,23 @@ def main(conf, infile, outfile, supportfile, mappingfile,
 
         print("Running CFPGrowth Algorithm, exporting to {}".format(cfg[FREQITEMSETS]))
 
+
         cfp.runAlgorithm(cfg[TRANSACTIONS], cfg[FREQITEMSETS], cfg[MINSUPPORT])
 
-        minsup = minsup_ratio * cfp.getDatabaseSize()
-
-        filtered_output = "_filter_{}".format(minsup).join([cfg[FREQITEMSETS][:-4], ".txt"])
-
-        print("Filtering Frequent Itemset to {} (minsup: {})".format(filtered_output,
-                                                                     minsup))
-        miner.filterItemSets(cfg[FREQITEMSETS], filtered_output, minsup)
-
         print("Mining invariants")
-        miner.fillItemSet(filtered_output)
-        miner.miningRules()
+        miner.exportCloseItemsets(cfg[CLOSE], miner.miningRules(cfg[FREQITEMSETS]))
         miner.exportRule(cfg[INVARIANTS])
 
-    print("Running the ids")
-    ids = IDSInvariant(mapping_id_pred, cfg[INVARIANTS], cfg[LOG])
-    data = read_state_file(ids_input)
-    with open(cfg[OUTPUT_RES], "w") as fname:
-        for state in data:
-            invalid = ids.valid_state(state)
-            if invalid is not None:
-                fname.write("{}\n".format(str(invalid)))
-                fname.write("{}\n\n".format(str(state)))
+    if do_detection:
+        print("Running the ids")
+        ids = IDSInvariant(mapping_id_pred, cfg[INVARIANTS], cfg[LOG])
+        data = read_state_file(ids_input)
+        with open(cfg[OUTPUT_RES], "w") as fname:
+            for state in data:
+                invalid = ids.valid_state(state)
+                if invalid is not None:
+                    fname.write("{}\n".format(str(invalid)))
+                    fname.write("{}\n\n".format(str(state)))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -173,6 +172,8 @@ if __name__ == "__main__":
                         help="File to run the ids on")
     parser.add_argument("--mine", action="store_true", dest="do_mining",
                         help="should the invariant be mined")
+    parser.add_argument("--run", action="store_true", dest="do_detection",
+                        help="run the IDS")
     parser.add_argument("--minsup", action="store", type=float, default=0.1, dest="minsup")
     parser.add_argument("--gamma", action="store", type=float, default=1.0, dest="gamma")
     parser.add_argument("--theta", action="store", type=float, default=0.0, dest="theta")
@@ -182,5 +183,6 @@ if __name__ == "__main__":
         cfg = yaml.load(yamlfile, Loader=yaml.BaseLoader)
 
     main(args.conf, args.infile, cfg[TRANSACTIONS], cfg[MINSUPPORT],
-         args.map_pred, cfg[INVARIANTS], cfg[FREQITEMSETS],
-         args.minsup, args.gamma, args.theta, args.ids_input, args.do_mining)
+         args.map_pred, cfg[INVARIANTS], cfg[FREQITEMSETS], cfg[CLOSE],
+         args.minsup, args.gamma, args.theta, args.ids_input,
+         args.do_mining, args.do_detection)

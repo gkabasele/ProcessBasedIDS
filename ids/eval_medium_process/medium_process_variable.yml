@@ -5,6 +5,7 @@ variables:
                 values: [0, 500]
                 min: 0
                 max: 500
+                ignore: true
 
         - variable:
                 name: approvisioning2
@@ -12,14 +13,17 @@ variables:
                 values: [0, 500]
                 min: 0
                 max: 500
+                ignore: true
 
         - variable:
                 name: motor1
                 type: co
+                ignore: false
 
         - variable:
                 name: motor2
                 type: co
+                ignore: false
 
         - variable:
                 name: silo1
@@ -27,13 +31,15 @@ variables:
                 values: [0, 40]
                 min: 0
                 max: 60
+                ignore: false
 
         - variable:
                 name: silo2
                 type: hr
-                values: [0, 60]
+                values: [0, 20, 60]
                 min: 0
                 max: 80
+                ignore: false
 
         - variable:
                 name: tank1
@@ -41,6 +47,7 @@ variables:
                 values: [0, 40]
                 min: 0
                 max: 60
+                ignore: false
 
         - variable:
                 name: tankCharcoal
@@ -48,6 +55,7 @@ variables:
                 values: [0, 500]
                 min: 0
                 max: 500
+                ignore: true
 
         - variable:
                 name: tankFinal
@@ -55,34 +63,42 @@ variables:
                 values: [0, 60]
                 min: 0
                 max: 80
+                ignore: false
 
         - variable:
                 name: valve1
                 type: co
+                ignore: false
 
         - variable:
                 name: valve2
                 type: co
+                ignore: false
 
         - variable:
                 name: valveSilo1
                 type: co
+                ignore: false
 
         - variable:
                 name: valveSilo2
                 type: co
+                ignore: false
 
         - variable:
                 name: valveTank1
                 type: co
+                ignore: false
 
         - variable:
                 name: valveTankCharcoal
                 type: co
+                ignore: false
 
         - variable:
                 name: valveTankFinal
                 type: co
+                ignore: false
 
         - variable:
                 name: wagonCar
@@ -90,18 +106,24 @@ variables:
                 values: [0, 20]
                 min: 0
                 max: 40
+                ignore: false
+
         - variable:
                 name: wagonEnd
                 type: co
+                ignore: false
 
         - variable:
                 name: wagonlidOpen
                 type: co
+                ignore: false
 
         - variable:
                 name: wagonMoving
                 type: co
+                ignore: true
 
         - variable:
                 name: wagonStart
                 type: co
+                ignore: false

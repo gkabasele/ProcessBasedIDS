@@ -55,7 +55,7 @@ COOL_TIME = 11000
 class ProcessSWaTVar():
 
     def __init__(self, name, kind, min_val=None, max_val=None, 
-                 limit_values=None):
+                 limit_values=None, ignore=False):
         self.name = name
         self.kind = kind
         self.value = None
@@ -63,6 +63,7 @@ class ProcessSWaTVar():
         self.nbr_transition = 0
         self.last_transition = None
         self.elapsed_time_transition = []
+        self.ignore = ignore
 
         self.is_periodic = kind in DISCRETE
 

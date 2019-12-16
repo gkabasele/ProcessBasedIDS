@@ -96,28 +96,30 @@ class Event(object):
     def __repr__(self):
         return self.__str__()
 
-def generate_actuators_predicates(actuators, predicates):
+def generate_actuators_predicates(actuators, store, predicates):
 
     for var in actuators:
-        predicates[var] = {ON : [Predicate(var, "==", ON)],
-                           OFF: [Predicate(var, "==", OFF)]}
+        if not store[var].ignore:
+            predicates[var] = {ON : [Predicate(var, "==", ON)],
+                               OFF: [Predicate(var, "==", OFF)]}
 
-def generate_sensors_predicates(sensors, events, states, 
+def generate_sensors_predicates(sensors, store, events, states, 
                                 predicates, error_thresh=0.005):
 
     for act, act_state in events.items():
         for update, event in act_state.items():
             related_sensors = set()
-            predicate_for_sensors(related_sensors, sensors, event, states, predicates, error_thresh)
+            predicate_for_sensors(related_sensors, sensors, store, event, states, predicates, error_thresh)
 
-def predicate_for_sensors(related_sensors, sensors, event, states, predicates, error_thresh):
+def predicate_for_sensors(related_sensors, sensors, store, event, states, predicates, error_thresh):
 
     for sens in sensors:
-        if sens not in related_sensors:
-            model, X = fit_regression_model(related_sensors, sens, sensors,
-                                            event, states)
-            predicate_from_model(model, X, sens, event, states, predicates,
-                                 related_sensors, error_thresh)
+        if not store[sens].ignore:
+            if sens not in related_sensors:
+                model, X = fit_regression_model(related_sensors, sens, sensors,
+                                                event, states)
+                predicate_from_model(model, X, sens, event, states, predicates,
+                                     related_sensors, error_thresh)
 
 def fit_regression_model(related_sensors, sens, sensors, event, states):
     # get value of all other sensors which are considered as feature
@@ -197,13 +199,13 @@ def generate_all_predicates(conf, data):
     sensors = store.continous_vars()
 
     predicates = {}
-    generate_actuators_predicates(actuators, predicates)
+    generate_actuators_predicates(actuators, store, predicates)
 
     events = retrieve_update_timestamps(store.discrete_vars(), data)
 
-    generate_sensors_predicates(sensors, events, data, predicates, error_thresh=0)
+    generate_sensors_predicates(sensors, store, events, data, predicates, error_thresh=0)
 
-    for sens in sensors:
+    for sens in store.continuous_monitor_vars():
         predicates[sens][GT] = sorted(list(predicates[sens][GT]), reverse=True)
         predicates[sens][LS] = sorted(list(predicates[sens][LS]))
 

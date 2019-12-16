@@ -1,5 +1,9 @@
 package  algorithms;
+import com.sun.corba.se.spi.ior.IORTemplate;
+
 import java.util.*;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 import java.util.Map.Entry;
 import java.lang.Integer;
 
@@ -32,6 +36,10 @@ class ItemSet {
 		this.isClose = isClose;
 	}
 
+	public boolean containsItem(short item){
+		return items.contains(item);
+	}
+
 	public int length(){
 		return items.size();	
 	}
@@ -44,6 +52,8 @@ class ItemSet {
 	public boolean isSupersetOf(ItemSet itemset){
 		return items.containsAll(itemset.getItems());
 	}
+
+	public boolean isSubsetOf(ItemSet itemSet) {return itemSet.isSupersetOf(this);}
 
 	public String toString(){
 		StringBuilder st = new StringBuilder();
@@ -79,114 +89,83 @@ class AssociationRule{
 
 public class AssociationRuleMining {
 
-	private TreeMap<Byte,List<ItemSet>> itemsets;
+	private List<ItemSet> closeItemsets;
 	private List<AssociationRule> rules;
 
 	public static short NOTFOUND = -1;
 
 	public AssociationRuleMining(){
-		itemsets = new TreeMap<Byte, List<ItemSet>>();
-		rules = new ArrayList<AssociationRule>();
+		rules = new ArrayList<>();
+		closeItemsets = new ArrayList<>();
 	}
 
-	public void fillItemSet(String input) throws IOException{
-		// Read File line by line
-		FileInputStream inputStream = null;
-		Scanner sc = null;
+	public List<ItemSet> getCloseItemsets() {
+		return closeItemsets;
+	}
 
-		String line;
-		String [] values;
-		short support;
-		String[] it;
-		String[] itemsID;
-		Set<Short> items;
-		byte key;
-		List<ItemSet> temp;
-		ItemSet itemset;
-		try{
-			inputStream = new FileInputStream(input);
-			sc = new Scanner(inputStream, "UTF-8");
-			while (sc.hasNextLine()){
-					// Itemsets creation from line
-					line = sc.nextLine();
-					values = line.split(":");
-					support = Short.parseShort(values[1].replaceAll("\\s", ""));
-					// ["Itemset", "SUP"]
-					it = values[0].split("#");
-					itemsID = it[0].split(" ");
-					items = new HashSet<>(itemsID.length);
-					for (String s : itemsID) {
-						items.add(Short.parseShort(s));
-					}
-					itemset = new ItemSet(items, support);
-					key = (byte) itemset.length();
-					if (itemsets.containsKey(key)) {
-						temp = itemsets.get(key);
-						temp.add(itemset);
-					} else {
-						itemsets.put(key, new ArrayList<>(Arrays.asList(itemset)));
-					}
+	public void fillCloseItemSet(String input) throws IOException{
+		// Read File line by line
+
+		String line = null;
+		ItemSet itemset = null;
+		List<ItemSet> candidates = new ArrayList<>();
+		Predicate<ItemSet> predicate = null ;
+		int i = 0;
+		long startTime = System.nanoTime();
+		try (FileInputStream inputStream = new FileInputStream(input); Scanner sc = new Scanner(inputStream, "UTF-8")) {
+			while (sc.hasNextLine()) {
+				// Itemsets creation from line
+				line = sc.nextLine();
+				itemset = stringToItemSet(line);
+				ItemSet temp = itemset;
+				predicate = other -> (!(temp.isSupersetOf(other) || temp.isSubsetOf(other)) || (other.getSupport() != temp.getSupport()));
+				candidates = candidates.stream().filter(predicate).collect(Collectors.toList());
+				candidates.add(itemset);
+
+				i += 1;
+				if (i % 5000 == 0) {
+					System.out.println("Up to line: " + i);
+				}
 			}
-			if (sc.ioException() != null){
+			if (sc.ioException() != null) {
 				throw sc.ioException();
 			}
-		} finally {
-			if (inputStream != null) {
-				inputStream.close();
-			}
-			if (sc != null){
-				sc.close();
-			}
 		}
-
-		 setCloseFrequentItemSets();
+		long endTime = System.nanoTime();
+		double duration = (endTime - startTime)/1000000000;
+		System.out.println("Duration (s): " + duration);
+		closeItemsets = candidates;
 	}
 
-	public void exportTreeMap(String output) throws IOException {
-		File wfile = new File(output);
-		BufferedWriter bw = new BufferedWriter(new FileWriter(wfile));
-		for(Entry<Byte, List<ItemSet>> entry : itemsets.entrySet()){
-			for(ItemSet itemset : entry.getValue()){
-				bw.write(itemset.toString());
-				bw.write("\n");
-			}
+	public void exportCloseItemsets(String filename) throws IOException{
+		File wfile = new File(filename);
+
+		if (!wfile.exists()){
+			wfile.createNewFile();
+		}
+		BufferedWriter bw = new BufferedWriter((new FileWriter(filename)));
+		for(ItemSet itemSet : closeItemsets){
+			bw.write(itemSet.toString());
+			bw.write("\n");
 		}
 		bw.close();
 	}
 
-	public void setCloseFrequentItemSets() {
-		for(int i = itemsets.firstKey(); i <= itemsets.lastKey(); i++){
-			List<ItemSet> currentList = itemsets.get(i);
-			for(ItemSet candidateClose : currentList){
-				boolean close = isCloseFrequent(candidateClose, i);
-				candidateClose.setClose(close);
-			}
+	public void exportCloseItemsets(String filename, Map<Byte, List<ItemSet>> map) throws IOException {
+		File wfile = new File(filename);
+		if (!wfile.exists()){
+			wfile.createNewFile();
 		}
-	}
-
-	public boolean isCloseFrequent(ItemSet candidate, int index){
-		boolean isClose = true;
-		for(int j=index+1; j <=itemsets.lastKey(); j++){
-			boolean hasSuperset = false;
-			List<ItemSet> candidateSuperset = itemsets.get(j);
-			if(candidateSuperset != null) {
-				for (ItemSet itemSet : candidateSuperset) {
-					if (itemSet.isSupersetOf(candidate)) {
-						hasSuperset = true;
-						if (itemSet.getSupport() == candidate.getSupport()) {
-							isClose = false;
-							break;
-						}
-					}
+		BufferedWriter bw = new BufferedWriter((new FileWriter(filename)));
+		for (Entry<Byte, List<ItemSet>> entry: map.entrySet()){
+			for (ItemSet itemSet : entry.getValue()){
+			    if (itemSet.isClose()){
+					bw.write(itemSet.toString());
+					bw.write("\n");
 				}
-			} else{
-				continue;
-			}
-			if (!isClose || !hasSuperset) {
-				break;
 			}
 		}
-		return isClose;
+		bw.close();
 	}
 
 	public void exportRule(String filename) throws IOException{
@@ -204,51 +183,120 @@ public class AssociationRuleMining {
 		bw.close();
 	}
 
-	public void miningRules(){
-		for (Entry<Byte, List<ItemSet>> pair : itemsets.entrySet()) {
-			List<ItemSet> itemset = pair.getValue();
-			rulesFromSet(itemset);
+	private ItemSet  stringToItemSet(String line){
+		String[] values = line.split(":");
+		short support = Short.parseShort(values[1].replaceAll("\\s", ""));
+		String[] it = values[0].split("#");
+		String[] itemsID = it[0].split(" ");
+		Set<Short> items = new HashSet<>(itemsID.length);
+		for (String s: itemsID){
+			items.add(Short.parseShort(s));
+		}
+		return new ItemSet(items, support);
+	}
+
+	public Map<Byte, List<ItemSet>> miningRules(String filename) throws IOException {
+
+		File file = new File(filename);
+		BufferedReader br = new BufferedReader(new FileReader(file));
+		String st;
+		ItemSet itemset;
+		List<ItemSet> list;
+		Map<Byte,List<ItemSet>> map = new TreeMap<>();
+		byte maxLength = 0;
+		int i = 0;
+		long startTime = System.nanoTime();
+		while ((st = br.readLine()) != null){
+			itemset = stringToItemSet(st);
+			byte key = (byte) itemset.getItems().size();
+			if (map.containsKey(key)){
+				list = map.get(key);
+				list.add(itemset);
+			} else {
+				list = new ArrayList<>();
+				list.add(itemset);
+				map.put(key, list);
+			}
+			maxLength = (byte) Math.max(maxLength, itemset.length());
+			i += 1;
+			if (i% 10000 == 0){
+				System.out.println("Up to line: " + i);
+			}
+		}
+		createRulesFromCloseItemset(maxLength, map);
+		double duration = (System.nanoTime() - startTime)/100000000;
+		System.out.println("Duration (s): " + duration);
+		br.close();
+		return map;
+	}
+
+	private void createRulesFromCloseItemset(byte lastKey, Map<Byte, List<ItemSet>> map){
+		byte currentSize = 0;
+		boolean isClose;
+		for (Entry<Byte, List<ItemSet>> entry: map.entrySet()){
+		    List<ItemSet> list = entry.getValue();
+		    currentSize = entry.getKey() ;
+			for (ItemSet itemSet : list){
+				isClose = detectCloseItemset(currentSize, lastKey, itemSet, map);
+				itemSet.setClose(isClose);
+				if (isClose){
+					rulesFromSet(itemSet, map);
+				}
+			}
 		}
 	}
 
-	private short findSupport(Set<Short> itemSet){
-		byte key = (byte) itemSet.size();
-		List<ItemSet> itemSetList = itemsets.get(key);
-		if (itemSetList != null){
-			for(ItemSet cand: itemSetList){
-				if (cand.getItems().equals(itemSet)){
-					return cand.getSupport();
+	private boolean detectCloseItemset(byte size, byte maxKey, ItemSet itemset, Map<Byte, List<ItemSet>> map){
+		boolean hasSuperset;
+		boolean isClose = true;
+		for (byte supersetSize = (byte)(size + 1); supersetSize < maxKey; supersetSize++){
+			List<ItemSet> list = map.get(supersetSize);
+			if (list != null){
+				hasSuperset = false;
+				for (ItemSet candidateSuperset : list){
+					if(candidateSuperset.isSupersetOf(itemset)){
+						hasSuperset = true;
+						isClose = candidateSuperset.getSupport() != itemset.getSupport();
+						if (! isClose){
+							return isClose;
+						}
+					}
+				}
+				if (!hasSuperset){
+					return true;
+				}
+			}
+		}
+		return isClose;
+	}
+
+	private short findSupport(Set<Short> set, Map<Byte, List<ItemSet>> map){
+		for (Entry<Byte, List<ItemSet>> entry: map.entrySet()){
+		    if(entry.getKey() == set.size()){
+				for (ItemSet itemSet : entry.getValue()){
+					if (itemSet.getItems().equals(set)){
+						return itemSet.getSupport();
+					}
 				}
 			}
 		}
 		return NOTFOUND;
 	}
 
-	private void rulesFromSet(List<ItemSet> itemSetList){
-		for(ItemSet itemset : itemSetList){
-			if(itemset.isClose()){
-				for(int i=1; i < itemset.length(); i++){
-					Set<Short> cause = new HashSet<>(new ArrayList<>(itemset.getItems()).subList(0,i));
-					Set<Short> effect = new HashSet<>(new ArrayList<>(itemset.getItems()).subList(i, itemset.length()));
+	private void rulesFromSet(ItemSet itemset, Map<Byte, List<ItemSet>> map){
+		for(int i=1; i < itemset.length(); i++){
+			Set<Short> cause = new HashSet<>(new ArrayList<>(itemset.getItems()).subList(0,i));
+			Set<Short> effect = new HashSet<>(new ArrayList<>(itemset.getItems()).subList(i, itemset.length()));
 
-					short cisSupport = findSupport(cause);
-					short eisSupport = findSupport(cause);
 
-					if (cisSupport == eisSupport){
-						AssociationRule rule = new AssociationRule(new ArrayList<>(cause), new ArrayList<>(effect));
-						rules.add(rule);
-						break;
-					}
-				}
+			short cisSupport = findSupport(cause, map);
+			short eisSupport = findSupport(effect, map);
+
+			if (cisSupport == eisSupport){
+				AssociationRule rule = new AssociationRule(new ArrayList<>(cause), new ArrayList<>(effect));
+				rules.add(rule);
+				break;
 			}
 		}
-	}
-	
-	public void run(String input, String outputItemSet, String outputRules) throws Exception {
-
-		AssociationRuleMining miner = new AssociationRuleMining();	
-		miner.fillItemSet(input);
-		miner.miningRules();
-		miner.exportRule(outputRules);
 	}
 }

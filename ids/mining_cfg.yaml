@@ -1,0 +1,19 @@
+# File where the transactions are written
+transactions: "/home/kabaselendon/Documents/Research/ProcessBasedIDS/ids/eval_medium_process/database.txt"
+
+# File where the minimum support are written
+minsupport: "/home/kabaselendon/Documents/Research/ProcessBasedIDS/ids/eval_medium_process/mis.txt"
+
+# File where the frequent itemset are exported
+freqItemSets: "/home/kabaselendon/Documents/Research/ProcessBasedIDS/ids/eval_medium_process/output_frequent_itemsets.txt"
+
+# File where the invariants are exported
+invariants:  "/home/kabaselendon/Documents/Research/ProcessBasedIDS/ids/eval_medium_process/invariants.txt"
+
+# File where close itemsets are written
+closeItemset: "/home/kabaselendon/Documents/Research/ProcessBasedIDS/ids/eval_medium_process/close_itemsets.txt"
+
+# File where to output the ids alert and timestamp
+output: "/home/kabaselendon/Documents/Research/ProcessBasedIDS/ids/eval_medium_process/ids_res.txt"
+
+log: "/home/kabaselendon/Documents/Research/ProcessBasedIDS/ids/eval_medium_process/ids_invariant_log.txt"

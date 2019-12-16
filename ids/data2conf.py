@@ -38,7 +38,8 @@ def read_data(inputname, outputname ,slen=utils.DAY_IN_SEC):
                 "type": _type,
                 "critical": [],
                 "min": min_value[k],
-                "max": max_value[k]
+                "max": max_value[k],
+                "ignore": False
                }
               }
         variables.append(var)

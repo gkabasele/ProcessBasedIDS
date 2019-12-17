@@ -109,7 +109,6 @@ public class AssociationRuleMining {
 		String line = null;
 		ItemSet itemset = null;
 		List<ItemSet> candidates = new ArrayList<>();
-		Predicate<ItemSet> predicate = null ;
 		int i = 0;
 		long startTime = System.nanoTime();
 		try (FileInputStream inputStream = new FileInputStream(input); Scanner sc = new Scanner(inputStream, "UTF-8")) {
@@ -117,13 +116,10 @@ public class AssociationRuleMining {
 				// Itemsets creation from line
 				line = sc.nextLine();
 				itemset = stringToItemSet(line);
-				ItemSet temp = itemset;
-				predicate = other -> (!(temp.isSupersetOf(other) || temp.isSubsetOf(other)) || (other.getSupport() != temp.getSupport()));
-				candidates = candidates.stream().filter(predicate).collect(Collectors.toList());
-				candidates.add(itemset);
+				candidates = updateCandidates(itemset, candidates);
 
 				i += 1;
-				if (i % 5000 == 0) {
+				if (i % 10000 == 0) {
 					System.out.println("Up to line: " + i);
 				}
 			}
@@ -183,6 +179,26 @@ public class AssociationRuleMining {
 		bw.close();
 	}
 
+	private List<ItemSet> updateCandidates(ItemSet itemSet, List<ItemSet> candidates){
+		List<ItemSet> list = new ArrayList<>();
+		boolean hasSupersetCandidate = false;
+		for (ItemSet cand : candidates){
+			if (itemSet.isSupersetOf(cand) && itemSet.getSupport() == cand.getSupport()){
+				continue;
+			} else if (itemSet.isSubsetOf(cand) && itemSet.getSupport() == cand.getSupport()){
+				hasSupersetCandidate = true;
+				list.add(cand);
+			} else {
+				list.add(cand);
+			}
+		}
+
+		if (!hasSupersetCandidate){
+			list.add(itemSet);
+		}
+		return list;
+	}
+
 	private ItemSet  stringToItemSet(String line){
 		String[] values = line.split(":");
 		short support = Short.parseShort(values[1].replaceAll("\\s", ""));
@@ -231,7 +247,7 @@ public class AssociationRuleMining {
 	}
 
 	private void createRulesFromCloseItemset(byte lastKey, Map<Byte, List<ItemSet>> map){
-		byte currentSize = 0;
+		byte currentSize;
 		boolean isClose;
 		for (Entry<Byte, List<ItemSet>> entry: map.entrySet()){
 		    List<ItemSet> list = entry.getValue();
@@ -248,8 +264,8 @@ public class AssociationRuleMining {
 
 	private boolean detectCloseItemset(byte size, byte maxKey, ItemSet itemset, Map<Byte, List<ItemSet>> map){
 		boolean hasSuperset;
-		boolean isClose = true;
-		for (byte supersetSize = (byte)(size + 1); supersetSize < maxKey; supersetSize++){
+		boolean isClose;
+		for (byte supersetSize = (byte)(size + 1); supersetSize <= maxKey; supersetSize++){
 			List<ItemSet> list = map.get(supersetSize);
 			if (list != null){
 				hasSuperset = false;
@@ -258,7 +274,7 @@ public class AssociationRuleMining {
 						hasSuperset = true;
 						isClose = candidateSuperset.getSupport() != itemset.getSupport();
 						if (! isClose){
-							return isClose;
+							return false;
 						}
 					}
 				}
@@ -267,7 +283,7 @@ public class AssociationRuleMining {
 				}
 			}
 		}
-		return isClose;
+		return true;
 	}
 
 	private short findSupport(Set<Short> set, Map<Byte, List<ItemSet>> map){
@@ -283,20 +299,72 @@ public class AssociationRuleMining {
 		return NOTFOUND;
 	}
 
+	private boolean divideFromLength(Short[] itemSetList, int length, Map<Byte, List<ItemSet>> map){
+		Short[] cause = new Short[length];
+		short root = itemSetList[0];
+		return itemSetDivision(itemSetList, root, length, 0, cause, 0, map);
+	}
+
+	private List<Short> getEffectFromCause(List<Short> itemSetList, List<Short> cause){
+		List<Short> effect = new ArrayList<>();
+		for(short items: itemSetList){
+			if (! cause.contains(items)){
+				effect.add(items);
+			}
+		}
+		return effect;
+	}
+
+	private boolean itemSetDivision(Short[] itemSetList, short root, int length, int index, Short[] cause, int i,
+									Map<Byte, List<ItemSet>> map){
+	    boolean res;
+		if (index == length){
+			List<Short> causelist = Arrays.asList(cause);
+			List<Short> items = Arrays.asList(itemSetList);
+			List<Short> effect = getEffectFromCause(items, causelist);
+			res = createRule(new HashSet<>(causelist), new HashSet<>(effect), map);
+			return res;
+		}
+
+		if (i >= itemSetList.length){
+			return false;
+		}
+
+		cause[index] = itemSetList[i];
+		if (cause[0] != root){
+			return false;
+		}
+		res = itemSetDivision(itemSetList, root, length, index + 1, cause, i + 1, map);
+		if (! res){
+		    res = itemSetDivision(itemSetList, root, length, index, cause, i + 1, map);
+		}
+		return res;
+	}
+
+	private boolean createRule(Set<Short> cause, Set<Short> effect, Map<Byte, List<ItemSet>> map){
+		short cisSupport = findSupport(cause, map);
+		short eisSupport = findSupport(effect, map);
+		if (cisSupport == eisSupport){
+			AssociationRule rule = new AssociationRule(new ArrayList<>(cause), new ArrayList<>(effect));
+			System.out.println("Add rules: " + rule);
+			rules.add(rule);
+			return true;
+		}
+		return false;
+	}
+
 	private void rulesFromSet(ItemSet itemset, Map<Byte, List<ItemSet>> map){
+		boolean res;
+		Short[] array = new Short[itemset.length()];
+		array = (new ArrayList<Short>(itemset.getItems())).toArray(array);
+
 		for(int i=1; i < itemset.length(); i++){
-			Set<Short> cause = new HashSet<>(new ArrayList<>(itemset.getItems()).subList(0,i));
-			Set<Short> effect = new HashSet<>(new ArrayList<>(itemset.getItems()).subList(i, itemset.length()));
-
-
-			short cisSupport = findSupport(cause, map);
-			short eisSupport = findSupport(effect, map);
-
-			if (cisSupport == eisSupport){
-				AssociationRule rule = new AssociationRule(new ArrayList<>(cause), new ArrayList<>(effect));
-				rules.add(rule);
-				break;
+		   	res = divideFromLength(array, i, map);
+			if (res){
+				return;
 			}
 		}
 	}
+
+
 }

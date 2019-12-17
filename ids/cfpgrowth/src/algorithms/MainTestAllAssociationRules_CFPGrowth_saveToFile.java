@@ -53,6 +53,7 @@ public class MainTestAllAssociationRules_CFPGrowth_saveToFile {
 		//miner.fillCloseItemSet(frequentItemsets);
 		//miner.exportCloseItemsets(closeOutput);
 
+
 		// Approach 2 : Store every itemset then look which one are closed
 		Map<Byte, List<ItemSet>> map = miner.miningRules(frequentItemsets);
 		miner.exportCloseItemsets(closeOutput, map);

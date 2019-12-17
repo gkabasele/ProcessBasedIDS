@@ -15,6 +15,7 @@ INVARIANTS = "invariants"
 OUTPUT_RES = "output"
 LOG = "log"
 CLOSE = "closeItemset"
+MAPPINGFILE = "mappingfile"
 
 class ItemSet(object):
 
@@ -183,6 +184,6 @@ if __name__ == "__main__":
         cfg = yaml.load(yamlfile, Loader=yaml.BaseLoader)
 
     main(args.conf, args.infile, cfg[TRANSACTIONS], cfg[MINSUPPORT],
-         args.map_pred, cfg[INVARIANTS], cfg[FREQITEMSETS], cfg[CLOSE],
+         cfg[MAPPINGFILE], cfg[INVARIANTS], cfg[FREQITEMSETS], cfg[CLOSE],
          args.minsup, args.gamma, args.theta, args.ids_input,
          args.do_mining, args.do_detection)

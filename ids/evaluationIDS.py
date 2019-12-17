@@ -49,6 +49,8 @@ class EvalResult(object):
         try:
             return self.fp/(self.tp + self.fp)
         except ZeroDivisionError:
+            if self.fp == 0:
+               return 0 
             return -1
 
     def tpr(self):
@@ -56,6 +58,8 @@ class EvalResult(object):
         try:
             return self.tp/(self.tp + self.fn)
         except ZeroDivisionError:
+            if self.tp == 0:
+                return 0
             return -1
 
 def invariant_comparison(mal_expected, mal_computed, attack_store, just_after):
@@ -73,10 +77,14 @@ def invariant_comparison(mal_expected, mal_computed, attack_store, just_after):
 
     detect_timestamps = dict_list_ts(mal_computed, False)
 
+    attack = None
+    detect = None
+
 
     for state in attack_store:
         if i < len(mal_expected):
             attack = mal_expected[i]
+
         if j < len(detect_timestamps):
             detect = detect_timestamps[j]
 

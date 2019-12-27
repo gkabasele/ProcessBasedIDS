@@ -183,6 +183,7 @@ public class AssociationRuleMining {
 	public void writeItemsetsToFileBin(String input, String output){
 		String line;
 		ItemSet itemSet;
+		int i = 1;
 		try{
 			FileInputStream inputStream = new FileInputStream(input);
 			Scanner sc = new Scanner(inputStream, "UTF-8");
@@ -192,6 +193,11 @@ public class AssociationRuleMining {
 				line = sc.nextLine();
 				itemSet = stringToItemSet(line);
 				out.writeObject(itemSet);
+				i++;
+				if (i % 100000 == 0){
+					System.out.println("Up to line: " + i + " flushing");
+					out.flush();
+				}
 			}
 			out.close();
 

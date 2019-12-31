@@ -51,18 +51,18 @@ public class MainTestAllAssociationRules_CFPGrowth_saveToFile {
 	public static void main(String [] arg) throws IOException{
 		File directory = new File("./");
 		System.out.println(directory.getAbsolutePath());
-		//String transactions = fileToPath("/textfiles/database_complete.txt");
+		String transactions = fileToPath("/textfiles_swat_process/database_complete.txt");
 		//String transactions = fileToPath("/textfiles/database.txt");
-		String frequentItemsetsComplete = ".//output_complete.txt";
+		String frequentItemsetsComplete = ".//output_swat_complete.txt";
 		//String frequentItemsets= ".//output.txt";
 		//String filtered_output = ".//output_filtered";
-		String MISfileComplete = fileToPath("/textfiles/mis_complete.txt");
+		String MISfileComplete = fileToPath("/textfiles_swat_process/mis_complete.txt");
 		//String MISfile = fileToPath("/textfiles/mis_v2.txt");
 		//String closeOutputComplete = ".//close_output_complete.txt";
-		String closeOutputComplete = ".//close_output_complete_sorted.txt";
+		String closeOutputComplete = ".//close_output_swat_complete_sorted.txt";
 		//String closeOutput= ".//close_output_sorted.txt";
 		//String invariants = ".//invariants.txt";
-		String invariantsComplete = ".//invariants_complete.txt";
+		String invariantsComplete = ".//invariants_swat_complete.txt";
 
 		// Check how to input is organised to determine if it need some prepocessing
 		/*
@@ -72,20 +72,22 @@ public class MainTestAllAssociationRules_CFPGrowth_saveToFile {
 		*/
 
 		// STEP 1: Applying the CFP-GROWTH algorithm to find frequent itemsets
-		//getFrequentItemsets(transactions, MISfile, frequentItemsets);
+		getFrequentItemsets(transactions, MISfileComplete, frequentItemsetsComplete);
 
 		//approachList(frequentItemsetsComplete, closeOutputComplete);
 
+		/*
 		AssociationRuleMining miner = new AssociationRuleMining();
 		String binFile = ".//output_complete.bin";
 		File f = new File(binFile);
 		if(f.delete()){
 			System.out.println("deleting file " + binFile);
 		}
+		*/
 
 		// Approach 1 : Keep a list of the close itemset so far and look with new itemset if list must be updated
 		//miner.writeItemsetsToFileBin(frequentItemsetsComplete, binFile);
-		mineRuleFromCloseItemSets(frequentItemsetsComplete, MISfileComplete, closeOutputComplete, invariantsComplete, false);
+		//mineRuleFromCloseItemSets(frequentItemsetsComplete, MISfileComplete, closeOutputComplete, invariantsComplete, false);
 
 		// Approach 2 : Store every itemset then look which one are closed
 		//approachMap(frequentItemsets, closeOutput, invariants);

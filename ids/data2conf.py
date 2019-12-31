@@ -6,7 +6,7 @@ import utils
 
 def read_data(inputname, outputname ,slen=utils.DAY_IN_SEC):
 
-    variables = []
+    variables = {"variables" : []}
 
     with open(inputname, "rb") as fname:
         data = pickle.load(fname)
@@ -42,7 +42,7 @@ def read_data(inputname, outputname ,slen=utils.DAY_IN_SEC):
                 "ignore": False
                }
               }
-        variables.append(var)
+        variables["variables"].append(var)
     with open(outputname, "w") as ofh:
         content = yaml.dump(variables, default_flow_style=False)
         ofh.write(content)

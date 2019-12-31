@@ -46,13 +46,13 @@ def sensor_predicates(sensor, value, predicates, satisfied_pred, mapping_id_pred
             p.support += 1
             mapping_id_pred[p.id] = p
             satisfied_pred.append((sensor, pred.GT, i))
-            break
+            #break
     for i, p in enumerate(predicates[sensor][pred.LS]):
         if p.is_true(value):
             p.support += 1
             mapping_id_pred[p.id] = p
             satisfied_pred.append((sensor, pred.LS, i))
-            break
+            #break
 
 def actuator_predicates(actuator, value, predicates, satisfied_pred, mapping_id_pred):
     pred_on = predicates[actuator][pred.ON][0]
@@ -62,6 +62,10 @@ def actuator_predicates(actuator, value, predicates, satisfied_pred, mapping_id_
         mapping_id_pred[pred_on.id] = pred_on
         satisfied_pred.append((actuator, pred.ON, 0))
     elif pred_off.is_true(value):
+        pred_off.support += 1
+        mapping_id_pred[pred_off.id] = pred_off
+        satisfied_pred.append((actuator, pred.OFF, 0))
+    elif value == pred.OFFZ:
         pred_off.support += 1
         mapping_id_pred[pred_off.id] = pred_off
         satisfied_pred.append((actuator, pred.OFF, 0))

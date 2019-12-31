@@ -4,6 +4,7 @@ import pdb
 import math
 import numpy as np
 from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import Lasso
 from linearRegression import PredicateLinearRegression
 from pvStore import PVStore
 from utils import TS
@@ -11,6 +12,7 @@ from utils import read_state_file
 
 ON = 2
 OFF = 1
+OFFZ = 0
 
 TURNON = "turnOn"
 TURNOFF = "turnOff"
@@ -102,6 +104,7 @@ def generate_actuators_predicates(actuators, store, predicates):
         if not store[var].ignore:
             predicates[var] = {ON : [Predicate(var, "==", ON)],
                                OFF: [Predicate(var, "==", OFF)]}
+                               
 
 def generate_sensors_predicates(sensors, store, events, states, 
                                 predicates, error_thresh=0.005):
@@ -118,31 +121,31 @@ def predicate_for_sensors(related_sensors, sensors, store, event, states, predic
             if sens not in related_sensors:
                 model, X = fit_regression_model(related_sensors, sens, sensors,
                                                 event, states)
-                predicate_from_model(model, X, sens, event, states, predicates,
+                predicate_from_model(model, X, sens, sensors, event, states, predicates,
                                      related_sensors, error_thresh)
 
 def fit_regression_model(related_sensors, sens, sensors, event, states):
     # get value of all other sensors which are considered as feature
+    other_sens = [x for x in sensors if x != sens]
     features = []
     sens_values = []
     for i in event.timestamps:
         state = states[i]
         curr_value = []
-        for other_sens in sensors:
-            if sens != other_sens:
-                curr_value.append(state[other_sens])
-            else:
-                sens_values.append(state[other_sens])
+        for other in other_sens:
+            curr_value.append(state[other])
+        sens_values.append(state[sens])
         features.append(curr_value)
     X = np.array(features)
     Y = np.array(sens_values)
     #model = PredicateLinearRegression(X, Y)
     #model.fit()
-    model = LinearRegression()
+    #model = LinearRegression()
+    model = Lasso(alpha=0.5, tol=0.1, max_iter=100000, normalize=True)
     model.fit(features, sens_values)
     return model, X
 
-def predicate_from_model(model, X, sens, event, states, predicates, 
+def predicate_from_model(model, X, sens, sensors, event, states, predicates, 
                          related_sensors, error_thresh):
     for i, ts in enumerate(event.timestamps):
         sens_value = states[ts][sens]
@@ -155,10 +158,20 @@ def predicate_from_model(model, X, sens, event, states, predicates,
                 predicates[sens] = {GT : set(), LS: set()}
             predicates[sens][GT].add(pred_gt)
             predicates[sens][LS].add(pred_lt)
-        related_sensors.add(sens)
+            related_sensors = related_sensors.union(get_correlated_event(sens, sensors, model))
+
+def get_correlated_event(sens, sensors, model):
+    related = set()
+    other_sens = [x for x in sensors if x != sens]
+    assert len(other_sens) == len(model.coef_)
+    for i, coef in enumerate(model.coef_):
+        if coef != 0:
+            related.add(other_sens[i])
+    return related
 
 def is_turn_on_event(from_value, to_value):
-    return from_value == OFF and to_value == ON
+    return ((from_value == OFF and to_value == ON) or
+            (from_value == OFFZ and to_value == ON))
 
 def add_event(i, from_value, to_value, var, events):
     if is_turn_on_event(from_value, to_value):
@@ -184,6 +197,10 @@ def retrieve_update_timestamps(actuators, states):
                 values[var] = curr_value
 
             elif curr_value != values[var]:
+                if((curr_value == OFFZ and values[var] == OFF) or 
+                    curr_value == OFF and values[var] == OFFZ):
+                        continue
+
                 if var not in events:
                     events[var] = {}
 

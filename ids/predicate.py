@@ -5,6 +5,7 @@ import math
 import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import Lasso
+from sklearn.model_selection import GridSearchCV
 from linearRegression import PredicateLinearRegression
 from pvStore import PVStore
 from utils import TS
@@ -107,7 +108,7 @@ def generate_actuators_predicates(actuators, store, predicates):
                                
 
 def generate_sensors_predicates(sensors, store, events, states, 
-                                predicates, error_thresh=0.005):
+                                predicates, error_thresh):
 
     for act, act_state in events.items():
         for update, event in act_state.items():
@@ -138,12 +139,17 @@ def fit_regression_model(related_sensors, sens, sensors, event, states):
         features.append(curr_value)
     X = np.array(features)
     Y = np.array(sens_values)
-    #model = PredicateLinearRegression(X, Y)
-    #model.fit()
-    #model = LinearRegression()
-    model = Lasso(alpha=0.5, tol=0.1, max_iter=100000, normalize=True)
-    model.fit(features, sens_values)
-    return model, X
+    if len(Y) > 2:
+        model = Lasso(normalize=True)
+        parameters = dict(alpha=np.array([0.01, 0.1, 0.5, 1, 5, 10, 50, 100]))
+        lasso_regressor = GridSearchCV(model, parameters,
+                                       scoring="neg_mean_squared_error", cv=3)
+        lasso_regressor.fit(features, sens_values)
+        return lasso_regressor.best_estimator_, X
+    else:
+        model = Lasso(alpha=0.1, tol=0.1, max_iter=100000, normalize=True)
+        model.fit(features, sens_values)
+        return model, X
 
 def predicate_from_model(model, X, sens, sensors, event, states, predicates, 
                          related_sensors, error_thresh):
@@ -159,6 +165,10 @@ def predicate_from_model(model, X, sens, sensors, event, states, predicates,
             predicates[sens][GT].add(pred_gt)
             predicates[sens][LS].add(pred_lt)
             related_sensors = related_sensors.union(get_correlated_event(sens, sensors, model))
+
+
+def get_other_sens_values(state, sens, sensors):
+    return [state[k] for k in sensors if k != sens]
 
 def get_correlated_event(sens, sensors, model):
     related = set()
@@ -220,7 +230,7 @@ def generate_all_predicates(conf, data):
 
     events = retrieve_update_timestamps(store.discrete_vars(), data)
 
-    generate_sensors_predicates(sensors, store, events, data, predicates, error_thresh=0)
+    generate_sensors_predicates(sensors, store, events, data, predicates, 0.0)
 
     for sens in store.continuous_monitor_vars():
         predicates[sens][GT] = sorted(list(predicates[sens][GT]), reverse=True)

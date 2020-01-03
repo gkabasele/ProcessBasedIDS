@@ -40,19 +40,21 @@ class ItemSet(object):
     def __iter__(self):
         return self.predicates.__iter__()
 
-def sensor_predicates(sensor, value, predicates, satisfied_pred, mapping_id_pred):
+def sensor_predicates(sensor, value, predicates, satisfied_pred, mapping_id_pred, stop):
     for i, p in enumerate(predicates[sensor][pred.GT]):
         if p.is_true(value):
             p.support += 1
             mapping_id_pred[p.id] = p
             satisfied_pred.append((sensor, pred.GT, i))
-            #break
+            if stop:
+                break
     for i, p in enumerate(predicates[sensor][pred.LS]):
         if p.is_true(value):
             p.support += 1
             mapping_id_pred[p.id] = p
             satisfied_pred.append((sensor, pred.LS, i))
-            #break
+            if stop:
+                break
 
 def actuator_predicates(actuator, value, predicates, satisfied_pred, mapping_id_pred):
     pred_on = predicates[actuator][pred.ON][0]
@@ -72,7 +74,7 @@ def actuator_predicates(actuator, value, predicates, satisfied_pred, mapping_id_
     else:
         raise ValueError("Actuator Value is neither true or false")
 
-def get_sastisfied_predicate(state, predicates, mapping_id_pred):
+def get_sastisfied_predicate(state, predicates, mapping_id_pred, stop):
     satisfied_pred = []
     for varname, val in state.items():
         if varname != TS:
@@ -80,14 +82,14 @@ def get_sastisfied_predicate(state, predicates, mapping_id_pred):
                 if pred.ON in predicates[varname]:
                     actuator_predicates(varname, val, predicates, satisfied_pred, mapping_id_pred)
                 else:
-                    sensor_predicates(varname, val, predicates, satisfied_pred, mapping_id_pred)
+                    sensor_predicates(varname, val, predicates, satisfied_pred, mapping_id_pred, stop)
             except KeyError:
                 # Variable must be ignored
                 pass
     return ItemSet(satisfied_pred)
 
-def get_transactions(states, predicates, mapping_id_pred):
-    transactions = [get_sastisfied_predicate(state, predicates, mapping_id_pred) for state in states]
+def get_transactions(states, predicates, mapping_id_pred, stop):
+    transactions = [get_sastisfied_predicate(state, predicates, mapping_id_pred, stop) for state in states]
     return transactions
 
 def export_files(outfile, transactions, supportfile, predicates,
@@ -116,7 +118,7 @@ def export_files(outfile, transactions, supportfile, predicates,
 
 def main(conf, infile, outfile, supportfile, mappingfile,
          invariants, freqfile, closefile, minsup_ratio, gamma, theta,
-         ids_input, do_mining, do_detection):
+         ids_input, do_mining, do_detection, stop):
 
     if gamma < 0 and gamma > 1:
         raise ValueError("Gamma must be between 0 and 1")
@@ -127,8 +129,8 @@ def main(conf, infile, outfile, supportfile, mappingfile,
     data = read_state_file(infile)
     predicates = pred.generate_all_predicates(conf, data)
     mapping_id_pred = {}
-    transactions = get_transactions(data, predicates, mapping_id_pred)
-    export_files(cfg[TRANSACTIONS], transactions, cfg[MINSUPPORT],
+    transactions = get_transactions(data, predicates, mapping_id_pred, stop)
+    export_files(outfile, transactions, supportfile,
                  predicates, mappingfile, mapping_id_pred, gamma, theta)
 
     print("Export transaction to {}".format(cfg[TRANSACTIONS]))
@@ -143,18 +145,18 @@ def main(conf, infile, outfile, supportfile, mappingfile,
         cfp = gateway.entry_point.getCFP()
         miner = gateway.entry_point.getMiner()
 
-        print("Running CFPGrowth Algorithm, exporting to {}".format(cfg[FREQITEMSETS]))
+        print("Running CFPGrowth Algorithm, exporting to {}".format(freqfile))
 
 
-        cfp.runAlgorithm(cfg[TRANSACTIONS], cfg[FREQITEMSETS], cfg[MINSUPPORT])
+        cfp.runAlgorithm(outfile, freqfile, supportfile)
 
         print("Mining invariants")
-        miner.exportCloseItemsets(cfg[CLOSE], miner.miningRules(cfg[FREQITEMSETS]))
-        miner.exportRule(cfg[INVARIANTS])
+        miner.exportCloseItemsets(closefile, miner.miningRules(freqfile))
+        miner.exportRule(invariants)
 
     if do_detection:
         print("Running the ids")
-        ids = IDSInvariant(mapping_id_pred, cfg[INVARIANTS], cfg[LOG])
+        ids = IDSInvariant(mapping_id_pred, invariants, cfg[LOG])
         data = read_state_file(ids_input)
         with open(cfg[OUTPUT_RES], "w") as fname:
             for state in data:
@@ -179,6 +181,8 @@ if __name__ == "__main__":
                         help="should the invariant be mined")
     parser.add_argument("--run", action="store_true", dest="do_detection",
                         help="run the IDS")
+    parser.add_argument("--stop", action="store_true", dest="stop",
+                        help="stop after a predicate is satisfied pred")
     parser.add_argument("--minsup", action="store", type=float, default=0.1, dest="minsup")
     parser.add_argument("--gamma", action="store", type=float, default=1.0, dest="gamma")
     parser.add_argument("--theta", action="store", type=float, default=0.0, dest="theta")
@@ -190,4 +194,4 @@ if __name__ == "__main__":
     main(args.conf, args.infile, cfg[TRANSACTIONS], cfg[MINSUPPORT],
          cfg[MAPPINGFILE], cfg[INVARIANTS], cfg[FREQITEMSETS], cfg[CLOSE],
          args.minsup, args.gamma, args.theta, args.ids_input,
-         args.do_mining, args.do_detection)
+         args.do_mining, args.do_detection, args.stop)

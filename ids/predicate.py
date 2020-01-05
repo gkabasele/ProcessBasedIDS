@@ -6,7 +6,6 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import Lasso
 from sklearn.model_selection import GridSearchCV
-from linearRegression import PredicateLinearRegression
 from pvStore import PVStore
 from utils import TS
 from utils import read_state_file
@@ -30,7 +29,7 @@ class Predicate(object):
         ">" : operator.gt
         }
     pred_id = 0
-    def __init__(self, varname, operator, value):
+    def __init__(self, varname, operator, value=None, model=None, error=0):
 
         self.id = Predicate.pred_id
         self.varname = varname
@@ -42,16 +41,34 @@ class Predicate(object):
 
         self.support = 0
 
-        self.value = value
+        if value is not None:
+            self.value = value
+            self.model = model
+        elif model is not None:
+            self.model = model
+            self.value = value
+            self.error = error
+        else:
+            raise ValueError("No model or value for the predicate")
 
         Predicate.pred_id += 1
 
-    def is_true(self, current_value):
+    def is_true_value(self, current_value):
         return self.operator(current_value, self.value)
 
+    def is_true_model(self, current_value, features): 
+        value = self.model.predict(features)[0]
+        if self.operator == operator.lt:
+            return self.operator(current_value, value - self.error)
+        elif self.operator == operator.gt:
+            return self.operator(current_value, value + self.error)
+
     def __str__(self):
-        return "[({}) {} {} {}]".format(self.id, self.varname, self.op_label,
-                                        self.value)
+        if self.value is not None:
+            return "[({}) {} {} {}]".format(self.id, self.varname, self.op_label,
+                                            self.value)
+        elif self.model is not None:
+            return "[({}) {} {} Delta]".format(self.id, self.varname, self.op_label)
 
     def __repr__(self):
         return self.__str__()
@@ -105,7 +122,6 @@ def generate_actuators_predicates(actuators, store, predicates):
         if not store[var].ignore:
             predicates[var] = {ON : [Predicate(var, "==", ON)],
                                OFF: [Predicate(var, "==", OFF)]}
-                               
 
 def generate_sensors_predicates(sensors, store, events, states, 
                                 predicates, error_thresh):
@@ -143,7 +159,7 @@ def fit_regression_model(related_sensors, sens, sensors, event, states):
         model = Lasso(normalize=True)
         parameters = dict(alpha=np.array([0.01, 0.1, 0.5, 1, 5, 10, 50, 100]))
         lasso_regressor = GridSearchCV(model, parameters,
-                                       scoring="neg_mean_squared_error", cv=3)
+                                       scoring="neg_mean_squared_error", cv=2)
         lasso_regressor.fit(features, sens_values)
         return lasso_regressor.best_estimator_, X
     else:
@@ -153,18 +169,23 @@ def fit_regression_model(related_sensors, sens, sensors, event, states):
 
 def predicate_from_model(model, X, sens, sensors, event, states, predicates, 
                          related_sensors, error_thresh):
+    valid = True
     for i, ts in enumerate(event.timestamps):
         sens_value = states[ts][sens]
         prediction = model.predict(X[i].reshape(1, -1))[0]
         error = math.fabs(prediction - sens_value)
-        if error <= error_thresh:
-            pred_gt = Predicate(sens, ">", prediction + error_thresh)
-            pred_lt = Predicate(sens, "<", prediction - error_thresh)
-            if sens not in predicates:
-                predicates[sens] = {GT : set(), LS: set()}
-            predicates[sens][GT].add(pred_gt)
-            predicates[sens][LS].add(pred_lt)
-            related_sensors = related_sensors.union(get_correlated_event(sens, sensors, model))
+        if error >= error_thresh:
+            valid = False
+            break
+
+    if valid:
+        pred_gt = Predicate(sens, ">", model=model, error=error_thresh)
+        pred_lt = Predicate(sens, "<", model=model, error=error_thresh)
+        if sens not in predicates:
+            predicates[sens] = {GT : set(), LS: set()}
+        predicates[sens][GT].add(pred_gt)
+        predicates[sens][LS].add(pred_lt)
+        related_sensors = related_sensors.union(get_correlated_event(sens, sensors, model))
 
 
 def get_other_sens_values(state, sens, sensors):
@@ -207,9 +228,9 @@ def retrieve_update_timestamps(actuators, states):
                 values[var] = curr_value
 
             elif curr_value != values[var]:
-                if((curr_value == OFFZ and values[var] == OFF) or 
-                    curr_value == OFF and values[var] == OFFZ):
-                        continue
+                if((curr_value == OFFZ and values[var] == OFF) or
+                   curr_value == OFF and values[var] == OFFZ):
+                    continue
 
                 if var not in events:
                     events[var] = {}
@@ -230,7 +251,7 @@ def generate_all_predicates(conf, data):
 
     events = retrieve_update_timestamps(store.discrete_vars(), data)
 
-    generate_sensors_predicates(sensors, store, events, data, predicates, 0.0)
+    generate_sensors_predicates(sensors, store, events, data, predicates, 5e-6)
 
     for sens in store.continuous_monitor_vars():
         predicates[sens][GT] = sorted(list(predicates[sens][GT]), reverse=True)

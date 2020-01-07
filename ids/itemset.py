@@ -119,6 +119,24 @@ def get_transactions(states, sensors, predicates, mapping_id_pred, stop):
     print("Duration (s): {}".format(duration))
     return transactions
 
+def count_predicates(predicates, sensors, actuators):
+    count = 0
+    for act in sensors:
+        try:
+            count += len(predicates[act][pred.GT])
+            count += len(predicates[act][pred.LS])
+        except KeyError:
+            pass
+
+    for sens in actuators:
+        try:
+            count += len(predicates[sens][pred.ON])
+            count += len(predicates[sens][pred.OFF])
+        except KeyError:
+            pass
+
+    return count
+
 def export_files(outfile, transactions, supportfile, predicates,
                  mappingfile, mapping_id_pred):
 
@@ -147,16 +165,20 @@ def main(conf, infile, outfile, supportfile, mappingfile,
 
     data = read_state_file(infile)
     store = PVStore(conf)
-    sensors_name = store.continuous_monitor_vars()
+    sensors = store.continuous_monitor_vars()
+    actuators = store.discrete_monitor_vars()
 
     predicates = pred.generate_all_predicates(conf, data)
+    count = count_predicates(predicates, sensors, actuators)
+    print("Number of count: {}".format(count))
+
     mapping_id_pred = {}
-    transactions = get_transactions(data, sensors_name, predicates, mapping_id_pred, stop)
+    transactions = get_transactions(data, sensors, predicates, mapping_id_pred, stop)
     export_files(outfile, transactions, supportfile,
                  predicates, mappingfile, mapping_id_pred)
 
-    print("Export transaction to {}".format(cfg[TRANSACTIONS]))
-    print("Export Support  to {}".format(cfg[MINSUPPORT]))
+    print("Export transaction to {}".format(outfile))
+    print("Export Support  to {}".format(supportfile))
 
     if do_mining:
         print("Create Java Gateway")
@@ -168,7 +190,6 @@ def main(conf, infile, outfile, supportfile, mappingfile,
         miner = gateway.entry_point.getMiner()
 
         print("Running CFPGrowth Algorithm, exporting to {}".format(freqfile))
-
 
         cfp.runAlgorithm(outfile, freqfile, supportfile)
 

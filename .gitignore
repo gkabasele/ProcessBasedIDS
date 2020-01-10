@@ -116,5 +116,14 @@ venv.bak/
 *.idea
 *.iml
 
-./ids/eval_medium_process/*.txt
-./ids/eval_swat_process/*.txt
+ids/eval_medium_process/*txt
+ids/eval_medium_process/*.yml
+ids/eval_medium_process/*.yaml
+
+ids/eval_swat_process/*.txt
+ids/eval_swat_process/*.yml
+ids/eval_swat_process/*.yaml
+
+ids/cfgprowth/*.txt
+ids/cfpgrowth/src/textfiles_medium_process
+ids/cfpgrowth/src/textfiles_swat_process

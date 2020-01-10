@@ -2,6 +2,7 @@ import argparse
 import pdb
 import yaml
 import time
+import pickle
 from py4j.java_gateway import JavaGateway
 import numpy as np
 import predicate as pred
@@ -12,8 +13,10 @@ from idsInvariants import IDSInvariant
 
 TRANSACTIONS = "transactions"
 MINSUPPORT = "minsupport"
+SUPPORT = "support"
 FREQITEMSETS = "freqItemSets"
 INVARIANTS = "invariants"
+PREDICATE_EXPORT = "predicates"
 OUTPUT_RES = "output"
 LOG = "log"
 CLOSE = "closeItemset"
@@ -137,45 +140,73 @@ def count_predicates(predicates, sensors, actuators):
 
     return count
 
-def export_files(outfile, transactions, supportfile, predicates,
-                 mappingfile, mapping_id_pred):
+def export_files(outfile, transactions, minsupportfile, supportfile, predicates,
+                 mappingfile, mapping_id_pred, gamma, theta):
 
     with open(outfile, "w") as fname:
         for transaction in transactions:
+            database = list()
             for item in transaction:
                 varname, cond, index = item
                 p = predicates[varname][cond][index]
-                fname.write("{} ".format(p.id))
+                database.append(p.id)
+            database.sort()
+            for item in database:
+                fname.write("{} ".format(item))
             fname.write("\n")
 
-    with open(supportfile, "w") as fname:
+    mis_list = list()
+    support_list = list()
+    nbr_frequent = 0
+    with open(minsupportfile, "w") as fname:
         for varname in predicates:
             for cond in predicates[varname]:
                 for p in predicates[varname][cond]:
-                    if p.support > 0:
-                        fname.write("{} {}\n".format(p.id, p.support))
+                    mis_list.append((p.id, max(int(gamma*p.support), theta)))
+                    support_list.append((p.id, p.support))
+                    if p.support >= theta:
+                        nbr_frequent += 1
+
+        mis_list.sort(key=lambda x: x[0])
+        support_list.sort(key=lambda x: x[0])
+        for items in mis_list:
+            itemsID, support = items
+            fname.write("{} {}\n".format(itemsID, support))
+
+    print("Number of items with a support greater than {} : {}".format(theta, nbr_frequent))
+    with open(supportfile, "w") as fname:
+        for items in support_list:
+            itemsID, support = items
+            fname.write("{} {}\n".format(itemsID, support))
 
     with open(mappingfile, "w") as fname:
         for pred_id, pred in mapping_id_pred.items():
             fname.write("{}:{}\n".format(pred_id, pred))
 
-def main(conf, infile, outfile, supportfile, mappingfile,
-         invariants, freqfile, closefile, minsup_ratio,
-         ids_input, do_mining, do_detection, stop):
+def main(conf, infile, outfile, minsupportfile, supportfile,
+         mappingfile, invariants, freqfile, closefile,
+         predicate_bin, do_predicate, ids_input, do_mining, 
+         do_detection, stop, gamma, theta):
 
     data = read_state_file(infile)
     store = PVStore(conf)
     sensors = store.continuous_monitor_vars()
     actuators = store.discrete_monitor_vars()
 
-    predicates = pred.generate_all_predicates(conf, data)
+    if do_predicate:
+        predicates = pred.generate_all_predicates(conf, data)
+        pickle.dump(predicates, open(predicate_bin, "wb"))
+    else:
+        predicates = pickle.load(open(predicate_bin, "rb"))
+
     count = count_predicates(predicates, sensors, actuators)
     print("Number of count: {}".format(count))
 
     mapping_id_pred = {}
     transactions = get_transactions(data, sensors, predicates, mapping_id_pred, stop)
-    export_files(outfile, transactions, supportfile,
-                 predicates, mappingfile, mapping_id_pred)
+    mis_theta = int(theta*len(data))
+    export_files(outfile, transactions, minsupportfile, supportfile,
+                 predicates, mappingfile, mapping_id_pred, gamma, mis_theta)
 
     print("Export transaction to {}".format(outfile))
     print("Export Support  to {}".format(supportfile))
@@ -191,7 +222,7 @@ def main(conf, infile, outfile, supportfile, mappingfile,
 
         print("Running CFPGrowth Algorithm, exporting to {}".format(freqfile))
 
-        cfp.runAlgorithm(outfile, freqfile, supportfile)
+        cfp.runAlgorithm(outfile, freqfile, minsupportfile)
 
         print("Mining invariants")
         miner.exportCloseItemsets(closefile, miner.miningRules(freqfile))
@@ -226,13 +257,16 @@ if __name__ == "__main__":
                         help="run the IDS")
     parser.add_argument("--stop", action="store_true", dest="stop",
                         help="stop after a predicate is satisfied pred")
-    parser.add_argument("--minsup", action="store", type=float, default=0.1, dest="minsup")
+    parser.add_argument("--do_predicate", action="store_true", dest="do_predicate")
+    parser.add_argument("--gamma", action="store", type=float, default=0.9, dest="gamma")
+    parser.add_argument("--theta", action="store", type=float, default=0.32, dest="theta")
 
     args = parser.parse_args()
     with open(args.params, "r") as yamlfile:
         cfg = yaml.load(yamlfile, Loader=yaml.BaseLoader)
 
-    main(args.conf, args.infile, cfg[TRANSACTIONS], cfg[MINSUPPORT],
+    main(args.conf, args.infile, cfg[TRANSACTIONS], cfg[MINSUPPORT], cfg[SUPPORT],
          cfg[MAPPINGFILE], cfg[INVARIANTS], cfg[FREQITEMSETS], cfg[CLOSE],
-         args.minsup, args.ids_input, args.do_mining, 
-         args.do_detection, args.stop)
+         cfg[PREDICATE_EXPORT], args.do_predicate, args.ids_input,
+         args.do_mining, args.do_detection, args.stop,
+         args.gamma, args.theta)

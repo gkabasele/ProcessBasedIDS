@@ -29,7 +29,7 @@ class Predicate(object):
         ">=": operator.ge,
         ">" : operator.gt
         }
-    pred_id = 0
+    pred_id = 1
     def __init__(self, varname, operator, bool_value=None, num_value=None,
                  model=None, error=0):
 

@@ -51,18 +51,11 @@ public class MainTestAllAssociationRules_CFPGrowth_saveToFile {
 	public static void main(String [] arg) throws IOException{
 		File directory = new File("./");
 		System.out.println(directory.getAbsolutePath());
-		String transactions = fileToPath("/textfiles_swat_process/database_complete.txt");
-		//String transactions = fileToPath("/textfiles/database.txt");
-		String frequentItemsetsComplete = ".//output_swat_complete.txt";
-		//String frequentItemsets= ".//output.txt";
-		//String filtered_output = ".//output_filtered";
-		String MISfileComplete = fileToPath("/textfiles_swat_process/mis_complete.txt");
-		//String MISfile = fileToPath("/textfiles/mis_v2.txt");
-		//String closeOutputComplete = ".//close_output_complete.txt";
-		String closeOutputComplete = ".//close_output_swat_complete_sorted.txt";
-		//String closeOutput= ".//close_output_sorted.txt";
+		String transactions = fileToPath("/textfiles_swat_process/database.txt");
+		String frequentItemsetsComplete = ".//output_swat.txt";
+		String MISfileComplete = fileToPath("/textfiles_swat_process/mis.txt");
+		//String closeOutputComplete = ".//close_output_swat_complete_sorted.txt";
 		//String invariants = ".//invariants.txt";
-		String invariantsComplete = ".//invariants_swat_complete.txt";
 
 		// Check how to input is organised to determine if it need some prepocessing
 		/*

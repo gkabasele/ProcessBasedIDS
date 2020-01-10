@@ -115,3 +115,6 @@ venv.bak/
 *.DS_Store
 *.idea
 *.iml
+
+./ids/eval_medium_process/*.txt
+./ids/eval_swat_process/*.txt

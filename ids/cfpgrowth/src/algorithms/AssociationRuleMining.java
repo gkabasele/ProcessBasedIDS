@@ -18,10 +18,10 @@ import static java.nio.file.StandardOpenOption.CREATE;
 
 class ItemSet implements Serializable {
 	private Set<Short> items;
-	private short support;
+	private int support;
 	private boolean isClose;
 
-	public ItemSet(Set<Short> items, short support) {
+	public ItemSet(Set<Short> items, int support) {
 		this.items = items;
 		this.support = support;
 		this.isClose = false;
@@ -31,7 +31,7 @@ class ItemSet implements Serializable {
 		return items;	
 	}
 
-	public short getSupport(){
+	public int getSupport(){
 		return support;	
 	}
 
@@ -99,7 +99,7 @@ public class AssociationRuleMining {
 	private List<ItemSet> closeItemsets;
 	private List<AssociationRule> rules;
 	// Items ID -> Items
-	private Map<Short, Short> itemsMap;
+	private Map<Short, Integer> itemsMap;
 
 	public static final short NOTFOUND = -1;
 	public static final int CHACHESIZE = 1000000;
@@ -120,6 +120,9 @@ public class AssociationRuleMining {
 		return closeItemsets;
 	}
 
+	/*
+	 *	Compute closeItemsets list from a text file containing the frequent itemset
+	 */
 	public void fillCloseItemSetFromFreq(String input) throws IOException{
 		// Read File line by line
 
@@ -151,22 +154,28 @@ public class AssociationRuleMining {
 		closeItemsets =  candidates;
 	}
 
+	/*
+	*	Fill the support for each items from a text a textfile
+	**/
 	public void importItemsSupport(String support) throws IOException {
 		String line;
 		String[] values;
 		short itemsID;
-		short itemsSupport;
+		int itemsSupport;
 		try(FileInputStream inputStream = new FileInputStream(support); Scanner sc = new Scanner(inputStream, "UTF-8")){
 			while(sc.hasNextLine()){
 				line = sc.nextLine();
 				values = line.split(" ");
 				itemsID = Short.parseShort(values[0]);
-				itemsSupport = Short.parseShort(values[1]);
+				itemsSupport = Integer.parseInt(values[1]);
 				itemsMap.put(itemsID, itemsSupport);
 			}
 		}
 	}
 
+	/*
+		Fill the closeItemsets list from a text file containing the close itemsets
+	 */
 	public void importCloseItemSets (String closeInput) throws IOException {
 		String line;
 		ItemSet itemSet;
@@ -180,6 +189,9 @@ public class AssociationRuleMining {
 		closeItemsets.sort(Comparator.comparingInt(ItemSet::getSupport));
 	}
 
+	/*
+		Convert a text file of itemset to a binary file
+	 */
 	public void writeItemsetsToFileBin(String input, String output){
 		String line;
 		ItemSet itemSet;
@@ -207,6 +219,9 @@ public class AssociationRuleMining {
 
 	}
 
+	/*
+		Read a binary file and print the itemset contained in that file
+	 */
 	public void readItemsetsFromBin(String input){
 		try{
 			FileInputStream inputStream = new FileInputStream(input);
@@ -225,10 +240,11 @@ public class AssociationRuleMining {
 		}
 	}
 
-	public void miningRulefromClose(String freqInput, boolean binaryFile){
-		createRulesFromCloseItemset(freqInput, binaryFile);
-	}
 
+
+	/*
+		Write close itemsets to a file from the list closeItemsets
+	 */
 	public void exportCloseItemsets(String filename) throws IOException{
 		File wfile = new File(filename);
 
@@ -243,6 +259,10 @@ public class AssociationRuleMining {
 		bw.close();
 	}
 
+	/*
+	* Write close itemsets to a file from a dictonnary containing itemset with  a flag indicating whether there are
+	* close or not
+	* */
 	public void exportCloseItemsets(String filename, Map<Byte, List<ItemSet>> map) throws IOException {
 		File wfile = new File(filename);
 		if (!wfile.exists()){
@@ -260,6 +280,9 @@ public class AssociationRuleMining {
 		bw.close();
 	}
 
+	/*
+	* Write Invariant rule to a file
+	*/
 	public void exportRule(String filename) throws IOException{
 		File wfile = new File(filename);
 
@@ -275,6 +298,10 @@ public class AssociationRuleMining {
 		bw.close();
 	}
 
+
+	/*
+		Remove non closeItemset from the list of candidate based on current itemsets
+	 */
 	private List<ItemSet> updateCandidates(ItemSet itemSet, List<ItemSet> candidates){
 		List<ItemSet> list = new ArrayList<>();
 		boolean hasSupersetCandidate = false;
@@ -295,6 +322,9 @@ public class AssociationRuleMining {
 		return list;
 	}
 
+	/*
+		Create a new itemSet from a string
+	 */
 	private ItemSet  stringToItemSet(String line){
 		String[] values = line.split(":");
 		short support = Short.parseShort(values[1].replaceAll("\\s", ""));
@@ -307,6 +337,13 @@ public class AssociationRuleMining {
 		return new ItemSet(items, support);
 	}
 
+	public void miningRulefromClose(String freqInput, boolean binaryFile){
+		createRulesFromCloseItemset(freqInput, binaryFile);
+	}
+
+	/*
+	* Create a map where the key is the size of an itemSet and the value is a a list the itemsets with size key
+	* */
 	public Map<Byte, List<ItemSet>> miningRules(String filename) throws IOException {
 
 		File file = new File(filename);
@@ -342,6 +379,11 @@ public class AssociationRuleMining {
 		return map;
 	}
 
+	/*
+		Create rule when a close itemset has been detected. A map is used for that
+		containing all the itemset is used to speed the process. It requires that there is
+		enough memory to store all the itemsets
+	 */
 	private void createRulesFromCloseItemset(byte lastKey, Map<Byte, List<ItemSet>> map){
 		byte currentSize;
 		boolean isClose;
@@ -358,9 +400,14 @@ public class AssociationRuleMining {
 		}
 	}
 
+	/*
+		Create rule when a close itemset has been detected. A file is need to store all
+		the itemsets and there support. A cache is used to speed up the process but since
+		the file must be read a lot of time, it is Extremely slow
+	 */
 	private void createRulesFromCloseItemset(String filename, boolean binaryFile){
 		long startTime = System.nanoTime();
-		LinkedHashMap<Set<Short>, Short> cache = new LinkedHashMap<Set<Short>, Short>(){
+		LinkedHashMap<Set<Short>, Integer> cache = new LinkedHashMap<Set<Short>, Integer>(){
 			@Override
 			protected boolean removeEldestEntry(Entry entry) {
 				return size() > CHACHESIZE;
@@ -380,6 +427,9 @@ public class AssociationRuleMining {
 		System.out.println("Duration (s): " + duration);
 	}
 
+	/*
+		Look it if it is possible to extract an invariant rule from a close itemset
+	 */
 	// Assume that the itemset is sorted by the support of its items
 	private boolean isRelevantCloseItemSet(ItemSet itemSet) {
 		List<Short> itemsIDList = new ArrayList<>(itemSet.getItems());
@@ -389,6 +439,9 @@ public class AssociationRuleMining {
 	}
 
 
+	/*
+		Check if an itemset is closed or not, given the list of the other itemsets and their length
+	 */
 	private boolean detectCloseItemset(byte size, byte maxKey, ItemSet itemset, Map<Byte, List<ItemSet>> map){
 		boolean hasSuperset;
 		boolean isClose;
@@ -413,7 +466,7 @@ public class AssociationRuleMining {
 		return true;
 	}
 
-	private byte checkSupport(short causeSupport, short effectSupport){
+	private byte checkSupport(int causeSupport, int effectSupport){
 		if (causeSupport == effectSupport){
 			return SAMESUP;
 		} else if (causeSupport > effectSupport){
@@ -423,10 +476,14 @@ public class AssociationRuleMining {
 		}
 	}
 
+	/*
+		Look in the binary file to get the support of the two itemsets composing the invariants. The lookup is done
+		linearly so a cache is used to avoid lookup as much as possible.
+	 */
 	private byte sameSupport(Set<Short> cause, Set<Short> effect, String filename,
-								LinkedHashMap<Set<Short>, Short> cache, boolean binaryFile) throws IOException{
-		short causeSupport = -1;
-		short effectSupport = -1;
+								LinkedHashMap<Set<Short>, Integer> cache, boolean binaryFile) throws IOException{
+		int causeSupport = -1;
+		int effectSupport = -1;
 
 		if (cache.containsKey(cause))
 			causeSupport = cache.get(cause);
@@ -443,10 +500,13 @@ public class AssociationRuleMining {
 			return findCauseEffectText(cause, effect, filename, cache);
 	}
 
+	/*
+		Lookup of support of the two itemsets composing invariant on a binary file
+	* */
 	private byte findCauseEffectBin(Set<Short> cause, Set<Short>effect, String filename,
-									LinkedHashMap<Set<Short>, Short> cache){
-		short causeSupport = -1;
-		short effectSupport = -1;
+									LinkedHashMap<Set<Short>, Integer> cache){
+		int causeSupport = -1;
+		int effectSupport = -1;
 		try{
 			FileInputStream inputStream = new FileInputStream(filename);
 			ObjectInputStream in = new ObjectInputStream(inputStream);
@@ -475,12 +535,15 @@ public class AssociationRuleMining {
 		return CONTINUE;
 	}
 
+	/*
+		Lookup of support of the two itemsets composing invariant on a text file
+	 */
 	private byte findCauseEffectText(Set<Short> cause, Set<Short>effect, String filename,
-								 LinkedHashMap<Set<Short>, Short> cache) throws IOException{
+								 LinkedHashMap<Set<Short>, Integer> cache) throws IOException{
 		String line;
 		ItemSet itemset;
-		short causeSupport = -1;
-		short effectSupport = -1;
+		int causeSupport = -1;
+		int effectSupport = -1;
 		try (FileInputStream inputStream = new FileInputStream(filename); Scanner sc = new Scanner(inputStream, "UTF-8")){
 			while (sc.hasNextLine()){
 				line = sc.nextLine();
@@ -503,7 +566,10 @@ public class AssociationRuleMining {
 		return CONTINUE;
 	}
 
-	private short findSupport(Set<Short> set, Map<Byte, List<ItemSet>> map){
+	/*
+		Lookup of support done via the map containing all the itemsets. To use if memory big enoug to store all itemsets
+	 */
+	private int findSupport(Set<Short> set, Map<Byte, List<ItemSet>> map){
 		for (Entry<Byte, List<ItemSet>> entry: map.entrySet()){
 		    if(entry.getKey() == set.size()){
 				for (ItemSet itemSet : entry.getValue()){
@@ -516,19 +582,28 @@ public class AssociationRuleMining {
 		return NOTFOUND;
 	}
 
+	/*
+	*	Generate possible invariant by subdividing itemset in cause and effect. File version
+	* */
 	private byte divideFromLength(Short[] itemSetList, int length, String filename,
-									 LinkedHashMap<Set<Short>, Short> cache, boolean binaryFile){
+									 LinkedHashMap<Set<Short>, Integer> cache, boolean binaryFile){
 		Short[] cause = new Short[length];
 		short root = itemSetList[0];
 		return itemSetDivision(itemSetList, root, length, 0, cause, 0, filename, cache, binaryFile);
 	}
 
+	/*
+	 *	Generate possible invariant by subdividing itemset in cause and effect. Map version
+	 * */
 	private boolean divideFromLength(Short[] itemSetList, int length, Map<Byte, List<ItemSet>> map){
 		Short[] cause = new Short[length];
 		short root = itemSetList[0];
 		return itemSetDivision(itemSetList, root, length, 0, cause, 0, map);
 	}
 
+	/**
+	 * Given an itemset and the cause part, return the effect part
+	 * */
 	private List<Short> getEffectFromCause(List<Short> itemSetList, List<Short> cause){
 		List<Short> effect = new ArrayList<>();
 		for(short items: itemSetList){
@@ -539,8 +614,11 @@ public class AssociationRuleMining {
 		return effect;
 	}
 
+	/*
+	* Generate of the subdivision with a cause of length @length. Recursive method. File version to get support
+	* */
 	private byte  itemSetDivision(Short[] itemSetList, short root, int length, int index, Short[] cause, int i,
-									 String filename, LinkedHashMap<Set<Short>, Short> cache, boolean binaryFile){
+									 String filename, LinkedHashMap<Set<Short>, Integer> cache, boolean binaryFile){
 		byte res;
 		if (index == length){
 			List<Short> causelist = Arrays.asList(cause);
@@ -572,6 +650,9 @@ public class AssociationRuleMining {
 		return res;
 	}
 
+	/*
+	 * Generate of the subdivision with a cause of length @length. Recursive method. Map version to get support
+	 * */
 	private boolean itemSetDivision(Short[] itemSetList, short root, int length, int index, Short[] cause, int i,
 									Map<Byte, List<ItemSet>> map){
 	    boolean res;
@@ -598,8 +679,12 @@ public class AssociationRuleMining {
 		return res;
 	}
 
+	/*
+	* Create a invariant and add it to the list of invariant if the cause subset and the effect subset have the same
+	* support. file version
+	* */
 	private byte createRule(Set<Short> cause, Set<Short> effect, String filename,
-							   LinkedHashMap<Set<Short>, Short> cache, boolean binaryFile) throws IOException {
+							   LinkedHashMap<Set<Short>, Integer> cache, boolean binaryFile) throws IOException {
 		byte same = sameSupport(cause, effect, filename, cache, binaryFile);
 		if (same == SAMESUP){
 			AssociationRule rule = new AssociationRule(new ArrayList<>(cause), new ArrayList<>(effect));
@@ -609,9 +694,13 @@ public class AssociationRuleMining {
 		return same;
 	}
 
+	/*
+	 * Create a invariant and add it to the list of invariant if the cause subset and the effect subset have the same
+	 * support. Map version
+	 * */
 	private boolean createRule(Set<Short> cause, Set<Short> effect, Map<Byte, List<ItemSet>> map){
-		short cisSupport = findSupport(cause, map);
-		short eisSupport = findSupport(effect, map);
+		int cisSupport = findSupport(cause, map);
+		int eisSupport = findSupport(effect, map);
 		if (cisSupport == eisSupport){
 			AssociationRule rule = new AssociationRule(new ArrayList<>(cause), new ArrayList<>(effect));
 			System.out.println("Add rules: " + rule);
@@ -621,8 +710,12 @@ public class AssociationRuleMining {
 		return false;
 	}
 
+	/*
+	* Generate a rule from the close itemsets if it can be divide in two subsets such both subset have the same support
+	* File version.
+	* */
 	private void rulesFromSet(ItemSet itemset, String filename,
-							  LinkedHashMap<Set<Short>, Short> cache, boolean binaryFile){
+							  LinkedHashMap<Set<Short>, Integer> cache, boolean binaryFile){
 		byte res;
 		Short[] array = new Short[itemset.length()];
 		array = (new ArrayList<>(itemset.getItems())).toArray(array);
@@ -636,7 +729,10 @@ public class AssociationRuleMining {
 			}
 		}
 	}
-
+	/*
+	 * Generate a rule from the close itemsets if it can be divide in two subsets such both subset have the same support
+	 * Map version.
+	 * */
 	private void rulesFromSet(ItemSet itemset, Map<Byte, List<ItemSet>> map){
 		boolean res;
 		Short[] array = new Short[itemset.length()];
@@ -649,4 +745,14 @@ public class AssociationRuleMining {
 			}
 		}
 	}
+
+	/*
+	*	Return the items with minimum support in an itemset
+	* */
+	// Assume that the itemset is sorted by the support of its items
+	private int getMinSup(ItemSet itemSet){
+		List<Short> itemsIDList = new ArrayList<>(itemSet.getItems());
+		return (itemsMap.get(itemsIDList.get(0)));
+	}
+
 }

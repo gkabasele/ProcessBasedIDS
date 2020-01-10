@@ -226,7 +226,8 @@ public class AlgoCFPGrowth {
 			tree.MISMerge(tree.root);
 		}
 		// tree.print(tree.root);
-
+		//ADDED
+		tree.print(tree.root, 0);
 		// (5) We start to mine the FP-Tree by calling the recursive method.
 		// Initially, prefix alpha is empty.
 		int[] prefixAlpha = new int[0];
@@ -365,7 +366,7 @@ public class AlgoCFPGrowth {
 	 * This method mines pattern from a Prefix-Tree recursively
 	 * 
 	 * @param tree    The Prefix Tree
-	 * @param prefix  The current prefix "alpha"
+	 * @param prefixAlpha  The current prefix "alpha"
 	 * @param mapSupport    The frequency of each item in the prefix tree.
 	 * @throws IOException exception if error writing the output file.
 	 */
@@ -406,7 +407,7 @@ public class AlgoCFPGrowth {
 	 * Mine an FP-Tree having more than one path.
 	 * 
 	 * @param tree        the FP-tree
-	 * @param prefix      the current prefix, named "alpha"
+	 * @param prefixAlpha      the current prefix, named "alpha"
 	 * @param mapSupport  the frequency of items in the FP-Tree
 	 * @throws IOException  exception if error writing the file
 	 */

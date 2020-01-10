@@ -267,15 +267,21 @@ public class MISTree {
 	 * Print a MIS tree to System.out (recursive method)
 	 * @param TRoot the root of the subtree to be printed.
 	 */
-	public void print(MISNode TRoot) {
+	public void print(MISNode TRoot, int sep) {
 		// char a[]={'z','a','b','c','d','e','f','g','h'};
 		// prefix print
-		if (TRoot.itemID != -1)
-			System.out.print(TRoot.itemID);
-		System.out.print(' ');
-		for (MISNode node : TRoot.childs) {
-			print(node); // recursive call
+		if (TRoot.itemID != -1){
+			for (int i=0; i< sep; i++){
+				System.out.print("  ");
+			}
+			System.out.print(TRoot.itemID + ": ");
+			System.out.println(TRoot.childs.size());
 		}
-
+		else {
+			System.out.println("Root");
+		}
+		for (MISNode node : TRoot.childs) {
+			print(node, sep+1); // recursive call
+		}
 	}
 }

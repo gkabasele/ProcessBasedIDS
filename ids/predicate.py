@@ -6,6 +6,7 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import LassoCV
 from sklearn.linear_model import Lasso
+from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import GridSearchCV
 from pvStore import PVStore
 from utils import TS
@@ -20,7 +21,32 @@ TURNOFF = "turnOff"
 GT = "greater"
 LS = "lesser"
 
+DELTA = 'delta'
+
+
 class Predicate(object):
+    pred_id = 1
+
+    def __init__(self, varname):
+        self.id = Predicate.pred_id
+        Predicate.pred_id += 1
+        self.varname = varname
+        self.support = 0
+
+class Model(object):
+
+    def __init__(self, varname, model):
+        self.varname = varname
+        self.all_proba = []
+        self.gmm = model
+
+    def get_valid_predicate(self, value):
+        membership_proba = self.gmm.predict_proba(value)
+        self.all_proba.append(membership_proba)
+        return membership_proba.index(max(membership_proba))
+
+
+class PredicateEvent(Predicate):
     ops = {
         "<" : operator.lt,
         "<=": operator.le,
@@ -33,15 +59,13 @@ class Predicate(object):
     def __init__(self, varname, operator, bool_value=None, num_value=None,
                  model=None, error=0):
 
-        self.id = Predicate.pred_id
-        self.varname = varname
+        Predicate.__init__(self, varname)
         try:
-            self.operator = Predicate.ops[operator]
+            self.operator = PredicateEvent.ops[operator]
             self.op_label = operator
         except KeyError:
             raise KeyError("Unknown operator for a Predicate")
 
-        self.support = 0
 
         if bool_value is not None:
             self.value = bool_value
@@ -53,7 +77,6 @@ class Predicate(object):
         else:
             raise ValueError("No model or value for the predicate")
 
-        Predicate.pred_id += 1
 
     def is_true_value(self, current_value):
         return self.operator(current_value, self.value)
@@ -75,12 +98,7 @@ class Predicate(object):
     def __repr__(self):
         return self.__str__()
 
-    #def __hash__(self):
-    #    return hash("{} {} {}".format(self.varname, self.op_label, self.value))
-
-    #def __eq__(self, other):
-    #    return self.__hash__() == other.__hash__()
-
+    
     def __lt__(self, other):
         if self.varname != other.varname:
             raise ValueError("Cannot compare two predicates of different variable")
@@ -118,12 +136,45 @@ class Event(object):
     def __repr__(self):
         return self.__str__()
 
+def get_sensors_updates(sensors, states, store):
+
+    last_values = {k : None for k in sensors if not store[k].ignore}
+    updates = {k: [] for k in sensors if not store[k].ignore}
+
+    for i, state in enumerate(states):
+        if i != 0:
+            for sensor, deltas in updates.items():
+                deltas.append(state[sensor] - last_values[sensor])
+        for sensor in sensors:
+            last_values[sensor] = state[sensor]
+
+    return updates
+
+def generate_sensors_predicates_dist(sensors, store, states, predicates, n_comp=10):
+    updates = get_sensors_updates(sensors, states, store)
+    for sensor, deltas in updates.items():
+        model = model_for_sensor(np.array(deltas).reshape((-1, 1)), n_comp)
+        if sensor not in predicates:
+            predicates[sensor] = {DELTA: model}
+        else:
+            predicates[sensor][DELTA] = model
+        for i in range(model.n_components):
+            predicates[sensor][i] = [Predicate(sensor)]
+
+def model_for_sensor(deltas, n_comp):
+    models = [None for i in range(n_comp)]
+    for i in range(1, n_comp+1):
+        models[i-1] = GaussianMixture(n_components=i, init_params='kmeans').fit(deltas)
+
+    bics = [m.bic(deltas) for m in models]
+    return models[bics.index(min(bics))]
+
 def generate_actuators_predicates(actuators, store, predicates):
 
     for var in actuators:
         if not store[var].ignore:
-            predicates[var] = {ON : [Predicate(var, "==", ON)],
-                               OFF: [Predicate(var, "==", OFF)]}
+            predicates[var] = {ON : [PredicateEvent(var, "==", ON)],
+                               OFF: [PredicateEvent(var, "==", OFF)]}
 
 def generate_sensors_predicates(sensors, store, events, states, 
                                 predicates):
@@ -192,8 +243,8 @@ def predicate_from_model(store, model, X, sens, sensors, event, states, predicat
             break
 
     if valid:
-        pred_gt = Predicate(sens, ">", model=model, num_value=mean, error=noise)
-        pred_lt = Predicate(sens, "<", model=model, num_value=mean, error=noise)
+        pred_gt = PredicateEvent(sens, ">", model=model, num_value=mean, error=noise)
+        pred_lt = PredicateEvent(sens, "<", model=model, num_value=mean, error=noise)
         if sens not in predicates:
             predicates[sens] = {GT : list(), LS: list()}
         predicates[sens][GT].append(pred_gt)
@@ -259,11 +310,15 @@ def generate_all_predicates(conf, data):
     sensors = store.continous_vars()
 
     predicates = {}
+    generate_sensors_predicates_dist(sensors, store, data, predicates)
+
+    '''
     generate_actuators_predicates(actuators, store, predicates)
 
     events = retrieve_update_timestamps(store.discrete_vars(), data)
 
     generate_sensors_predicates(sensors, store, events, data, predicates)
+    '''
 
     return predicates
 

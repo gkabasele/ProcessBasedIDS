@@ -66,7 +66,7 @@ public class Itemset extends AbstractOrderedItemset{
 	
 	/**
 	 * Constructor 
-	 * @param items a list of Integer representing items in the itemset
+	 * @param itemset a list of Integer representing items in the itemset
 	 * @param support the support of the itemset
 	 */
 	public Itemset(List<Integer> itemset, int support){
@@ -161,10 +161,59 @@ public class Itemset extends AbstractOrderedItemset{
 	 * @return the new itemset
 	 */
 	public Itemset intersection(Itemset itemset2) {
-		int [] intersection = ArraysAlgos.intersectTwoSortedArrays(this.getItems(), itemset2.getItems());
-		return new Itemset(intersection);
+	    int[] itemsCopy = itemset.clone();
+	    int[] itemsCopy2 = itemset2.getItems().clone();
+	    Arrays.sort(itemsCopy);
+	    Arrays.sort(itemsCopy2);
+		int [] intersection = ArraysAlgos.intersectTwoSortedArrays(itemsCopy, itemsCopy2);
+		int [] res = new int[intersection.length];
+		int j = 0;
+		if (itemsCopy.length >= itemsCopy2.length) {
+			for (int i = 0; i < itemsCopy2.length; i++ ){
+				if (Arrays.binarySearch(intersection, itemset2.itemset[i]) >= 0) {
+					res[j] = itemset2.itemset[i];
+					j++;
+				}
+			}
+		} else {
+			for (int i = 0; i < itemsCopy.length; i++ ){
+				if (Arrays.binarySearch(intersection, itemset[i]) >= 0) {
+					res[j] = itemset[i];
+					j++;
+				}
+			}
+		}
+		return new Itemset(res);
 	}
-	
+
+	public boolean isSupersetOf(Itemset itemset2){
+		if (itemset.length <= itemset2.itemset.length) {
+			return false;
+		}
+		Itemset res = intersection(itemset2);
+		if (res.itemset.length != itemset2.itemset.length) {
+			return false;
+		}
+		for (int i = 0; i < res.itemset.length; i++) {
+			if (res.itemset[i] != itemset2.itemset[i])
+			    return false;
+		}
+		return true;
+	}
+	public boolean isSubsetOf(Itemset itemset2){
+		if (itemset.length >= itemset2.itemset.length) {
+			return false;
+		}
+		Itemset res = intersection(itemset2);
+		if (res.itemset.length != itemset.length) {
+			return false;
+		}
+		for (int i = 0; i < res.itemset.length; i++) {
+			if (res.itemset[i] != itemset[i])
+				return false;
+		}
+		return true;
+	}
 	@Override
 	public int hashCode() {
 		

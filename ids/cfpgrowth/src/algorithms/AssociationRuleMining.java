@@ -305,10 +305,10 @@ public class AssociationRuleMining {
 	private List<ItemSet> updateCandidates(ItemSet itemSet, List<ItemSet> candidates){
 		List<ItemSet> list = new ArrayList<>();
 		boolean hasSupersetCandidate = false;
-		for (ItemSet cand : candidates){
-			if (itemSet.isSupersetOf(cand) && itemSet.getSupport() == cand.getSupport()){
+		for (ItemSet cand : candidates) {
+			if (itemSet.isSupersetOf(cand) && itemSet.getSupport() == cand.getSupport()) {
 				continue;
-			} else if (itemSet.isSubsetOf(cand) && itemSet.getSupport() == cand.getSupport()){
+			} else if (itemSet.isSubsetOf(cand) && itemSet.getSupport() == cand.getSupport()) {
 				hasSupersetCandidate = true;
 				list.add(cand);
 			} else {

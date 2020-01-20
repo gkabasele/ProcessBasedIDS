@@ -85,6 +85,11 @@ public class AlgoCFPGrowth {
 	/** Object to check the maximum memory usage */
 	private MemoryLogger memoryLogger = null;
 
+	int numberItems = 0;
+
+	/*ADDED*/
+	private List<Itemset> closedFreqItemsets = null;
+
 	/**
 	 * Constructor
 	 */
@@ -102,6 +107,8 @@ public class AlgoCFPGrowth {
 				return compare;
 			}
 		};
+
+		closedFreqItemsets = new ArrayList<>();
 	}
 	
 	/**
@@ -227,7 +234,7 @@ public class AlgoCFPGrowth {
 		}
 		// tree.print(tree.root);
 		//ADDED
-		tree.print(tree.root, 0);
+		//tree.print(tree.root, 0);
 		// (5) We start to mine the FP-Tree by calling the recursive method.
 		// Initially, prefix alpha is empty.
 		int[] prefixAlpha = new int[0];
@@ -236,6 +243,9 @@ public class AlgoCFPGrowth {
 			cfpgrowth(tree, prefixAlpha, transactionCount, mapSupport);
 		}
 
+		for (Itemset itemset: closedFreqItemsets) {
+			writeItemsetToFile(itemset);
+		}
 		// check the memory usage
 		memoryLogger.checkMemory();
 		
@@ -389,7 +399,8 @@ public class AlgoCFPGrowth {
 				if (node.counter >= MIS[prefixAlpha[0]]) {
 					
 					//write the itemset to the output file
-					writeItemsetToFile(prefixAlpha, node.itemID, node.counter);
+					//writeItemsetToFile(prefixAlpha, node.itemID, node.counter);
+					updateCloseFreqItemset(prefixAlpha, node.itemID, node.counter);
 				}
 				// end of code that i moved
 			} else {
@@ -438,7 +449,8 @@ public class AlgoCFPGrowth {
 			// if the support is higher than the MIS
 			if (support >= mis) {
 				// save the itemset to the file
-				writeItemsetToFile(prefixAlpha, item, betaSupport); 
+				//writeItemsetToFile(prefixAlpha, item, betaSupport);
+				updateCloseFreqItemset(prefixAlpha, item, betaSupport);
 			}
 
 			// === Construct beta's conditional pattern base ===
@@ -516,6 +528,37 @@ public class AlgoCFPGrowth {
 		}
 	}
 
+	private void updateCloseFreqItemset(int [] itemset, int lastItem, int support){
+		if (itemset.length == 0){
+			System.out.println("Starting itemsets with item number:" + numberItems);
+		}
+		int[] items = new int[itemset.length+1];
+		for (int i = 0; i < itemset.length; i ++) {
+			items[i] = itemset[i];
+		}
+		items[items.length-1] = lastItem;
+		Itemset freqItemset = new Itemset(items);
+		freqItemset.setAbsoluteSupport(support);
+
+		List<Itemset> newList = new ArrayList<>();
+		boolean hasSupersetCandidate = false;
+		for (Itemset cand: closedFreqItemsets) {
+			if (freqItemset.isSupersetOf(cand) && freqItemset.getAbsoluteSupport() == cand.getAbsoluteSupport()) {
+				continue;
+			} else if (freqItemset.isSubsetOf(cand) && freqItemset.getAbsoluteSupport() == cand.getAbsoluteSupport()) {
+				hasSupersetCandidate = true;
+				newList.add(cand);
+			} else {
+				newList.add(cand);
+			}
+		}
+
+		if (!hasSupersetCandidate){
+			newList.add(freqItemset);
+		}
+		closedFreqItemsets = newList;
+	}
+
 	/**
 	 * Write a frequent itemset that is found to the output file.
 	 * @param itemset  an itemset
@@ -557,6 +600,21 @@ public class AlgoCFPGrowth {
 			Itemset itemsetObj = new Itemset(itemsetWithLastItem);
 			itemsetObj.setAbsoluteSupport(support);
 			patterns.addItemset(itemsetObj, itemsetObj.size());
+		}
+	}
+
+	private void writeItemsetToFile(Itemset itemset)
+			throws IOException {
+		if (writer != null) {
+			StringBuilder buffer = new StringBuilder();
+			for (int i = 0; i < itemset.getItems().length; i++) {
+				buffer.append(itemset.getItems()[i]);
+				buffer.append(' ');
+			}
+			buffer.append(" #SUP: ");
+			buffer.append(itemset.getAbsoluteSupport());
+			writer.write(buffer.toString());
+			writer.newLine();
 		}
 	}
 	

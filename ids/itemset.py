@@ -12,6 +12,7 @@ from utils import read_state_file
 from idsInvariants import IDSInvariant
 
 TRANSACTIONS = "transactions"
+TRANSBIN = "transactionsBin"
 MINSUPPORT = "minsupport"
 SUPPORT = "support"
 FREQITEMSETS = "freqItemSets"
@@ -21,6 +22,7 @@ OUTPUT_RES = "output"
 LOG = "log"
 CLOSE = "closeItemset"
 MAPPINGFILE = "mappingfile"
+MAPPINGFILEBIN = "mappingfileBin"
 
 class HelpCounter(object):
 
@@ -76,6 +78,16 @@ def sensor_predicates(state, sensors, sensor, value, predicates, satisfied_pred,
             if stop:
                 break
 
+    # Get the GMM model of the deltas for the sensor
+    # {Sensor : {Delta: GMM, DIST:[Predicate1, Predicate2]}}
+    model = predicates[sensor][pred.DELTA]
+    # Get the index of the valid predicate
+    ind = model.get_valid_predicate(np.array(value).reshape(-1, 1))
+    p = predicates[sensor][pred.DIST][ind]
+    p.support += 1
+    mapping_id_pred[p.id] = p
+    satisfied_pred.append((sensor, pred.DIST, ind))
+
 def actuator_predicates(actuator, value, predicates, satisfied_pred, mapping_id_pred):
     pred_on = predicates[actuator][pred.ON][0]
     pred_off = predicates[actuator][pred.OFF][0]
@@ -124,17 +136,29 @@ def get_transactions(states, sensors, predicates, mapping_id_pred, stop):
 
 def count_predicates(predicates, sensors, actuators):
     count = 0
-    for act in sensors:
+    for sensor in sensors:
         try:
-            count += len(predicates[act][pred.GT])
-            count += len(predicates[act][pred.LS])
-        except KeyError:
-            pass
+            if pred.GT in predicates[sensor]:
+                count += len(predicates[sensor][pred.GT])
 
-    for sens in actuators:
+            if pred.LS in predicates[sensor]:
+                count += len(predicates[sensor][pred.LS])
+
+            if pred.DIST in predicates[sensor]:
+                count += len(predicates[sensor][pred.DIST])
+        except KeyError as err:
+            print(err)
+            pdb.set_trace()
+            print("KeyError")
+        except TypeError as err:
+            print(err)
+            pdb.set_trace()
+            print("TypeError")
+
+    for actuator in actuators:
         try:
-            count += len(predicates[sens][pred.ON])
-            count += len(predicates[sens][pred.OFF])
+            count += len(predicates[actuator][pred.ON])
+            count += len(predicates[actuator][pred.OFF])
         except KeyError:
             pass
 
@@ -142,6 +166,8 @@ def count_predicates(predicates, sensors, actuators):
 
 def export_files(outfile, transactions, minsupportfile, supportfile, predicates,
                  mappingfile, mapping_id_pred, gamma, theta):
+
+    pdb.set_trace()
 
     with open(outfile, "w") as fname:
         for transaction in transactions:
@@ -161,11 +187,12 @@ def export_files(outfile, transactions, minsupportfile, supportfile, predicates,
     with open(minsupportfile, "w") as fname:
         for varname in predicates:
             for cond in predicates[varname]:
-                for p in predicates[varname][cond]:
-                    mis_list.append((p.id, max(int(gamma*p.support), theta)))
-                    support_list.append((p.id, p.support))
-                    if p.support >= theta:
-                        nbr_frequent += 1
+                if cond != pred.DELTA:
+                    for p in predicates[varname][cond]:
+                        mis_list.append((p.id, max(int(gamma*p.support), theta)))
+                        support_list.append((p.id, p.support))
+                        if p.support >= theta:
+                            nbr_frequent += 1
 
         mis_list.sort(key=lambda x: x[0])
         support_list.sort(key=lambda x: x[0])
@@ -180,30 +207,58 @@ def export_files(outfile, transactions, minsupportfile, supportfile, predicates,
             fname.write("{} {}\n".format(itemsID, support))
 
     with open(mappingfile, "w") as fname:
-        for pred_id, pred in mapping_id_pred.items():
-            fname.write("{}:{}\n".format(pred_id, pred))
+        for pred_id, predicate in mapping_id_pred.items():
+            fname.write("{}:{}\n".format(pred_id, predicate))
+
+def find_mapping_pred_id(mapping_id_pred, transactions, predicates):
+    for trans in transactions:
+        for item in trans.predicates:
+            varname, cond, index = item
+            p = predicates[varname][cond][index]
+            mapping_id_pred[p.id] = p
 
 def main(conf, infile, outfile, minsupportfile, supportfile,
          mappingfile, invariants, freqfile, closefile,
-         predicate_bin, do_predicate, ids_input, do_mining, 
+         predicate_bin, transbin, mappingfilebin, do_transaction, do_predicate, ids_input, do_mining,
          do_detection, stop, gamma, theta):
 
     data = read_state_file(infile)
     store = PVStore(conf)
     sensors = store.continuous_monitor_vars()
     actuators = store.discrete_monitor_vars()
+    predicates = None
 
     if do_predicate:
         predicates = pred.generate_all_predicates(conf, data)
-        pickle.dump(predicates, open(predicate_bin, "wb"))
+        with open(predicate_bin, "wb") as f:
+            pickle.dump(predicates, f)
     else:
-        predicates = pickle.load(open(predicate_bin, "rb"))
+        with open(predicate_bin, "rb") as f:
+            predicates = pickle.load(f)
 
     count = count_predicates(predicates, sensors, actuators)
     print("Number of count: {}".format(count))
 
     mapping_id_pred = {}
-    transactions = get_transactions(data, sensors, predicates, mapping_id_pred, stop)
+    transactions = []
+
+    if do_transaction:
+        transactions = get_transactions(data, sensors, predicates, mapping_id_pred, stop)
+        with open(transbin, "wb") as f:
+            pickle.dump(transactions, f)
+        with open(mappingfilebin, "wb") as f:
+            pickle.dump(mapping_id_pred, f)
+    else:
+        with open(transbin, "rb") as f:
+            transactions = pickle.load(f)
+
+        try:
+            with open(mappingfilebin, "rb") as f:
+                mapping_id_pred = pickle.load(f)
+        except EOFError as err:
+            find_mapping_pred_id(mapping_id_pred, transactions, predicates)
+
+        
     mis_theta = int(theta*len(data))
     export_files(outfile, transactions, minsupportfile, supportfile,
                  predicates, mappingfile, mapping_id_pred, gamma, mis_theta)
@@ -258,6 +313,7 @@ if __name__ == "__main__":
     parser.add_argument("--stop", action="store_true", dest="stop",
                         help="stop after a predicate is satisfied pred")
     parser.add_argument("--do_predicate", action="store_true", dest="do_predicate")
+    parser.add_argument("--do_transaction", action="store_true", dest="do_transaction")
     parser.add_argument("--gamma", action="store", type=float, default=0.9, dest="gamma")
     parser.add_argument("--theta", action="store", type=float, default=0.32, dest="theta")
 
@@ -267,6 +323,7 @@ if __name__ == "__main__":
 
     main(args.conf, args.infile, cfg[TRANSACTIONS], cfg[MINSUPPORT], cfg[SUPPORT],
          cfg[MAPPINGFILE], cfg[INVARIANTS], cfg[FREQITEMSETS], cfg[CLOSE],
-         cfg[PREDICATE_EXPORT], args.do_predicate, args.ids_input,
+         cfg[PREDICATE_EXPORT], cfg[TRANSBIN], cfg[MAPPINGFILEBIN], 
+         args.do_transaction, args.do_predicate, args.ids_input,
          args.do_mining, args.do_detection, args.stop,
          args.gamma, args.theta)

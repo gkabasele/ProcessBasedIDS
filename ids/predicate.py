@@ -8,6 +8,9 @@ from sklearn.linear_model import LassoCV
 from sklearn.linear_model import Lasso
 from sklearn.mixture import GaussianMixture
 from sklearn.model_selection import GridSearchCV
+from matplotlib import pyplot as plt
+from matplotlib import rc
+import scipy.stats as stats
 from pvStore import PVStore
 from utils import TS
 from utils import read_state_file
@@ -22,6 +25,7 @@ GT = "greater"
 LS = "lesser"
 
 DELTA = 'delta'
+DIST = 'dist'
 
 
 class Predicate(object):
@@ -43,7 +47,23 @@ class Model(object):
     def get_valid_predicate(self, value):
         membership_proba = self.gmm.predict_proba(value)
         self.all_proba.append(membership_proba)
-        return membership_proba.index(max(membership_proba))
+        return np.where(membership_proba[0] == max(membership_proba[0]))[0][0]
+
+class PredicateDist(Predicate):
+    # This class is only a placeholder for debugging
+    def __init__(self, varname, weight, mean, std):
+        Predicate.__init__(self, varname)
+        self.weight = weight
+        self.mean = mean
+        self.std = std
+
+    def __str__(self):
+        return "(({}) {} w:{},m:{},std:{})".format(self.id, self.varname,
+                                                   self.weight, self.mean,
+                                                   self.std)
+
+    def __repr__(self):
+        return self.__str__()
 
 
 class PredicateEvent(Predicate):
@@ -150,16 +170,41 @@ def get_sensors_updates(sensors, states, store):
 
     return updates
 
-def generate_sensors_predicates_dist(sensors, store, states, predicates, n_comp=10):
+def plot_GMM(sensor, model, samples):
+
+    color = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'olive', 'cyan', 'gray']
+    weights = model.weights_
+    means = model.means_
+    covars = model.covariances_
+
+    plt.hist(samples, bins=200, histtype='bar', density=True, ec="red", alpha=0.5)
+    x_axis = samples.copy().ravel()
+    x_axis.sort()
+    for i in range(len(means)):
+        plt.plot(x_axis, weights[i]*stats.norm.pdf(x_axis, means[i],
+                                                   np.sqrt(covars[i])).ravel(), c=color[i])
+
+    plt.rcParams["agg.path.chunksize"] = 10000
+    plt.grid()
+    plt.title("{}, GMM:{}".format(sensor, len(means)))
+    plt.savefig("eval_swat_process/{}_gmm.png".format(sensor))
+
+
+def generate_sensors_predicates_dist(sensors, store, states, predicates, n_comp=3):
     updates = get_sensors_updates(sensors, states, store)
     for sensor, deltas in updates.items():
-        model = model_for_sensor(np.array(deltas).reshape((-1, 1)), n_comp)
+        samples = np.array(deltas).reshape(-1, 1)
+        model = model_for_sensor(samples, n_comp)
         if sensor not in predicates:
             predicates[sensor] = {DELTA: model}
         else:
-            predicates[sensor][DELTA] = model
-        for i in range(model.n_components):
-            predicates[sensor][i] = [Predicate(sensor)]
+            predicates[sensor][DELTA] = Model(sensor, model)
+
+        weights = model.weights_
+        means = model.means_
+        covars = model.covariances_
+
+        predicates[sensor][DIST] = [PredicateDist(sensor, weights[i], means[i], np.sqrt(covars[i])) for i in range(model.n_components)]
 
 def model_for_sensor(deltas, n_comp):
     models = [None for i in range(n_comp)]
@@ -310,16 +355,13 @@ def generate_all_predicates(conf, data):
     sensors = store.continous_vars()
 
     predicates = {}
-    generate_sensors_predicates_dist(sensors, store, data, predicates)
 
-    '''
     generate_actuators_predicates(actuators, store, predicates)
 
     events = retrieve_update_timestamps(store.discrete_vars(), data)
-
     generate_sensors_predicates(sensors, store, events, data, predicates)
-    '''
 
+    generate_sensors_predicates_dist(sensors, store, data, predicates)
     return predicates
 
 

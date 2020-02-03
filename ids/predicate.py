@@ -27,7 +27,6 @@ LS = "lesser"
 DELTA = 'delta'
 DIST = 'dist'
 
-
 class Predicate(object):
     pred_id = 1
 
@@ -75,7 +74,9 @@ class PredicateEvent(Predicate):
         ">=": operator.ge,
         ">" : operator.gt
         }
-    pred_id = 1
+    CLOSE_THRESH_INTERCEPT = 0.01
+    CLOSE_THRESH_COEF = 0.01
+
     def __init__(self, varname, operator, bool_value=None, num_value=None,
                  model=None, error=0):
 
@@ -101,7 +102,7 @@ class PredicateEvent(Predicate):
     def is_true_value(self, current_value):
         return self.operator(current_value, self.value)
 
-    def is_true_model(self, current_value, features): 
+    def is_true_model(self, current_value, features):
         value = self.model.predict(features)[0]
         if self.operator == operator.lt:
             return self.operator(current_value, value - self.error)
@@ -118,7 +119,33 @@ class PredicateEvent(Predicate):
     def __repr__(self):
         return self.__str__()
 
-    
+    '''
+        Function to check if the linear regression of two model are close to each other.
+        To do so it compare the intercept and the coefficient of both predicate
+    '''
+    def close_to_predicate(self, other_model, var):
+        if self.model is None:
+            raise ValueError("The predicate does not have a model to make the comparaison")
+
+        other_intercept_norm = float((other_model.intercept_ - var.min_val))/(var.max_val - var.min_val)
+        self_intercept_norm = float((self.model.intercept_ - var.min_val))/(var.max_val - var.min_val)
+
+
+        if abs(other_intercept_norm - self_intercept_norm) > PredicateEvent.CLOSE_THRESH_INTERCEPT:
+            return False
+
+        if len(self.model.coef_) != len(other_model.coef_):
+            return False
+
+        diff = 0
+        for x, y in zip(self.model.coef_, other_model.coef_):
+            diff += abs(x - y)
+
+        if float(diff)/len(self.model.coef_) > PredicateEvent.CLOSE_THRESH_COEF:
+            return False
+
+        return True
+
     def __lt__(self, other):
         if self.varname != other.varname:
             raise ValueError("Cannot compare two predicates of different variable")
@@ -288,13 +315,24 @@ def predicate_from_model(store, model, X, sens, sensors, event, states, predicat
             break
 
     if valid:
-        pred_gt = PredicateEvent(sens, ">", model=model, num_value=mean, error=noise)
-        pred_lt = PredicateEvent(sens, "<", model=model, num_value=mean, error=noise)
         if sens not in predicates:
             predicates[sens] = {GT : list(), LS: list()}
-        predicates[sens][GT].append(pred_gt)
-        predicates[sens][LS].append(pred_lt)
+
+        if not has_similar_predicate(sens, model, predicates, var):
+
+            pred_gt = PredicateEvent(sens, ">", model=model, num_value=mean, error=noise)
+            pred_lt = PredicateEvent(sens, "<", model=model, num_value=mean, error=noise)
+
+            predicates[sens][GT].append(pred_gt)
+            predicates[sens][LS].append(pred_lt)
+
         related_sensors = related_sensors.union(get_correlated_event(sens, sensors, model))
+
+def has_similar_predicate(sens, model, predicates, var):
+    for p in predicates[sens][GT]:
+        if p.close_to_predicate(model, var):
+            return True
+    return False
 
 def get_other_sens_values(state, sens, sensors):
     return [state[k] for k in sensors if k != sens]

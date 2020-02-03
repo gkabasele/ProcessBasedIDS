@@ -167,7 +167,6 @@ def count_predicates(predicates, sensors, actuators):
 def export_files(outfile, transactions, minsupportfile, supportfile, predicates,
                  mappingfile, mapping_id_pred, gamma, theta):
 
-    pdb.set_trace()
 
     with open(outfile, "w") as fname:
         for transaction in transactions:

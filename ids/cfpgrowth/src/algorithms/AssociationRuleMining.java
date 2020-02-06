@@ -101,6 +101,9 @@ public class AssociationRuleMining {
 	// Items ID -> Items
 	private Map<Short, Integer> itemsMap;
 
+	//Database of transactions
+	private List<short[]> database;
+
 	public static final short NOTFOUND = -1;
 	public static final int CHACHESIZE = 1000000;
 	// Constant the differentiate case where a the support of the cause
@@ -114,10 +117,35 @@ public class AssociationRuleMining {
 		rules = new ArrayList<>();
 		closeItemsets = new ArrayList<>();
 		itemsMap = new HashMap<>();
+		database = new ArrayList<>();
 	}
 
 	public List<ItemSet> getCloseItemsets() {
 		return closeItemsets;
+	}
+
+	/*
+	* Fill database with all the transaction
+	*/
+	public void fillDatabase(String input) throws IOException{
+	    System.out.println("Reading the transaction to fill the database");
+	    String line;
+	    int i = 0;
+		try (FileInputStream inputStream = new FileInputStream(input); Scanner sc = new Scanner(inputStream, "UTF-8")) {
+			while (sc.hasNextLine()) {
+				line = sc.nextLine();
+				String itemsID[] = line.split(" ");
+				short items[] = new short[itemsID.length];
+				for (int j = 0; j < itemsID.length ; j++){
+				    items[j] = Short.parseShort(itemsID[j]);
+				}
+				database.add(items);
+				i += 1;
+				if (i % 10000 == 0) {
+					System.out.println("Up to line: " + i);
+				}
+			}
+		}
 	}
 
 	/*
@@ -239,7 +267,6 @@ public class AssociationRuleMining {
 			System.err.println("Find could not be found");
 		}
 	}
-
 
 
 	/*
@@ -404,6 +431,7 @@ public class AssociationRuleMining {
 		Create rule when a close itemset has been detected. A file is need to store all
 		the itemsets and there support. A cache is used to speed up the process but since
 		the file must be read a lot of time, it is Extremely slow
+		filename is the name of the file containing the frequent itemset
 	 */
 	private void createRulesFromCloseItemset(String filename, boolean binaryFile){
 		long startTime = System.nanoTime();
@@ -427,8 +455,32 @@ public class AssociationRuleMining {
 		System.out.println("Duration (s): " + duration);
 	}
 
+	private void createRulesFromCloseItemset(){
+		long startTime = System.nanoTime();
+		LinkedHashMap<Set<Short>, Integer> cache = new LinkedHashMap<Set<Short>, Integer>(){
+			@Override
+			protected boolean removeEldestEntry(Entry entry) {
+				return size() > CHACHESIZE;
+			}
+		};
+		int index = 1;
+		for (ItemSet itemSet : closeItemsets){
+			System.out.println("Starting close itemset: (" + index + "/" + closeItemsets.size() + ")");
+			if (isRelevantCloseItemSet(itemSet)){
+				rulesFromSet(itemSet, cache);
+			} else{
+				System.out.println("Irrelevant close itemset");
+			}
+			index += 1;
+		}
+		double duration = (System.nanoTime() - startTime)/100000000;
+		System.out.println("Duration (s): " + duration);
+	}
+
 	/*
 		Look it if it is possible to extract an invariant rule from a close itemset
+		To generate association rule, there must be at least two itemset with the same support
+		such that one of them is in the cause and the other one in the consequence
 	 */
 	// Assume that the itemset is sorted by the support of its items
 	private boolean isRelevantCloseItemSet(ItemSet itemSet) {
@@ -500,6 +552,26 @@ public class AssociationRuleMining {
 			return findCauseEffectText(cause, effect, filename, cache);
 	}
 
+	private byte sameSupport(Set<Short> cause, Set<Short> effect,
+							 LinkedHashMap<Set<Short>, Integer> cache){
+		int causeSupport = -1;
+		int effectSupport = -1;
+
+		if (cache.containsKey(cause))
+			causeSupport = cache.get(cause);
+
+		if (cache.containsKey(effect))
+			effectSupport = cache.get(effect);
+
+		if (causeSupport > -1 && effectSupport > -1)
+			return checkSupport(causeSupport, effectSupport);
+
+		int supports[] = getItemsetSupFromDB(cause, effect);
+		cache.put(cause, supports[0]);
+		cache.put(effect, supports[1]);
+		return checkSupport(supports[0], supports[1]);
+
+	}
 	/*
 		Lookup of support of the two itemsets composing invariant on a binary file
 	* */
@@ -592,6 +664,14 @@ public class AssociationRuleMining {
 		return itemSetDivision(itemSetList, root, length, 0, cause, 0, filename, cache, binaryFile);
 	}
 
+	private byte divideFromLength(Short[] itemSetList, int length,
+								  LinkedHashMap<Set<Short>, Integer> cache){
+		Short[] cause = new Short[length];
+		short root = itemSetList[0];
+		return itemSetDivision(itemSetList, root, length, 0, cause, 0, cache);
+	}
+
+
 	/*
 	 *	Generate possible invariant by subdividing itemset in cause and effect. Map version
 	 * */
@@ -650,6 +730,39 @@ public class AssociationRuleMining {
 		return res;
 	}
 
+	private byte  itemSetDivision(Short[] itemSetList, short root, int length, int index, Short[] cause, int i,
+								  LinkedHashMap<Set<Short>, Integer> cache){
+		byte res;
+		if (index == length){
+			List<Short> causelist = Arrays.asList(cause);
+			List<Short> items = Arrays.asList(itemSetList);
+			List<Short> effect = getEffectFromCause(items, causelist);
+			try {
+				res = createRule(new HashSet<>(causelist), new HashSet<>(effect), cache);
+				return res;
+			} catch (IOException e) {
+				System.out.println("File error for " + causelist + " -> " + effect);
+			}
+		}
+
+		if (i >= itemSetList.length){
+			return CONTINUE;
+		}
+
+		cause[index] = itemSetList[i];
+		if (cause[0] != root){
+			return CONTINUE;
+		}
+		res = itemSetDivision(itemSetList, root, length, index + 1, cause, i + 1, cache);
+		if (res != SAMESUP){
+			byte tmp = itemSetDivision(itemSetList, root, length, index, cause, i + 1, cache);
+			if (tmp != res && (tmp == SAMESUP || tmp == LESSERSUP)){
+				res = tmp;
+			}
+		}
+		return res;
+	}
+
 	/*
 	 * Generate of the subdivision with a cause of length @length. Recursive method. Map version to get support
 	 * */
@@ -694,6 +807,16 @@ public class AssociationRuleMining {
 		return same;
 	}
 
+	private byte createRule(Set<Short> cause, Set<Short> effect,
+							LinkedHashMap<Set<Short>, Integer> cache) throws IOException {
+		byte same = sameSupport(cause, effect, cache);
+		if (same == SAMESUP){
+			AssociationRule rule = new AssociationRule(new ArrayList<>(cause), new ArrayList<>(effect));
+			System.out.println("Add rules: " + rule);
+			rules.add(rule);
+		}
+		return same;
+	}
 	/*
 	 * Create a invariant and add it to the list of invariant if the cause subset and the effect subset have the same
 	 * support. Map version
@@ -729,6 +852,21 @@ public class AssociationRuleMining {
 			}
 		}
 	}
+
+	private void rulesFromSet(ItemSet itemSet, LinkedHashMap<Set<Short>, Integer> cache){
+		byte res;
+		Short[] array = new Short[itemSet.length()];
+		array = (new ArrayList<>(itemSet.getItems())).toArray(array);
+
+
+		for(int i=1; i < itemSet.length(); i++){
+			System.out.println("Cause of length  (" + i + "/" + itemSet.length()+")");
+			res = divideFromLength(array, i, cache);
+			if (res == SAMESUP || res == LESSERSUP  ){
+				return;
+			}
+		}
+	}
 	/*
 	 * Generate a rule from the close itemsets if it can be divide in two subsets such both subset have the same support
 	 * Map version.
@@ -753,6 +891,32 @@ public class AssociationRuleMining {
 	private int getMinSup(ItemSet itemSet){
 		List<Short> itemsIDList = new ArrayList<>(itemSet.getItems());
 		return (itemsMap.get(itemsIDList.get(0)));
+	}
+
+	private int[] getItemsetSupFromDB(Set<Short> cause, Set<Short> effect){
+		int supportCause = 0;
+		int supportEffect = 0;
+
+		short causeArray[] = new short[cause.size()];
+		short effectArray[] = new short[effect.size()];
+		System.arraycopy(cause.toArray(), 0, causeArray, 0, cause.size());
+		System.arraycopy(effect.toArray(), 0, effectArray, 0, effect.size());
+
+		for (short transaction[] : database){
+			if (itemsetInTransaction(transaction, causeArray))	{
+				supportCause += 1;
+			}
+
+			if (itemsetInTransaction(transaction, effectArray)) {
+				supportEffect += 1;
+			}
+		}
+
+		return new int[]{supportCause, supportEffect};
+	}
+
+	private boolean itemsetInTransaction(short transaction[],short itemset[]){
+		return ArraysAlgos.containsOrEquals(transaction, itemset) ;
 	}
 
 }

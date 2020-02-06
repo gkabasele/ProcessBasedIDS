@@ -11,7 +11,7 @@ def main(dbfile, misfile, supfile, statfile, filterfile, mis_filterfile, gamma, 
     transactions = []
     with open(dbfile, 'r') as db:
         for line in db:
-            items = line.split()
+            items = [int(x) for x in line.split()]
             transactions.append(set(items))
             trans_size += len(items)
             max_trans = max(max_trans, len(items))
@@ -66,7 +66,7 @@ def main(dbfile, misfile, supfile, statfile, filterfile, mis_filterfile, gamma, 
         # Filtering the items who appear every time
         with open(filterfile, 'w') as f:
             for t in transactions:
-                keep_items = [int(x) for x in (t - all_time_items)]
+                keep_items = list((t - all_time_items))
                 keep_items.sort()
                 for item in keep_items:
                     f.write("{} ".format(item))
@@ -81,7 +81,7 @@ def main(dbfile, misfile, supfile, statfile, filterfile, mis_filterfile, gamma, 
                 if k not in all_time_items:
                     v = support_map[k]
                     mis_sup = max(int(gamma*v), mis_theta)
-                    f.write("{} {}\n".format(k, v))
+                    f.write("{} {}\n".format(k, mis_sup))
 
         stat.write("Filter Dataset Statistic\n")
         stat.write("------------------------\n")

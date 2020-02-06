@@ -138,6 +138,7 @@ class PredicateEvent(Predicate):
             return False
 
         diff = 0
+        # Maybe square the difference instead of absolute value
         for x, y in zip(self.model.coef_, other_model.coef_):
             diff += abs(x - y)
 

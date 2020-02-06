@@ -234,6 +234,14 @@ public class AlgoCFPGrowth {
 		}
 		// tree.print(tree.root);
 		//ADDED
+		List<Integer> heights = new ArrayList<>();
+		List<Integer> branches = new ArrayList<>();
+		tree.getHeightsBranchFactor(tree.root, 0, heights, branches);
+		System.out.println("MISTree Height: " + Collections.max(heights));
+		System.out.println("MISTree Height Avg.: " + heights.stream().mapToInt(val->val).average());
+
+		System.out.println("MISTree Branch Max: " + Collections.max(branches));
+		System.out.println("MISTree Branch Avg.: " + branches.stream().mapToInt(val->val).average());
 		//tree.print(tree.root, 0);
 		// (5) We start to mine the FP-Tree by calling the recursive method.
 		// Initially, prefix alpha is empty.
@@ -528,9 +536,11 @@ public class AlgoCFPGrowth {
 		}
 	}
 
-	private void updateCloseFreqItemset(int [] itemset, int lastItem, int support){
+	private void updateCloseFreqItemset(int [] itemset, int lastItem, int support) throws IOException {
 		if (itemset.length == 0){
-			System.out.println("Starting itemsets with item number:" + numberItems);
+			System.out.println("Starting itemsets with item number: " + lastItem + "(" + numberItems + ")");
+			numberItems++;
+			System.out.println("Number of close itemset candidates: " + closedFreqItemsets.size());
 		}
 		int[] items = new int[itemset.length+1];
 		for (int i = 0; i < itemset.length; i ++) {
@@ -543,11 +553,18 @@ public class AlgoCFPGrowth {
 		List<Itemset> newList = new ArrayList<>();
 		boolean hasSupersetCandidate = false;
 		for (Itemset cand: closedFreqItemsets) {
-			if (freqItemset.isSupersetOf(cand) && freqItemset.getAbsoluteSupport() == cand.getAbsoluteSupport()) {
+			if (freqItemset.getAbsoluteSupport() == cand.getAbsoluteSupport() &&
+					freqItemset.isSupersetOf(cand)){
+
 				continue;
-			} else if (freqItemset.isSubsetOf(cand) && freqItemset.getAbsoluteSupport() == cand.getAbsoluteSupport()) {
+
+			} else if (freqItemset.getAbsoluteSupport() == cand.getAbsoluteSupport() &&
+					freqItemset.isSubsetOf(cand)) {
+
 				hasSupersetCandidate = true;
 				newList.add(cand);
+				// There is no need to keep the loop once we have a a superset with matching support
+				break;
 			} else {
 				newList.add(cand);
 			}

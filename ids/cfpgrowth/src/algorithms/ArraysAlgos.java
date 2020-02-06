@@ -103,8 +103,8 @@ public class ArraysAlgos {
 	
 	/**
 	 * This method performs the intersection of two sorted arrays of integers and return a new sorted array.
-	 * @param a the first array
-	 * @param b the second array
+	 * @param array1 the first array
+	 * @param array2 the second array
 	 * @return the resulting sorted array
 	 */
 	public static int[] intersectTwoSortedArrays(int[] array1, int[] array2){
@@ -160,6 +160,29 @@ loop1:		for(int i =0; i < itemset2.length; i++){
 			}
 			// if all items were found, return true.
 	 		return true;
+	}
+
+	public static boolean containsOrEquals(short itemset1 [], short itemset2 []){
+		// for each item in the first itemset
+		loop1:		for(int i =0; i < itemset2.length; i++){
+			// for each item in the second itemset
+			for(int j =0; j < itemset1.length; j++){
+				// if the current item in itemset1 is equal to the one in itemset2
+				// search for the next one in itemset1
+				if(itemset1[j] == itemset2[i]){
+					continue loop1;
+					// if the current item in itemset1 is larger
+					// than the current item in itemset2, then
+					// stop because of the lexical order.
+				}else if(itemset1[j] > itemset2[i]){
+					return false;
+				}
+			}
+			// means that an item was not found
+			return false;
+		}
+		// if all items were found, return true.
+		return true;
 	}
 	
 	/**
@@ -258,7 +281,7 @@ loop1:		for(int i =0; i < itemset2.length; i++){
 	/**
 	 * Check if a sorted itemset is contained in another
 	 * @param itemset1 the first itemset
-	 * @param length of the first itemset
+	 * @param itemset1Length of the first itemset
 	 * @param itemset2 the second itemset
 	 * @return true if yes, otherwise false
 	 */

@@ -284,4 +284,47 @@ public class MISTree {
 			print(node, sep+1); // recursive call
 		}
 	}
+
+	public void getHeightsBranchFactor(MISNode TRoot, int currentHeight,
+									   List<Integer> heights, List<Integer> branches){
+		if (TRoot.childs.size() == 0){
+			heights.add(currentHeight);
+		} else {
+			if (TRoot.itemID != -1) {
+				branches.add(TRoot.childs.size());
+			}
+			for (MISNode node: TRoot.childs){
+				getHeightsBranchFactor(node, currentHeight + 1, heights, branches);
+			}
+		}
+	}
+
+	public int countOccurrenceInTree(MISNode TRoot,int itemID ,int occurrence){
+		int computeOccurence = 0;
+		if (TRoot.itemID == itemID){
+			computeOccurence =  occurrence + 1;
+		}
+		else{
+
+			for (MISNode node: TRoot.childs){
+				computeOccurence += countOccurrenceInTree(node, itemID, occurrence);
+			}
+		}
+		return computeOccurence;
+	}
+
+	public int getHeight(MISNode TRoot, int currentHeight){
+		// Leaf Node
+		if (TRoot.childs.size() == 0){
+			return currentHeight;
+		} else{
+		    int maxHeight = -1;
+			for (MISNode node: TRoot.childs){
+				int height = getHeight(node, currentHeight + 1);
+				maxHeight = Integer.max(maxHeight, height);
+			}
+			return maxHeight;
+		}
+
+	}
 }

@@ -80,6 +80,23 @@ class ItemSet implements Serializable {
 	}
 }
 
+class SortBySupport implements Comparator<Short>
+{
+
+	private Map<Short, Integer> itemap;
+
+	public SortBySupport(Map<Short, Integer> map){
+		this.itemap = map;
+	}
+
+	@Override
+	public int compare(Short itemID, Short t1) {
+		int supportA = itemap.get(itemID);
+		int supportB = itemap.get(t1);
+		return  supportA - supportB;
+	}
+}
+
 class AssociationRule{
 	private List<Short> cause;
 	private List<Short> effect;
@@ -89,9 +106,50 @@ class AssociationRule{
 		this.effect = effect;	
 	}
 
+	public AssociationRule(String line){
+		String[] parts = line.split("->");
+		String s = parts[0].replace("[", "");
+		String first = s.replace("]", "");
+		s = parts[1].replace("[", "");
+		String second = s.replace("]", "");
+		String[] sCause = first.split(",");
+		String[] sConseq = second.split(",");
+		cause = new ArrayList<>();
+		effect = new ArrayList<>();
+		int biggest = Math.max(sCause.length, sConseq.length);
+		for (int i = 0; i < biggest; i++){
+			if (i < sCause.length){
+				cause.add(Short.parseShort(sCause[i].replace(" ", "")));
+			}
+			if (i < sConseq.length){
+				effect.add(Short.parseShort(sConseq[i].replace(" ", "")));
+			}
+		}
+	}
+
+	public List<Short> getCause() {
+		return cause;
+	}
+
+	public List<Short> getEffect() {
+		return effect;
+	}
+
+	public boolean causeSuperserOf(AssociationRule other){
+		List<Short> tmpCause = getCause();
+		List<Short> tmpOtherCause = other.getCause();
+
+		tmpCause.sort(Comparator.comparingInt(aShort -> aShort));
+		tmpOtherCause.sort(Comparator.comparingInt(aShort -> aShort));
+		Short[] causeArray = new Short[tmpCause.size()];
+		Short[] otherCauseArray = new Short[tmpOtherCause.size()];
+		return ArraysAlgos.includedIn(tmpOtherCause.toArray(otherCauseArray), tmpCause.toArray(causeArray));
+	}
+
 	public String toString(){
 		return cause.toString() + "->" + effect.toString();	
 	}
+
 }
 
 public class AssociationRuleMining {
@@ -102,7 +160,7 @@ public class AssociationRuleMining {
 	private Map<Short, Integer> itemsMap;
 
 	//Database of transactions
-	private List<short[]> database;
+	private List<Short[]> database;
 
 	public static final short NOTFOUND = -1;
 	public static final int CHACHESIZE = 1000000;
@@ -135,7 +193,7 @@ public class AssociationRuleMining {
 			while (sc.hasNextLine()) {
 				line = sc.nextLine();
 				String itemsID[] = line.split(" ");
-				short items[] = new short[itemsID.length];
+				Short items[] = new Short[itemsID.length];
 				for (int j = 0; j < itemsID.length ; j++){
 				    items[j] = Short.parseShort(itemsID[j]);
 				}
@@ -354,7 +412,7 @@ public class AssociationRuleMining {
 	 */
 	private ItemSet  stringToItemSet(String line){
 		String[] values = line.split(":");
-		short support = Short.parseShort(values[1].replaceAll("\\s", ""));
+		int support = Integer.parseInt(values[1].replaceAll("\\s", ""));
 		String[] it = values[0].split("#");
 		String[] itemsID = it[0].split(" ");
 		Set<Short> items = new LinkedHashSet<>(itemsID.length);
@@ -366,6 +424,10 @@ public class AssociationRuleMining {
 
 	public void miningRulefromClose(String freqInput, boolean binaryFile){
 		createRulesFromCloseItemset(freqInput, binaryFile);
+	}
+
+	public void miningRuleFromClose(){
+		createRulesFromCloseItemset();
 	}
 
 	/*
@@ -466,19 +528,59 @@ public class AssociationRuleMining {
 		int index = 1;
 		for (ItemSet itemSet : closeItemsets){
 			System.out.println("Starting close itemset: (" + index + "/" + closeItemsets.size() + ")");
-			if (isRelevantCloseItemSet(itemSet)){
-				rulesFromSet(itemSet, cache);
-			} else{
-				System.out.println("Irrelevant close itemset");
-			}
+			rulesFromSet(itemSet, cache);
 			index += 1;
 		}
 		double duration = (System.nanoTime() - startTime)/100000000;
 		System.out.println("Duration (s): " + duration);
 	}
 
+	private int binomialCoef(int n, int k){
+		int C[][] = new int[n+1][k+1];
+		int i, j;
+
+		// Calculate  value of Binomial Coefficient in bottom up manner
+		for (i = 0; i <= n; i++)
+		{
+			for (j = 0; j <= Integer.min(i, k); j++)
+			{
+				// Base Cases
+				if (j == 0 || j == i)
+					C[i][j] = 1;
+
+					// Calculate value using previously stored values
+				else
+					C[i][j] = C[i-1][j-1] + C[i-1][j];
+			}
+		}
+		return C[n][k];
+	}
+
+	// Returns count of different partitions of n elements in K subsets
+	private int countPartitionsWays(int n, int k){
+		// Table to store results of subproblems
+		int[][] dp = new int[n+1][k+1];
+
+		// Base cases
+		for (int i = 0; i <= n; i++)
+			dp[i][0] = 0;
+		for (int i = 0; i <= k; i++)
+			dp[0][k] = 0;
+
+		// Fill rest of the entries in dp[][]
+		// in bottom up manner
+		for (int i = 1; i <= n; i++)
+			for (int j = 1; j <= k; j++)
+				if (j == 1 || i == j)
+					dp[i][j] = 1;
+				else
+					dp[i][j] = j * dp[i - 1][j] + dp[i - 1][j - 1];
+
+		return dp[n][k];
+	}
+
 	/*
-		Look it if it is possible to extract an invariant rule from a close itemset
+		Look if it is possible to extract an invariant rule from a close itemset
 		To generate association rule, there must be at least two itemset with the same support
 		such that one of them is in the cause and the other one in the consequence
 	 */
@@ -487,9 +589,9 @@ public class AssociationRuleMining {
 		List<Short> itemsIDList = new ArrayList<>(itemSet.getItems());
 		if (itemSet.length() < 2)
 		    return false;
-		return (itemsMap.get(itemsIDList.get(0)) == itemSet.getSupport() && itemsMap.get(itemsIDList.get(1)) == itemSet.getSupport());
+		itemsIDList.sort(new SortBySupport(itemsMap));
+		return (itemsMap.get(itemsIDList.get(0)) == itemsMap.get(itemsIDList.get(1)));
 	}
-
 
 	/*
 		Check if an itemset is closed or not, given the list of the other itemsets and their length
@@ -552,7 +654,7 @@ public class AssociationRuleMining {
 			return findCauseEffectText(cause, effect, filename, cache);
 	}
 
-	private byte sameSupport(Set<Short> cause, Set<Short> effect,
+	private int[] sameSupport(Set<Short> cause, Set<Short> effect,
 							 LinkedHashMap<Set<Short>, Integer> cache){
 		int causeSupport = -1;
 		int effectSupport = -1;
@@ -563,13 +665,19 @@ public class AssociationRuleMining {
 		if (cache.containsKey(effect))
 			effectSupport = cache.get(effect);
 
+		if (causeSupport == -1 && cause.size() == 1 && itemsMap.containsKey((Short) cause.toArray()[0]))
+			causeSupport = itemsMap.get((Short) cause.toArray()[0]);
+
+		if (effectSupport == -1 && effect.size() == 1 && itemsMap.containsKey((Short) effect.toArray()[0]))
+			effectSupport = itemsMap.get((Short) effect.toArray()[0]);
+
 		if (causeSupport > -1 && effectSupport > -1)
-			return checkSupport(causeSupport, effectSupport);
+			return new int[]{causeSupport, effectSupport};
 
 		int supports[] = getItemsetSupFromDB(cause, effect);
 		cache.put(cause, supports[0]);
 		cache.put(effect, supports[1]);
-		return checkSupport(supports[0], supports[1]);
+		return supports;
 
 	}
 	/*
@@ -664,11 +772,10 @@ public class AssociationRuleMining {
 		return itemSetDivision(itemSetList, root, length, 0, cause, 0, filename, cache, binaryFile);
 	}
 
-	private byte divideFromLength(Short[] itemSetList, int length,
+	private byte divideFromLength(ItemSet itemSet,Short[] itemSetList, int length,
 								  LinkedHashMap<Set<Short>, Integer> cache){
 		Short[] cause = new Short[length];
-		short root = itemSetList[0];
-		return itemSetDivision(itemSetList, root, length, 0, cause, 0, cache);
+		return itemSetDivision(itemSet, itemSetList, length, 0, cause, 0, cache);
 	}
 
 
@@ -730,19 +837,15 @@ public class AssociationRuleMining {
 		return res;
 	}
 
-	private byte  itemSetDivision(Short[] itemSetList, short root, int length, int index, Short[] cause, int i,
+	private byte  itemSetDivision(ItemSet itemSet, Short[] itemSetList, int length, int index, Short[] cause, int i,
 								  LinkedHashMap<Set<Short>, Integer> cache){
 		byte res;
 		if (index == length){
 			List<Short> causelist = Arrays.asList(cause);
 			List<Short> items = Arrays.asList(itemSetList);
 			List<Short> effect = getEffectFromCause(items, causelist);
-			try {
-				res = createRule(new HashSet<>(causelist), new HashSet<>(effect), cache);
-				return res;
-			} catch (IOException e) {
-				System.out.println("File error for " + causelist + " -> " + effect);
-			}
+			res = createRule(itemSet, new HashSet<>(causelist), new HashSet<>(effect), cache);
+			return res;
 		}
 
 		if (i >= itemSetList.length){
@@ -750,13 +853,11 @@ public class AssociationRuleMining {
 		}
 
 		cause[index] = itemSetList[i];
-		if (cause[0] != root){
-			return CONTINUE;
-		}
-		res = itemSetDivision(itemSetList, root, length, index + 1, cause, i + 1, cache);
+		res = itemSetDivision(itemSet, itemSetList, length, index + 1, cause, i + 1, cache);
 		if (res != SAMESUP){
-			byte tmp = itemSetDivision(itemSetList, root, length, index, cause, i + 1, cache);
-			if (tmp != res && (tmp == SAMESUP || tmp == LESSERSUP)){
+			byte tmp = itemSetDivision(itemSet, itemSetList, length, index, cause, i + 1, cache);
+			// Should we continue to test next subsets
+			if (tmp != res && (tmp == SAMESUP )){
 				res = tmp;
 			}
 		}
@@ -807,13 +908,21 @@ public class AssociationRuleMining {
 		return same;
 	}
 
-	private byte createRule(Set<Short> cause, Set<Short> effect,
-							LinkedHashMap<Set<Short>, Integer> cache) throws IOException {
-		byte same = sameSupport(cause, effect, cache);
+	private byte createRule(ItemSet itemSet, Set<Short> cause, Set<Short> effect,
+							LinkedHashMap<Set<Short>, Integer> cache) {
+		int[] supports = sameSupport(cause, effect, cache);
+		byte same = checkSupport(supports[0], itemSet.getSupport());
 		if (same == SAMESUP){
 			AssociationRule rule = new AssociationRule(new ArrayList<>(cause), new ArrayList<>(effect));
 			System.out.println("Add rules: " + rule);
 			rules.add(rule);
+		}
+
+		if (checkSupport(supports[1], itemSet.getSupport()) == SAMESUP){
+			AssociationRule rule = new AssociationRule(new ArrayList<>(effect), new ArrayList<>(cause));
+			System.out.println("Add rules: " + rule);
+			rules.add(rule);
+			same = SAMESUP;
 		}
 		return same;
 	}
@@ -861,8 +970,8 @@ public class AssociationRuleMining {
 
 		for(int i=1; i < itemSet.length(); i++){
 			System.out.println("Cause of length  (" + i + "/" + itemSet.length()+")");
-			res = divideFromLength(array, i, cache);
-			if (res == SAMESUP || res == LESSERSUP  ){
+			res = divideFromLength(itemSet, array, i, cache);
+			if (res == SAMESUP){
 				return;
 			}
 		}
@@ -897,12 +1006,15 @@ public class AssociationRuleMining {
 		int supportCause = 0;
 		int supportEffect = 0;
 
-		short causeArray[] = new short[cause.size()];
-		short effectArray[] = new short[effect.size()];
+		Short causeArray[] = new Short[cause.size()];
+		Short effectArray[] = new Short[effect.size()];
 		System.arraycopy(cause.toArray(), 0, causeArray, 0, cause.size());
+		Arrays.sort(causeArray);
 		System.arraycopy(effect.toArray(), 0, effectArray, 0, effect.size());
+		Arrays.sort(effectArray);
 
-		for (short transaction[] : database){
+		int i = 0;
+		for (Short transaction[] : database){
 			if (itemsetInTransaction(transaction, causeArray))	{
 				supportCause += 1;
 			}
@@ -910,13 +1022,15 @@ public class AssociationRuleMining {
 			if (itemsetInTransaction(transaction, effectArray)) {
 				supportEffect += 1;
 			}
+
+			i++;
 		}
 
 		return new int[]{supportCause, supportEffect};
 	}
 
-	private boolean itemsetInTransaction(short transaction[],short itemset[]){
-		return ArraysAlgos.containsOrEquals(transaction, itemset) ;
+	private boolean itemsetInTransaction(Short transaction[],Short itemset[]){
+		return ArraysAlgos.includedIn(itemset, transaction) ;
 	}
 
 }

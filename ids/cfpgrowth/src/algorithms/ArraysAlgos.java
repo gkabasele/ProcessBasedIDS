@@ -162,20 +162,20 @@ loop1:		for(int i =0; i < itemset2.length; i++){
 	 		return true;
 	}
 
-	public static boolean containsOrEquals(short itemset1 [], short itemset2 []){
-		// for each item in the first itemset
-		loop1:		for(int i =0; i < itemset2.length; i++){
+	public static boolean containsOrEquals(Short itemset1 [], Short itemset2 []){
+			// for each item in the first itemset
+loop1:		for(int i =0; i < itemset2.length; i++){
 			// for each item in the second itemset
-			for(int j =0; j < itemset1.length; j++){
-				// if the current item in itemset1 is equal to the one in itemset2
-				// search for the next one in itemset1
-				if(itemset1[j] == itemset2[i]){
-					continue loop1;
-					// if the current item in itemset1 is larger
-					// than the current item in itemset2, then
-					// stop because of the lexical order.
-				}else if(itemset1[j] > itemset2[i]){
-					return false;
+				for(int j =0; j < itemset1.length; j++){
+					// if the current item in itemset1 is equal to the one in itemset2
+					// search for the next one in itemset1
+					if(itemset1[j].shortValue() == itemset2[i].shortValue()){
+						continue loop1;
+						// if the current item in itemset1 is larger
+						// than the current item in itemset2, then
+						// stop because of the lexical order.
+					}else if(itemset1[j] > itemset2[i]){
+						return false;
 				}
 			}
 			// means that an item was not found
@@ -254,13 +254,33 @@ loop1:		for(int i =0; i < itemset2.length; i++){
 	
 	/**
 	 * Check if a sorted itemset is contained in another
+	 * Check if itemset1 in itemset2
 	 * @param itemset1 the first itemset
 	 * @param itemset2 the second itemset
 	 * @return true if yes, otherwise false
 	 */
-	public static boolean includedIn(int[] itemset1, int[] itemset2) {
+	public static boolean includedIn(Short[] itemset1, Short[] itemset2) {
 		int count = 0; // the current position of itemset1 that we want to find in itemset2
 		
+		// for each item in itemset2
+		for(int i=0; i< itemset2.length; i++){
+			// if we found the item
+			if(itemset2[i].shortValue() == itemset1[count].shortValue()){
+				// we will look for the next item of itemset1
+				count++;
+				// if we have found all items already, return true
+				if(count == itemset1.length){
+					return true;
+				}
+			}
+		}
+		// it is not included, so return false!
+		return false;
+	}
+
+	public static boolean includedIn(int[] itemset1, int[] itemset2) {
+		int count = 0; // the current position of itemset1 that we want to find in itemset2
+
 		// for each item in itemset2
 		for(int i=0; i< itemset2.length; i++){
 			// if we found the item

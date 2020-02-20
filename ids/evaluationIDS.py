@@ -17,6 +17,7 @@ import utils
 #MATRIX = "matrices.bin"
 #LOG = "res.log"
 
+TEST_TIMEPATTERN = "test_with_time_pattern"
 MAL_CACHE = "malicious_cache"
 MATRIX = "matrix"
 TIME_LOG = "time_log"
@@ -26,6 +27,10 @@ TEST_INVARIANTS = "test_with_invariant"
 INV_FILE = "invariants_file"
 OUTPUT_RES_INV = "invariant_output"
 INV_LOG = "invariant_log"
+PRED_MAP = "predicate_map_file"
+PREDICATES = "predicates"
+GEN_PRED = "generate_predicate"
+
 
 START = 'start'
 END = 'end'
@@ -80,66 +85,80 @@ def invariant_comparison(mal_expected, mal_computed, attack_store, just_after):
     attack = None
     detect = None
 
+    if len(mal_expected) == 0:
+        for state in attack_store:
+            if j < len(mal_computed):
+                detect = detect_timestamps[j]
+                tmp = state[TS]
+                ts = datetime(year=tmp.year, month=tmp.month, day=tmp.day,
+                              hour=tmp.hour, minute=tmp.minute, second=tmp.second)
+                key = (ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second)
 
-    for state in attack_store:
-        if i < len(mal_expected):
-            attack = mal_expected[i]
-
-        if j < len(detect_timestamps):
-            detect = detect_timestamps[j]
-
-        tmp = state[TS]
-        ts = datetime(year=tmp.year, month=tmp.month, day=tmp.day,
-                      hour=tmp.hour, minute=tmp.minute, second=tmp.second)
-        key = (ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second)
-
-        attack_detected = ts == detect
-
-        if attack_detected:
-            j += 1
-
-        # not in an attack phase
-        if ts < attack[START]:
-            if attack_detected:
-                false_positive += 1
-                attack_false.add(key)
-            else:
-                true_negative += 1
-
-        # in an attack phase
-        elif ts >= attack[START] and ts < attack[END]:
-            nbr_attack += 1
-            if attack_detected:
-                true_positive += 1
-            else:
-                false_negative += 1
-                attack_missed.add(key)
-
-        # end of attack phase
-        elif ts == attack[END]:
-            if not just_after:
-                nbr_attack += 1
+                attack_detected = ts == detect
 
                 if attack_detected:
-                    true_positive += 1
-                else:
-                    false_negative += 1
-                    attack_missed.add(key)
-            else:
+                    j += 1
+                    false_positive += 1
+    else:
+        for state in attack_store:
+            if i < len(mal_expected):
+                attack = mal_expected[i]
+
+            if j < len(detect_timestamps):
+                detect = detect_timestamps[j]
+
+            tmp = state[TS]
+            ts = datetime(year=tmp.year, month=tmp.month, day=tmp.day,
+                          hour=tmp.hour, minute=tmp.minute, second=tmp.second)
+            key = (ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second)
+
+            attack_detected = ts == detect
+
+            if attack_detected:
+                j += 1
+
+            # not in an attack phase
+            if ts < attack[START]:
                 if attack_detected:
                     false_positive += 1
                     attack_false.add(key)
                 else:
                     true_negative += 1
-            i += 1
 
-        # When last attack was done
-        elif ts > attack[END]:
-            if attack_detected:
-                false_positive += 1
-                attack_false.add(key)
-            else:
-                true_negative += 1
+            # in an attack phase
+            elif ts >= attack[START] and ts < attack[END]:
+                nbr_attack += 1
+                if attack_detected:
+                    true_positive += 1
+                else:
+                    false_negative += 1
+                    attack_missed.add(key)
+
+            # end of attack phase
+            elif ts == attack[END]:
+                if not just_after:
+                    nbr_attack += 1
+
+                    if attack_detected:
+                        true_positive += 1
+                    else:
+                        false_negative += 1
+                        attack_missed.add(key)
+                else:
+                    if attack_detected:
+                        false_positive += 1
+                        attack_false.add(key)
+                    else:
+                        true_negative += 1
+                i += 1
+
+            # When last attack was done
+            elif ts > attack[END]:
+                if attack_detected:
+                    false_positive += 1
+                    attack_false.add(key)
+                else:
+                    true_negative += 1
 
     return EvalResult(true_positive, false_positive, true_negative,
                       false_negative, nbr_attack, attack_missed,
@@ -254,6 +273,10 @@ def create_expected_malicious_activities(atk_period, timePattern=False):
     with open(atk_period) as fh:
         content = fh.read()
         desc = yaml.load(content, Loader=yaml.Loader)
+        # There is not atk in the trace
+        if desc is None:
+            return []
+
         if not timePattern:
             for attack in desc:
                 starttime = datetime.strptime(attack[START], '%d/%m/%Y %H:%M:%S')
@@ -262,7 +285,7 @@ def create_expected_malicious_activities(atk_period, timePattern=False):
                 attack[END] = endtime
         return desc
 
-def run_invariant_ids(params, conf, data, data_mal, infile, malicious):
+def run_invariant_ids(params, conf, store, data, data_mal, infile, malicious):
     if data is None:
         normal = utils.read_state_file(infile)
     else:
@@ -272,70 +295,104 @@ def run_invariant_ids(params, conf, data, data_mal, infile, malicious):
         malicious = utils.read_state_file(malicious)
     else:
         malicious = data_mal
-    predicates = pred.generate_all_predicates(conf, normal)
-    mapping_id_pred = {}
-    _ = get_transactions(normal, predicates, mapping_id_pred)
+
+    sensors = store.continuous_monitor_vars()
+
+    if params[GEN_PRED]:
+        predicates = pred.generate_all_predicates(conf, normal)
+        mapping_id_pred = {}
+        _ = get_transactions(normal, sensors, predicates, mapping_id_pred, False)
+
+    else:
+        with open(params[PREDICATES], "rb") as fname:
+            predicates = pickle.load(fname)
+
+        with open(params[PRED_MAP], "rb") as fname:
+            mapping_id_pred = pickle.load(fname)
+
+    pdb.set_trace()
+
     ids = IDSInvariant(mapping_id_pred, params[INV_FILE], params[INV_LOG])
-    for state in malicious:
-        ids.valid_state(state)
+    for i, state in enumerate(malicious):
+        if i % 50000 == 0:
+            print("Up to state: {}".format(i))
+        ids.valid_state(state, sensors, predicates, mapping_id_pred)
     ids.close()
     return ids
 
-def main(atk_period_time, atk_period_inv, conf, malicious,
-         infile, params, cache):
-
-    data_mal = utils.read_state_file(malicious)
-    data = None
-    pv_store = pvStore.PVStore(conf)
-    if not cache:
-        data = utils.read_state_file(infile)
-        time_checker = TimeChecker(conf, params[TIME_LOG], data)
-        time_checker.fill_matrices()
-        pickle.dump(time_checker.matrices, open(MATRIX, "wb"))
-        time_checker.detection_store = data_mal
-        time_checker.detect_suspect_transition()
-        pickle.dump(time_checker.malicious_activities, open(params[MAL_CACHE], "wb"))
-        time_checker.close()
-        malicious_activities = time_checker.malicious_activities
-        time_checker.create_matrices()
-    else:
-        matrices = pickle.load(open(params[MATRIX], "rb"))
-        malicious_activities = pickle.load(open(params[MAL_CACHE], "rb"))
-
-    expected_atk = create_expected_malicious_activities(atk_period_time, True)
-    res = compare_activities(expected_atk, malicious_activities, data_mal,
-                             pv_store, True, True)
-
-    if params[TEST_INVARIANTS]:
-        
-        expected_atk = create_expected_malicious_activities(atk_period_inv)
-        ids = run_invariant_ids(params, conf, data, data_mal, infile, malicious)
-
-        inv_res = compare_activities(expected_atk, ids.malicious_activities,
-                                     data_mal, pv_store, False, True)
-
-    with open(params[OUTPUT_RES], "w") as fh:
-        fh.write("Time based\n")
+def export_ids_result(filename, detection_method, data_mal, res):
+    with open(filename, "w") as fh:
+        fh.write("{}\n".format(detection_method))
         fh.write("Total:{}\n".format(len(data_mal)))
         fh.write("Nbr Attack: {}\n".format(res.nbr_attack))
         fh.write("TP:{}\n".format(res.tp))
         fh.write("FP:{}\n".format(res.fp))
         fh.write("TN:{}\n".format(res.tn))
         fh.write("FN:{}\n".format(res.fn))
-
         fh.write("TPR:{}\n".format(res.tpr()))
         fh.write("FPR:{}\n".format(res.fpr()))
+        fh.write("\t----")
 
-        if params[TEST_INVARIANTS]:
-            fh.write("Invariant Based\n")
-            fh.write("Total:{}\n".format(len(data_mal)))
-            fh.write("Nbr Attack: {}\n".format(inv_res.nbr_attack))
-            fh.write("TP:{}\n".format(inv_res.tp))
-            fh.write("FP:{}\n".format(inv_res.fp))
-            fh.write("TN:{}\n".format(inv_res.tn))
-            fh.write("FN:{}\n".format(inv_res.fn))
-            fh.write("TPR:{}\n".format(inv_res.tpr()))
-            fh.write("FPR:{}\n".format(inv_res.fpr()))
+
+def test_invariants(params, store, state_filename):
+
+    with open(params[PREDICATES], "rb") as fname:
+        predicates = pickle.load(fname)
+    with open(params[PRED_MAP], "rb") as fname:
+        mapping_id_pred = pickle.load(fname)
+
+    sensors = store.continuous_monitor_vars()
+
+    with open("./valid_state_for_texting.bin", "rb") as fname:
+        state = pickle.load(fname)
+        state["lit301"] = 1500.0
+    ids = IDSInvariant(mapping_id_pred, params[INV_FILE], "one_state.log")
+    ids.valid_state(state, sensors, predicates, mapping_id_pred)
+    ids.close()
+    print(len(ids.malicious_activities) == 1)
+
+def main(atk_period_time, atk_period_inv, conf, malicious,
+         infile, params, cache):
+
+    print("Loading all the states from the systems trace")
+    data_mal = utils.read_state_file(malicious)
+    data = utils.read_state_file(infile)
+
+    print("Importing process variables")
+    pv_store = pvStore.PVStore(conf)
+
+    if params[TEST_TIMEPATTERN]:
+        if not cache:
+            time_checker = TimeChecker(conf, params[TIME_LOG], data)
+            time_checker.fill_matrices()
+            pickle.dump(time_checker.matrices, open(MATRIX, "wb"))
+            time_checker.detection_store = data_mal
+            time_checker.detect_suspect_transition()
+            pickle.dump(time_checker.malicious_activities, open(params[MAL_CACHE], "wb"))
+            time_checker.close()
+            malicious_activities = time_checker.malicious_activities
+            time_checker.create_matrices()
+        else:
+            matrices = pickle.load(open(params[MATRIX], "rb"))
+            malicious_activities = pickle.load(open(params[MAL_CACHE], "rb"))
+
+        expected_atk = create_expected_malicious_activities(atk_period_time, True)
+        res = compare_activities(expected_atk, malicious_activities, data_mal,
+                                 pv_store, True, True)
+        export_ids_result(params[OUTPUT_RES], "Time based", data_mal, res)
+
+    if params[TEST_INVARIANTS]:
+        #test_invariants(params, pv_store, "./valid_state_for_texting.bin")
+
+        expected_atk = create_expected_malicious_activities(atk_period_inv)
+        ids = run_invariant_ids(params, conf, pv_store, data, data_mal, infile, malicious)
+
+        inv_res = compare_activities(expected_atk, ids.malicious_activities,
+                                     data_mal, pv_store, False, True)
+
+        print("Exporting evaluation result")
+        export_ids_result(params[OUTPUT_RES], "Invariant", data_mal, inv_res)
+
 
 if __name__ == "__main__":
 
@@ -359,6 +416,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     with open(args.params, "r") as fname:
         params = yaml.load(fname, Loader=yaml.BaseLoader)
+        for k, v in params.items():
+            if v == 'False' or v == "True":
+                params[k] = v == "True"
 
     main(args.atk_period_time, args.atk_period_inv, args.conf, args.malicious,
          args.infile, params, args.cache)

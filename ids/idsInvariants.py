@@ -1,7 +1,9 @@
 import re
 import ast
 import pdb
+import predicate as pred
 from utils import TS
+from itemset import sensor_predicates, actuator_predicates
 
 IMPLY = "->"
 PRED_ID = r"(?P<pred>\d+):\[\(\d+\) (?P<varname>\w+)"
@@ -12,19 +14,20 @@ class Invariant(object):
         self.cause = cause
         self.effect = effect
 
-    def is_valid(self, state):
-        for pred in self.cause:
-            varname = pred.varname
-            value = state[varname]
-            if pred.is_true(value):
+    def is_valid(self, satisfied_predicates, debug=False):
+        #FIXME the argument will be sorted by id
+
+        if debug:
+            pdb.set_trace()
+
+        for predicate in self.cause:
+            if predicate.id in satisfied_predicates:
                 continue
             else:
                 return True, self
 
-        for pred in self.effect:
-            varname = pred.varname
-            value = state[varname]
-            if pred.is_true(value):
+        for predicate in self.effect:
+            if predicate.id in satisfied_predicates:
                 continue
             else:
                 return False, self
@@ -61,10 +64,38 @@ class IDSInvariant(object):
 
         return invariants
 
-    def valid_state(self, state):
+    def get_satisfied_predicates(self, state, sensors, predicates, mapping_id_pred):
+        tmp_pred = []
+        for varname, val in state.items():
+            if varname != "timestamp":
+                try:
+                    if pred.ON in predicates[varname]:
+                        actuator_predicates(varname, val, predicates,
+                                            tmp_pred, mapping_id_pred)
+                    else:
+                        sensor_predicates(state, sensors, varname, val,
+                                          predicates, tmp_pred,
+                                          mapping_id_pred, False)
+                except KeyError:
+                    # A variable that must be ignored
+                    pass
+
+        satisfied_pred = []
+        for items in tmp_pred:
+            varname, cond, index = items
+            p = predicates[varname][cond][index]
+            satisfied_pred.append(p.id)
+        satisfied_pred.sort()
+        return satisfied_pred
+
+    def valid_state(self, state, sensors, predicates, mapping_id_pred):
+        satisfied_pred = self.get_satisfied_predicates(state, sensors,
+                                                       predicates,
+                                                       mapping_id_pred)
         invalid = []
         for i, invariant in enumerate(self.invariants):
-            res, _ = invariant.is_valid(state)
+
+            res, _ = invariant.is_valid(satisfied_pred)
             if not res:
                 if len(invalid) == 0:
                     self.write(state[TS], state)

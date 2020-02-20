@@ -21,6 +21,8 @@ parser.add_argument("--output", dest="output", action="store")
 
 args = parser.parse_args()
 
+export_one_read(args.infile, args.outfile)
+
 def export_multiple_read(infile, outfile):
     states = []
     with open(infile, mode='r') as csv_file:

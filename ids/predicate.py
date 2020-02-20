@@ -367,6 +367,7 @@ def retrieve_update_timestamps(actuators, states):
 
     events = {}
     values = {var: None for var in actuators}
+    pdb.set_trace()
 
     for i, state in enumerate(states):
         for var in actuators:

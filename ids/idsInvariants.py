@@ -1,6 +1,7 @@
 import re
 import ast
 import pdb
+import numpy as np
 import predicate as pred
 from utils import TS
 from itemset import sensor_predicates, actuator_predicates
@@ -10,9 +11,10 @@ PRED_ID = r"(?P<pred>\d+):\[\(\d+\) (?P<varname>\w+)"
 
 class Invariant(object):
 
-    def __init__(self, cause, effect):
+    def __init__(self, identifier, cause, effect):
         self.cause = cause
         self.effect = effect
+        self.identifier = identifier
 
     def is_valid(self, satisfied_predicates, debug=False):
         #FIXME the argument will be sorted by id
@@ -51,7 +53,7 @@ class IDSInvariant(object):
     def create_invariants(self, mapping_id_pred, invariantsfile):
         invariants = []
         with open(invariantsfile, "r") as fname:
-            for line in fname:
+            for i, line in enumerate(fname):
                 tmp_cause, tmp_effect = line.split(IMPLY)
                 cause = ast.literal_eval(tmp_cause)
                 effect = ast.literal_eval(tmp_effect)
@@ -59,7 +61,7 @@ class IDSInvariant(object):
                 cause_pred = [mapping_id_pred[pred_id] for pred_id in cause]
                 effect_pred = [mapping_id_pred[pred_id] for pred_id in effect]
 
-                invariant = Invariant(cause_pred, effect_pred)
+                invariant = Invariant(i, cause_pred, effect_pred)
                 invariants.append(invariant)
 
         return invariants
@@ -95,13 +97,22 @@ class IDSInvariant(object):
         invalid = []
         for i, invariant in enumerate(self.invariants):
 
+            # Line for Debug
+            #if i == 129 or i == 254:
+            #    features_d = [state[k] for k in sensors if k != "dpit301"]
+            #    features_p = [state[k] for k in sensors if k != "pit501"]
+            #    dpit_features = np.array(features_d).reshape(1, -1)
+            #    pit_features = np.array(features_p).reshape(1, -1)
+            #    pdb.set_trace()
+
             res, _ = invariant.is_valid(satisfied_pred)
             if not res:
                 if len(invalid) == 0:
                     self.write(state[TS], state)
 
                 self.malicious_activities.add(state[TS])
-                msg = "\t id:{}\n".format(invariant.effect)
+                msg = "\t id:{} {}\n".format(invariant.identifier,
+                                             invariant.effect)
                 self.filehandler.write(msg)
                 invalid.append(i)
         if len(invalid) != 0:

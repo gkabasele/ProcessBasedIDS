@@ -22,6 +22,7 @@ MAL_CACHE = "malicious_cache"
 MATRIX = "matrix"
 TIME_LOG = "time_log"
 OUTPUT_RES = "output_res"
+OUTPUT_ANALYSIS = "output_analysis"
 
 TEST_INVARIANTS = "test_with_invariant"
 INV_FILE = "invariants_file"
@@ -30,7 +31,6 @@ INV_LOG = "invariant_log"
 PRED_MAP = "predicate_map_file"
 PREDICATES = "predicates"
 GEN_PRED = "generate_predicate"
-
 
 START = 'start'
 END = 'end'
@@ -310,7 +310,6 @@ def run_invariant_ids(params, conf, store, data, data_mal, infile, malicious):
         with open(params[PRED_MAP], "rb") as fname:
             mapping_id_pred = pickle.load(fname)
 
-    pdb.set_trace()
 
     ids = IDSInvariant(mapping_id_pred, params[INV_FILE], params[INV_LOG])
     for i, state in enumerate(malicious):
@@ -320,7 +319,8 @@ def run_invariant_ids(params, conf, store, data, data_mal, infile, malicious):
     ids.close()
     return ids
 
-def export_ids_result(filename, detection_method, data_mal, res):
+def export_ids_result(filename, analysis_filename, detection_method,
+                      data_mal, res):
     with open(filename, "w") as fh:
         fh.write("{}\n".format(detection_method))
         fh.write("Total:{}\n".format(len(data_mal)))
@@ -333,6 +333,38 @@ def export_ids_result(filename, detection_method, data_mal, res):
         fh.write("FPR:{}\n".format(res.fpr()))
         fh.write("\t----")
 
+    with open(analysis_filename, "w") as fh:
+        fh.write("False positive timestamp\n")
+        fh.write("--------------------------\n")
+        attack_false = [x for x in res.false_atk]
+        attack_false.sort()
+        for ts in attack_false:
+            fh.write(str(ts) + "\n")
+
+        fh.write("\n\n")
+        fh.write("Missed attack timestamp\n")
+        fh.write("--------------------------\n")
+        attack_missed = [x for x in res.missed_atk]
+        attack_missed.sort()
+        for ts in attack_missed:
+            fh.write(str(ts) + "\n")
+
+def export_state_from_ts(filename, timestamps, data):
+    with open(filename + ".txt", "w") as fname:
+        i = 0
+        states = []
+        for state in data:
+            ts = state[TS]
+            fp_time = datetime.strptime(timestamps[i], "%d-%m-%Y %H:%M:%S")
+            if ts == fp_time:
+                states.append(state)
+                fname.write(str(state) + "\n")
+                i += 1
+            if i >= len(timestamps):
+                break
+
+    with open(filename + ".bin", "wb") as fname:
+        pickle.dump(states, fname)
 
 def test_invariants(params, store, state_filename):
 
@@ -379,19 +411,21 @@ def main(atk_period_time, atk_period_inv, conf, malicious,
         expected_atk = create_expected_malicious_activities(atk_period_time, True)
         res = compare_activities(expected_atk, malicious_activities, data_mal,
                                  pv_store, True, True)
-        export_ids_result(params[OUTPUT_RES], "Time based", data_mal, res)
+        export_ids_result(params[OUTPUT_RES], params[OUTPUT_ANALYSIS], "Time based", data_mal, res)
 
     if params[TEST_INVARIANTS]:
-        #test_invariants(params, pv_store, "./valid_state_for_texting.bin")
+        #dates_false = ["28-12-2015 11:33:32", "28-12-2015 11:36:32", "28-12-2015 12:00:34"]
+        #export_state_from_ts("./false_positive_state", dates_false, data_mal)
 
         expected_atk = create_expected_malicious_activities(atk_period_inv)
+
         ids = run_invariant_ids(params, conf, pv_store, data, data_mal, infile, malicious)
 
         inv_res = compare_activities(expected_atk, ids.malicious_activities,
                                      data_mal, pv_store, False, True)
-
         print("Exporting evaluation result")
-        export_ids_result(params[OUTPUT_RES], "Invariant", data_mal, inv_res)
+        export_ids_result(params[OUTPUT_RES], params[OUTPUT_ANALYSIS],
+                          "Invariant", data_mal, inv_res)
 
 
 if __name__ == "__main__":

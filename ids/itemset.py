@@ -9,7 +9,6 @@ import predicate as pred
 from pvStore import PVStore
 from utils import TS
 from utils import read_state_file
-from idsInvariants import IDSInvariant
 
 TRANSACTIONS = "transactions"
 TRANSBIN = "transactionsBin"
@@ -218,9 +217,9 @@ def find_mapping_pred_id(mapping_id_pred, transactions, predicates):
 
 def main(conf, infile, outfile, minsupportfile, supportfile,
          mappingfile, invariants, freqfile, closefile,
-         predicate_bin, transbin, mappingfilebin, do_transaction, do_predicate, ids_input, do_mining,
-         do_detection, stop, gamma, theta):
-
+         predicate_bin, transbin, mappingfilebin, do_transaction, do_predicate,
+         ids_input, do_mining, stop, gamma, theta):
+         
     data = read_state_file(infile)
     store = PVStore(conf)
     sensors = store.continuous_monitor_vars()
@@ -282,17 +281,6 @@ def main(conf, infile, outfile, minsupportfile, supportfile,
         miner.exportCloseItemsets(closefile, miner.miningRules(freqfile))
         miner.exportRule(invariants)
 
-    if do_detection:
-        print("Running the ids")
-        ids = IDSInvariant(mapping_id_pred, invariants, cfg[LOG])
-        data = read_state_file(ids_input)
-        with open(cfg[OUTPUT_RES], "w") as fname:
-            for state in data:
-                invalid = ids.valid_state(state)
-                if invalid is not None:
-                    fname.write("{}\n".format(str(invalid)))
-                    fname.write("{}\n\n".format(str(state)))
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--conf", action="store", dest="conf",
@@ -307,8 +295,7 @@ if __name__ == "__main__":
                         help="File to run the ids on")
     parser.add_argument("--mine", action="store_true", dest="do_mining",
                         help="should the invariant be mined")
-    parser.add_argument("--run", action="store_true", dest="do_detection",
-                        help="run the IDS")
+    
     parser.add_argument("--stop", action="store_true", dest="stop",
                         help="stop after a predicate is satisfied pred")
     parser.add_argument("--do_predicate", action="store_true", dest="do_predicate")
@@ -324,5 +311,5 @@ if __name__ == "__main__":
          cfg[MAPPINGFILE], cfg[INVARIANTS], cfg[FREQITEMSETS], cfg[CLOSE],
          cfg[PREDICATE_EXPORT], cfg[TRANSBIN], cfg[MAPPINGFILEBIN], 
          args.do_transaction, args.do_predicate, args.ids_input,
-         args.do_mining, args.do_detection, args.stop,
+         args.do_mining, args.stop,
          args.gamma, args.theta)

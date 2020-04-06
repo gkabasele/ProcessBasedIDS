@@ -46,9 +46,23 @@ class RangeVal(object):
     def hash(self):
         return hash(self.__str__())
 
+## Simple splitting ##
+
+def split_values_spectre(values, n_split=4):
+    min_val = float(min(values))
+    max_val = float(max(values))
+    spectre = max_val - min_val
+    gap = float(spectre)/n_split
+    vals = list()
+    curr = min_val
+    while curr <= max_val:
+        vals.append(curr)
+        curr += gap
+    return vals
+
 def find_inflection_point(data):
-    maximas = []
-    minimas = []
+    maximas = list()
+    minimas = list()
 
     for i in range(len(data)):
         if i == 0:
@@ -211,7 +225,10 @@ def main(data, conf, output, strategy, cool_time, inputtype):
                 values, _ = get_values(data, var['name'])
                 min_val = np.min(values)
                 max_val = np.max(values)
-                if strategy == "hist":
+                if strategy == "simple":
+                    vals = split_values_spectre(values[cool_time:])
+
+                elif strategy == "hist":
                     blocks = divide_and_conquer(values[cool_time:], inputtype)
                     vals = []
                     for block in blocks:
@@ -225,7 +242,7 @@ def main(data, conf, output, strategy, cool_time, inputtype):
                 var['max'] = float(max_val)
 
         with open(output, "w") as ofh:
-            content = yaml.dump(desc)
+            content = yaml.dump(desc, default_flow_style=False)
             ofh.write(content)
 
 if __name__ == "__main__":
@@ -233,7 +250,7 @@ if __name__ == "__main__":
     parser.add_argument("--input", dest="filename", action="store")
     parser.add_argument("--conf", dest="conf", action="store")
     parser.add_argument("--output", dest="output", action="store")
-    parser.add_argument("--strategy", default="all", choices=["kde", "hist"])
+    parser.add_argument("--strategy", default="all", choices=["kde", "hist", "simple"])
     parser.add_argument("--cool", default=COOL_TIME, type=int, dest="cool_time")
     parser.add_argument("--inputtype", default="cont", choices=["cont", "disc"])
     args = parser.parse_args()

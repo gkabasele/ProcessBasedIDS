@@ -109,6 +109,7 @@ class PVStore(object):
 
 if __name__ == "__main__":
 
-    data = utils.read_state_file("../SWaT_scripts/process_variables/SWat_Dataset_normal_v1.bin")[utils.COOL_TIME:]
-    store = PVStore("./process_variables_limit_hist.yml", data)
+    #data = utils.read_state_file("../SWaT_scripts/process_variables/SWat_Dataset_normal_v1.bin")[utils.COOL_TIME:]
+    data = utils.read_state_file("../SWaT_scripts/process_variables/SWat_Dataset_normal_v1_5d.bin")
+    store = PVStore("./eval_swat_process/swat_process_conf_limit_hist.yml", data)
     pdb.set_trace()

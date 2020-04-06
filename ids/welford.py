@@ -1,4 +1,21 @@
 import math
+
+def min_default(a, b):
+    if a is None:
+        return b
+    elif b is None:
+        return a
+    else:
+        return min(a ,b)
+
+def max_default(a, b):
+    if a is None:
+        return b
+    elif b is None:
+        return a
+    else:
+        return max(a ,b)
+
 class Welford(object):
     """ Implements Welford's algorithm for computing a running mean
     and standard deviation as described at: 
@@ -31,12 +48,17 @@ class Welford(object):
         self.k = 0
         self.M = 0
         self.S = 0
-        
+        self.max_val = None
+        self.min_val = None
+
         self.__call__(lst)
-    
+
     def update(self,x):
         if x is None:
             return
+        self.min_val = min_default(self.min_val, x)
+        self.max_val = max_default(self.max_val, x)
+
         self.k += 1
         newM = self.M + (x - self.M)*1./self.k
         newS = self.S + (x - self.M)*(x - newM)

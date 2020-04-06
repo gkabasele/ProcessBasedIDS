@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.neighbors import KernelDensity
 from scipy.stats import gaussian_kde
+from scipy.signal import argrelextrema
 
 from welford import Welford
 import utils
@@ -153,6 +154,34 @@ def cluster_property(clusters):
     return properties
 
 
+def test_cluster_kde():
+    a = np.array([10, 11, 9, 23, 21, 11, 45, 20, 11, 12]).reshape(-1, 1)
+    kde = KernelDensity(kernel='gaussian', bandwidth=3).fit(a)
+    s = np.linspace(0, 50)
+    e = kde.score_samples(s.reshape(-1, 1))
+
+
+    mi, ma = argrelextrema(e, np.less)[0], argrelextrema(e, np.greater)[0]
+    print("Minima", s[mi])
+    print("Maxima", s[ma])
+
+    print(a[a<mi[0]], a[(a>=mi[0]) * (a<= mi[1])], a[a >= mi[1]])
+
+    pattern = TimePattern()
+    data = [10, 11, 9, 23, 21, 11, 45, 20, 11, 12]
+    for val in data:
+        pattern.update(val)
+    pattern.create_clusters()
+    print(pattern)
+
+    plt.plot(s, e)
+    plt.plot(s[:mi[0]+1], e[:mi[0]+1], 'r',
+             s[mi[0]:mi[1]+1], e[mi[0]:mi[1]+1], 'g',
+             s[mi[1]:], e[mi[1]:], 'b',
+             s[ma], e[ma], 'go',
+             s[mi], e[mi], 'ro')
+    plt.show()
+
 def main(filename):
 
     with open(filename, "r") as f:
@@ -162,7 +191,8 @@ def main(filename):
         for val in data:
             pattern.update(val)
         pattern.create_clusters()
-        pdb.set_trace()
+        print(pattern)
 
+        
 if __name__ == "__main__":
-    main("./fit101dot027.txt")
+    main("./time_pattern_test/fit101dot027.txt")

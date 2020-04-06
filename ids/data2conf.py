@@ -4,7 +4,7 @@ import pdb
 import yaml
 import utils
 
-def read_data(inputname, outputname ,slen=utils.DAY_IN_SEC):
+def read_data(inputname, outputname):
 
     variables = {"variables" : []}
 
@@ -15,7 +15,7 @@ def read_data(inputname, outputname ,slen=utils.DAY_IN_SEC):
     min_value = {k : None for k in data[0].keys() if k != utils.TS and k != utils.CAT}
     max_value = {k : None for k in data[0].keys() if k != utils.TS and k != utils.CAT}
 
-    for state in data[:slen]:
+    for state in data:
         for k, v in state.items():
             if k != utils.TS and k != utils.CAT:
                 if len(diff_value[k]) <= 3:

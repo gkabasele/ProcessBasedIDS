@@ -305,6 +305,15 @@ def read_state_file(name):
         data = pickle.load(filename)
     return data
 
+# Export time to evaluate time pattern IDS
+def export_time_pattern(inname, outfile):
+    data = read_state_file(inname)
+    with open(outfile, "w") as fname:
+        for state in data:
+            ts = state['timestamp']
+            fname.write("{}: 0\n".format(ts))
+
+
 def get_all_values_pv(data, pvname, limit=None):
     if limit is None:
         return np.array([x[pvname] for x in data])

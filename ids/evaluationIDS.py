@@ -23,6 +23,7 @@ MATRIX = "matrix"
 TIME_LOG = "time_log"
 OUTPUT_RES = "output_res"
 OUTPUT_ANALYSIS = "output_analysis"
+ATK_TIME_TIMEPAT = "attack_time_time_pattern"
 
 TEST_INVARIANTS = "test_with_invariant"
 INV_FILE = "invariants_file"
@@ -31,6 +32,7 @@ INV_LOG = "invariant_log"
 PRED_MAP = "predicate_map_file"
 PREDICATES = "predicates"
 GEN_PRED = "generate_predicate"
+ATK_TIME_INV = "attack_time_inv"
 
 START = 'start'
 END = 'end'
@@ -66,6 +68,12 @@ class EvalResult(object):
             if self.tp == 0:
                 return 0
             return -1
+
+    def __str__(self):
+        return "TPR:{}, FPR:{}".format(self.tpr(), self.fpr())
+
+    def __repr__(self):
+        return self.__str__()
 
 def invariant_comparison(mal_expected, mal_computed, attack_store, just_after):
 
@@ -206,6 +214,10 @@ def time_pattern_comparison(mal_expected, mal_computed, attack_store, pv_store):
     expected_timestamps = dict_list_ts(mal_expected)
     detect_timestamps = dict_list_ts(mal_computed)
 
+    nbr_attack = 0
+    attack_missed = set()
+    attack_false = set()
+
     last_state = None
 
     for state in attack_store:
@@ -231,29 +243,40 @@ def time_pattern_comparison(mal_expected, mal_computed, attack_store, pv_store):
             new_state = get_pv_state(state, state, pv_store)
 
         last_state = new_state
-
-        if attack != ts:
-            if attack_detected:
-                false_positive += nbr_detect
-                true_negative += max(0, nbr_transitions - nbr_detect)
-            else:
-                true_negative += nbr_transitions
-
-        elif attack == ts:
+            
+        if attack == ts:
             i += 1
-            nbr_expect = mal_expected[ts]["count"]
-            if attack_detected:
-                true_positive += min(nbr_expect, nbr_detect)
-                false_negative += max(0, nbr_expect - nbr_detect)
-                #detect too much
-                false_positive += max(0, nbr_detect - nbr_expect)
-                true_negative += nbr_transitions - max(nbr_expect, nbr_detect)
+            nbr_expect = mal_expected[ts]
+            
+            # No attack in progress
+            if nbr_expect == 0:
+                if attack_detected:
+                    attack_false.add(key)
+                    false_positive += nbr_detect
+                    true_negative += max(0, nbr_transitions - nbr_detect)
+                else:
+                    true_negative += nbr_transitions
             else:
-                false_negative += nbr_expect
-                true_negative += max(0, nbr_transitions - nbr_expect)
+                if nbr_expect > 0:
+                    nbr_attack += 1
+                else:
+                    raise ValueError("Unexpected negative value for the number malicious transition")
+
+
+                if attack_detected:
+                    true_positive += min(nbr_expect, nbr_detect)
+                    false_negative += max(0, nbr_expect - nbr_detect)
+                    #detect too much
+                    false_positive += max(0, nbr_detect - nbr_expect)
+                    true_negative += nbr_transitions - max(nbr_expect, nbr_detect)
+                else:
+                    false_negative += nbr_expect
+                    true_negative += max(0, nbr_transitions - nbr_expect)
+                    attack_missed.add(key)
 
     return EvalResult(true_positive, false_positive, true_negative,
-                      false_negative, 0)
+                      false_negative, nbr_attack, attack_missed, 
+                      attack_false)
 
 def compare_activities(mal_expected, mal_computed, attack_store, pv_store,
                        timePattern=True, just_after=False):
@@ -391,29 +414,48 @@ def main(atk_period_time, atk_period_inv, conf, malicious,
     data = utils.read_state_file(infile)
 
     print("Importing process variables")
-    pv_store = pvStore.PVStore(conf)
+    pv_store = pvStore.PVStore(conf, data)
+
+    pdb.set_trace()
 
     if params[TEST_TIMEPATTERN]:
+        print("Running time pattern IDS")
         if not cache:
+            print("Creating matrices")
             time_checker = TimeChecker(conf, params[TIME_LOG], data)
             time_checker.fill_matrices()
-            pickle.dump(time_checker.matrices, open(MATRIX, "wb"))
+            with open(params[MATRIX], "wb") as fname:
+                pickle.dump(time_checker.matrices, fname)
+            pdb.set_trace()
             time_checker.detection_store = data_mal
+            print("Running detection")
             time_checker.detect_suspect_transition()
-            pickle.dump(time_checker.malicious_activities, open(params[MAL_CACHE], "wb"))
+            with open(params[MAL_CACHE], "wb") as fname:
+                pickle.dump(time_checker.malicious_activities, fname)
             time_checker.close()
             malicious_activities = time_checker.malicious_activities
             time_checker.create_matrices()
-        else:
-            matrices = pickle.load(open(params[MATRIX], "rb"))
-            malicious_activities = pickle.load(open(params[MAL_CACHE], "rb"))
 
-        expected_atk = create_expected_malicious_activities(atk_period_time, True)
+            expected_atk = create_expected_malicious_activities(atk_period_time, True)
+            with open(params[ATK_TIME_TIMEPAT], "wb") as fname:
+                pickle.dump(expected_atk, fname)
+        else:
+            with open(params[MATRIX], "rb") as fname:
+                matrices = pickle.load(fname)
+
+            with open(params[MAL_CACHE], "rb") as fname:
+                malicious_activities = pickle.load(fname)
+
+            with open(params[ATK_TIME_TIMEPAT], "rb") as fname:
+                expected_atk = pickle.load(fname)
+
         res = compare_activities(expected_atk, malicious_activities, data_mal,
                                  pv_store, True, True)
+        pdb.set_trace()
         export_ids_result(params[OUTPUT_RES], params[OUTPUT_ANALYSIS], "Time based", data_mal, res)
 
     if params[TEST_INVARIANTS]:
+        print("Running invariant IDS")
         #dates_false = ["28-12-2015 11:33:32", "28-12-2015 11:36:32", "28-12-2015 12:00:34"]
         #export_state_from_ts("./false_positive_state", dates_false, data_mal)
 

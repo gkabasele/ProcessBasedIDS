@@ -22,8 +22,16 @@ from timePattern import TimePattern
 
 ValueTS = collections.namedtuple('ValueTS', ['value', 'start', 'end'])
 
+
+# Threshold to compare the times
 BIG_THRESH = 1
 EQ_THRESH = 0.1
+
+# Threshold to compare times, noisy precision
+BIG_NOISY_THRESH = 0.25
+EQ_NOISY_THRESH = 0.05
+
+# Number of outliers accpeted to consolidate the patterns
 N_OUTLIER = 3
 N_CLUSTERS = 2
 
@@ -61,10 +69,17 @@ class TransitionMatrix(object):
         # map value -> position to row or column of the value in the matrix
         self.val_pos = {}
         self.transitions = self.compute_transition(self.header)
+        #Last value of the variable in the detection phase
         self.last_value = None
+        # Last value of the variable in the training phase
         self.last_val_train = None
+        # 
         self.start_same_train = None
+        #
         self.end_same_train = None
+        # Variable to store whether or not the training phase is done since
+        # we have reached last timestamp of dataset. This is needed to trigger
+        # a last update of the matrix
         self.end_time = None
         # flag to know if an elapsed time must be computed
         self.computation_trigger = False
@@ -90,6 +105,7 @@ class TransitionMatrix(object):
 
         return header
 
+    # Create matrix of transitions
     def compute_transition(self, values):
         transitions = []
         for index, val in enumerate(values):
@@ -192,6 +208,29 @@ class TransitionMatrix(object):
         diff = abs(t1 -t2)
         return diff >= BIG_THRESH
 
+    def is_close_time_noisy(self, t1, cluster):
+        if cluster.max_val == cluster.min_val:
+            return t1 == cluster.mean
+
+        diff_max = utils.normalized_dist(cluster.max_val, cluster.min_val,
+                                         t1, cluster.max_val)
+        diff_min = utils.normalized_dist(cluster.max_val, cluster.min_val,
+                                         t1, cluster.min_val)
+
+        diff = min(diff_max, diff_min)
+        return diff >= EQ_NOISY_THRESH
+
+    def is_big_time_noisy(self, t1, cluster):
+        if cluster.max_val == cluster.min_val:
+            return t1 == cluster.mean
+        diff_max = utils.normalized_dist(cluster.max_val, cluster.min_val,
+                                         t1, cluster.max_val)
+        diff_min = utils.normalized_dist(cluster.max_val, cluster.min_val,
+                                         t1, cluster.min_val)
+
+        diff = min(diff_max, diff_min)
+        return diff >= BIG_NOISY_THRESH
+
     def outlier_handler(self, column, row, elapsed_time, cluster):
         pattern = self.transitions[row][column]
         nbr_outlier = 0
@@ -202,6 +241,20 @@ class TransitionMatrix(object):
         #Check if cluster is too far from outlier to consolidate cluster or not
         if (nbr_outlier >= N_OUTLIER and
                 not self.is_big_time(elapsed_time, cluster.mean)):
+            cluster(elapsed_time)
+            return TransitionMatrix.SAME, cluster
+        else:
+            return TransitionMatrix.DIFF, cluster
+
+    def outlier_handler_noisy(self, column, row, elapsed_time, cluster):
+        pattern = self.transitions[row][column]
+        nbr_outlier = 0
+        for c in pattern.clusters:
+            if c.std == 0 and c.k < 3:
+                nbr_outlier += 1
+
+        if (nbr_outlier >= N_OUTLIER and
+                not self.is_big_time_noisy(elapsed_time, cluster)):
             cluster(elapsed_time)
             return TransitionMatrix.SAME, cluster
         else:
@@ -223,49 +276,65 @@ class TransitionMatrix(object):
 
         cluster = self.find_cluster(expected, elapsed_time)
 
-        ## FIXME REMOVE Testing with simulator ##
-        if cluster.std == 0:
-            if cluster.k >= 3:
-                if self.is_close_time(elapsed_time, cluster.mean):
+        ## Test with the simulator##
+        if not self.noisy:
+            if cluster.std == 0:
+                if cluster.k >= 3:
+                    if self.is_close_time(elapsed_time, cluster.mean):
+                        return TransitionMatrix.SAME, cluster
+                    else:
+                        return TransitionMatrix.DIFF, cluster
+                else:
+                    if self.is_close_time(elapsed_time, cluster.mean):
+                        return TransitionMatrix.SAME, cluster
+                    else:
+                        return self.outlier_handler(column, row, elapsed_time, cluster)
+            else:
+                # Chebyshev's inequality
+                z = (elapsed_time - cluster.mean)/cluster.std
+                ztest = abs(z) <= 3
+                close = self.is_close_time(elapsed_time, cluster.mean)
+                if ztest or close:
                     return TransitionMatrix.SAME, cluster
                 else:
                     return TransitionMatrix.DIFF, cluster
+        else:
+
+            if cluster.std == 0:
+                #FIXME number of time a value has been seen consider it meaningfull
+                # If the exact same elapsed_time keep repeating itself then it is 
+                # constant so the value should always be the same
+                # Otherwise there was an outlier in during the training process
+
+                # Min/max value should be the local value (cluster) not global
+                if  cluster.k >= 3:
+                    if self.is_close_time_noisy(elapsed_time, cluster):
+                        return TransitionMatrix.SAME, cluster
+                    else:
+                        return TransitionMatrix.DIFF, cluster
+                else:
+                    if self.is_close_time_noisy(elapsed_time, cluster):
+                        return TransitionMatrix.SAME, cluster
+                    else:
+                        return self.outlier_handler_noisy(column, row, elapsed_time, cluster)
+
             else:
-                if self.is_close_time(elapsed_time, cluster.mean):
+                z = (elapsed_time - cluster.mean)/cluster.std
+                ztest = abs(z) <= 3
+                close = self.is_close_time_noisy(elapsed_time, cluster)
+
+                if ztest or close:
                     return TransitionMatrix.SAME, cluster
                 else:
-                    return self.outlier_handler(column, row, elapsed_time, cluster)
-        else:
-            # Chebyshev's inequality
-            z = (elapsed_time - cluster.mean)/cluster.std
-            ztest = abs(z) <= 3
-            close = self.is_close_time(elapsed_time, cluster.mean)
-            if ztest or close:
-                return TransitionMatrix.SAME, cluster
-            else:
-                return TransitionMatrix.DIFF, cluster
-
-        """
-        #print("Elapsed: {}, Cluster:{}".format(elapsed_time, cluster))
-        #if cluster.std == 0:
-        #    #FIXME number of time a value has been seen consider it meaningfull
-        #    # If the exact same elapsed_time keep repeating itself then it is constant
-        #    # so the value should always be the same
-        #    # Otherwise there was an outlier in during the training process
-        #    #if  cluster.k >= 3 and elapsed_time == cluster.mean:
-        #        return TransitionMatrix.SAME, cluster
-        #    else:
-        #        return TransitionMatrix.DIFF, cluster
-        #else:
-        #z = (elapsed_time - cluster.mean)/cluster.k
-        # How likely a elapsed time diff from the mean to be from the same
-        # group of observation
-        prob_same = 1 - stats.norm.cdf(z)
-        if prob_same < 0.05:
-            return TransitionMatrix.DIFF, cluster
-        else:
-            return TransitionMatrix.SAME, cluster
-        """
+                    return TransitionMatrix.DIFF, cluster
+                #z = (elapsed_time - cluster.mean)/cluster.k
+                ##How likely a elapsed time diff from the mean to be from the same
+                ##group of observation
+                #prob_same = 1 - stats.norm.cdf(z)
+                #if prob_same < 0.05:
+                #    return TransitionMatrix.DIFF, cluster
+                #else:
+                #    return TransitionMatrix.SAME, cluster
 
     def write_msg(self, filehandler, res, ts, pv_name, got, expected, 
                   malicious_activities,crit_val=None, last_val=None):
@@ -351,6 +420,8 @@ class TransitionMatrix(object):
                     self.write_msg(filehandler, res, ts, pv.name, same_value_t, expected,
                                    malicious_activities, crit_val=self.last_value.value,
                                    last_val=self.last_value.value)
+
+    # Add the elasped times of each transition.
     @Decorators
     def update_transition_matrix(self, value, ts, pv):
         for crit_val in self.header:

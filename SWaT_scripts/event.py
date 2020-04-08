@@ -7,6 +7,7 @@ import pdb
 
 import matplotlib
 import matplotlib.pyplot as plt
+from scipy.signal import savgol_filter
 import numpy as np
 from statsmodels.graphics.tsaplots import plot_acf
 from statsmodels.tsa.seasonal import seasonal_decompose
@@ -123,6 +124,28 @@ def plot_timeseries(data, pv, label=None):
     plt.title(title)
     plt.show()
 
+def plot_smoothed_timeseries(data, pv, label=None):
+    vals = np.array([x[pv] for x in data])
+    x = np.array([i for i, _ in enumerate(vals)])
+
+    fig, ax = plt.subplots()
+    ax.set_xlabel('time(s)')
+    ax.set_ylabel(pv)
+
+    ax.plot(x, vals)
+
+    min_val = np.min(vals)
+    max_val = np.max(vals)
+
+    for h in np.linspace(min_val, max_val, 10):
+        ax.axhline(h, color='black', lw=0.2)
+
+    yhat = savgol_filter(vals, 1001, 3)
+
+    ax.plot(x, yhat)
+
+    plt.show()
+    
 def plot_variable_timeseries_corr(data, act, sens):
 
     fig, ax1 = plt.subplots()

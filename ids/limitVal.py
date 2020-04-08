@@ -6,6 +6,7 @@ import pdb
 import math
 from datetime import datetime, timedelta
 
+from scipy.signal import savgol_filter, argrelextrema
 import numpy as np
 import pprint
 import matplotlib
@@ -20,7 +21,7 @@ take some time so those critical values appear more often. Histogram from
 y-axis
 """
 
-TRESH = 0.10
+THRESH = 0.2
 
 class RangeVal(object):
 
@@ -60,6 +61,34 @@ def split_values_spectre(values, n_split=4):
         curr += gap
     return vals
 
+## Smoothing approach to find critical ##
+
+def find_extreme_from_smooth_data(values, windows=1001, order=3):
+    smooth_vals = savgol_filter(values, windows, order)
+    min_pos = argrelextrema(smooth_vals, np.less)
+    max_pos = argrelextrema(smooth_vals, np.greater)
+
+    extremes = [values[i] for i in min_pos]
+    extremes.extend([values[i] for i in max_pos])
+
+    extremes_list = np.concatenate(extremes).ravel()
+
+    hist, bin_edges = np.histogram(extremes_list, bins=10)
+
+    ranges = []
+    total = sum(hist)
+    for i in range(len(bin_edges) - 1):
+        lower = bin_edges[i]
+        upper = bin_edges[i+1]
+        count = hist[i]
+        norm = hist[i]/total
+        if norm >= THRESH:
+            ranges.append(RangeVal(lower, upper, count, norm))
+
+    blocks = merge_ranges(ranges, len(values))
+    return blocks
+
+
 def find_inflection_point(data):
     maximas = list()
     minimas = list()
@@ -85,16 +114,19 @@ def find_inflection_point(data):
 def compute_ranges(values, inputtype):
     if inputtype == "cont":
         hist, bin_edges = np.histogram(values, bins=100)
+
     elif inputtype == "disc":
         min_val = np.min(values)
         max_val = np.max(values)
         hist, bin_edges = np.histogram(values, bins=max_val - min_val)
+
     ranges = []
+    total = sum(hist)
     for i in range(len(bin_edges) - 1):
         lower = bin_edges[i]
         upper = bin_edges[i+1]
         count = hist[i]
-        norm = hist[i]/len(values)
+        norm = hist[i]/total
         if norm >= TRESH:
             ranges.append(RangeVal(lower, upper, count, norm))
     return ranges
@@ -228,6 +260,13 @@ def main(data, conf, output, strategy, cool_time, inputtype):
                 if strategy == "simple":
                     vals = split_values_spectre(values[cool_time:])
 
+                elif strategy == "smooth":
+                    blocks = find_extreme_from_smooth_data(values[cool_time:])
+                    vals = []
+                    for block in blocks:
+                        vals.append(block.lower.item())
+                        vals.append(block.upper.item())
+
                 elif strategy == "hist":
                     blocks = divide_and_conquer(values[cool_time:], inputtype)
                     vals = []
@@ -250,7 +289,7 @@ if __name__ == "__main__":
     parser.add_argument("--input", dest="filename", action="store")
     parser.add_argument("--conf", dest="conf", action="store")
     parser.add_argument("--output", dest="output", action="store")
-    parser.add_argument("--strategy", default="all", choices=["kde", "hist", "simple"])
+    parser.add_argument("--strategy", default="all", choices=["kde", "hist", "simple", "smooth"])
     parser.add_argument("--cool", default=COOL_TIME, type=int, dest="cool_time")
     parser.add_argument("--inputtype", default="cont", choices=["cont", "disc"])
     args = parser.parse_args()

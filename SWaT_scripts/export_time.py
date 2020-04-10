@@ -36,13 +36,15 @@ def same_value_time(data, pv, max_val, min_val, value):
     start_ts = None
     end_ts = None
 
+    freq = 0
+
     ## For debug ##
     values = [state[pv] for state in data]
     for i, state in enumerate(data):
         val = state[pv]
         if utils.same_value(max_val, min_val, val, value):
+            freq += 1
             if start_ts is None:
-                pdb.set_trace()
                 start_ts = state['timestamp']
                 end_ts = state['timestamp']
             else:
@@ -57,6 +59,7 @@ def same_value_time(data, pv, max_val, min_val, value):
                 recorded_ts.append(elapsed_time)
                 start_ts = None
                 end_ts = None
+    pdb.set_trace()
     return recorded_ts
 
 

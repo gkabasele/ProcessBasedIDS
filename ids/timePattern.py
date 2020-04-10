@@ -185,14 +185,13 @@ def test_cluster_kde():
 def main(filename):
 
     with open(filename, "r") as f:
-        tmp = f.read().split(",")[:-1]
-        data = [float(x) for x in tmp]
+        data = [float(x) for x in f]
         pattern = TimePattern()
         for val in data:
             pattern.update(val)
         pattern.create_clusters()
+        pdb.set_trace()
         print(pattern)
 
-        
 if __name__ == "__main__":
-    main("./time_pattern_test/fit101dot027.txt")
+    main("./time_pattern_test/fit502dot1245.txt")

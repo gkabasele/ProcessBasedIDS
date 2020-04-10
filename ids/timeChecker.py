@@ -93,6 +93,7 @@ class TransitionMatrix(object):
         # then come back to it without passing by another critical value
         self.has_changed = False
 
+
     def compute_header(self, variable):
         header = []
         start_index = 0
@@ -446,6 +447,7 @@ class TransitionMatrix(object):
         for crit_val in self.header:
             if self.same_value(value, crit_val, pv):
                 found = True
+
                 if self.last_val_train is not None:
                     row = self.val_pos[self.last_val_train.value]
                     column = self.val_pos[crit_val]
@@ -462,10 +464,14 @@ class TransitionMatrix(object):
                             self.last_val_train = ValueTS(value=crit_val,
                                                           start=self.last_val_train.start,
                                                           end=ts)
-                        else: 
+                        else:
+                            # Since it has changed, we have to compute last value
+                            same_value_t = (self.last_val_train.end - self.last_val_train.start).total_seconds()
+                            self.transitions[row][row].update(same_value_t)
+
                             self.last_val_train = ValueTS(value=crit_val,
                                                           start=ts,
-                                                          end = ts)
+                                                          end=ts)
                         self.computation_trigger = False
                     else:
                         same_value_t = (self.last_val_train.end - self.last_val_train.start).total_seconds()
@@ -573,6 +579,7 @@ class TimeChecker(Checker):
         for name, val in self.vars.items():
             if val.is_periodic:
                 self.matrices[name].compute_clusters()
+        pdb.set_trace()
 
     def detect_suspect_transition(self):
         if self.detection_store is not None:

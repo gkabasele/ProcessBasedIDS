@@ -36,17 +36,22 @@ def same_value_time(data, pv, max_val, min_val, value):
     start_ts = None
     end_ts = None
 
-    for state in data:
+    ## For debug ##
+    values = [state[pv] for state in data]
+    for i, state in enumerate(data):
         val = state[pv]
         if utils.same_value(max_val, min_val, val, value):
             if start_ts is None:
+                pdb.set_trace()
                 start_ts = state['timestamp']
                 end_ts = state['timestamp']
             else:
                 end_ts = state['timestamp']
         else:
-            if start_ts is None:
+            if start_ts is None and end_ts is None:
                 pass
+            elif start_ts is None or end_ts is None:
+                raise ValueError("Value found for only one second")
             else:
                 elapsed_time = (end_ts - start_ts).total_seconds()
                 recorded_ts.append(elapsed_time)
@@ -69,11 +74,9 @@ def main(data, pv, from_val, to_val, conf, output):
     else:
         recorded_ts = transition_time(data, pv, var['max'], var['min'], from_val, to_val)
 
-    pdb.set_trace()
-
     with open(output, "w") as fh:
         for ts in recorded_ts:
-            fh.write("{},".format(ts))
+            fh.write("{}\n".format(ts))
 
 if __name__ == "__main__":
 

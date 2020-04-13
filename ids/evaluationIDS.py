@@ -34,6 +34,8 @@ PREDICATES = "predicates"
 GEN_PRED = "generate_predicate"
 ATK_TIME_INV = "attack_time_inv"
 
+VAR_STORE = "variable_store"
+
 START = 'start'
 END = 'end'
 TS = 'timestamp'
@@ -175,7 +177,7 @@ def invariant_comparison(mal_expected, mal_computed, attack_store, just_after):
 def get_pv_state(values, old_values, pv_store):
     pv_state = {} 
     for k, v in values.items():
-        if k != "timestamp":
+        if k != "timestamp" and k != "normal/attack":
             if v in pv_store.vars[k].limit_values:
                 pv_state[k] = v
             else:
@@ -414,7 +416,13 @@ def main(atk_period_time, atk_period_inv, conf, malicious,
     data = utils.read_state_file(infile)
 
     print("Importing process variables")
-    pv_store = pvStore.PVStore(conf, data)
+    if not cache:
+        pv_store = pvStore.PVStore(conf, data)
+        with open(params[VAR_STORE], "wb") as fname:
+            pickle.dump(pv_store, fname)
+    else:
+        with open(params[VAR_STORE], "rb") as fname:
+            pv_store = pickle.load(fname)
 
     pdb.set_trace()
 
@@ -449,6 +457,7 @@ def main(atk_period_time, atk_period_inv, conf, malicious,
             with open(params[ATK_TIME_TIMEPAT], "rb") as fname:
                 expected_atk = pickle.load(fname)
 
+        pdb.set_trace()
         res = compare_activities(expected_atk, malicious_activities, data_mal,
                                  pv_store, True, True)
         pdb.set_trace()

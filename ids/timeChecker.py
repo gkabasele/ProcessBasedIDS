@@ -579,7 +579,6 @@ class TimeChecker(Checker):
         for name, val in self.vars.items():
             if val.is_periodic:
                 self.matrices[name].compute_clusters()
-        pdb.set_trace()
 
     def detect_suspect_transition(self):
         if self.detection_store is not None:

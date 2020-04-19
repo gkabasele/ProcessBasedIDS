@@ -225,6 +225,14 @@ def list_variable(data):
 def get_values(data, pv):
     return np.array([x[pv] for x in data])
 
+def get_hole_in_ts(data):
+    prev = None
+    for state in data:
+        if prev != None:
+            if (state["timestamp"] - prev).total_seconds() != 1:
+                print("prev:{}\n curr:{}".format(prev, state["timestamp"]))
+        prev = state["timestamp"]
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=str, dest="input")

@@ -231,7 +231,6 @@ def time_pattern_comparison(mal_expected, mal_computed, attack_store, pv_store):
         ts = datetime(year=tmp.year, month=tmp.month, day=tmp.day,
                       hour=tmp.hour, minute=tmp.minute, second=tmp.second)
         key = (ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second)
-
         attack_detected = ts == detect
         if attack_detected:
             j += 1
@@ -245,7 +244,6 @@ def time_pattern_comparison(mal_expected, mal_computed, attack_store, pv_store):
             new_state = get_pv_state(state, state, pv_store)
 
         last_state = new_state
-            
         if attack == ts:
             i += 1
             nbr_expect = mal_expected[ts]
@@ -415,11 +413,17 @@ def main(atk_period_time, atk_period_inv, conf, malicious,
     data_mal = utils.read_state_file(malicious)
     data = utils.read_state_file(infile)
 
+    #FIXME remove cache args.
     print("Importing process variables")
     if not cache:
-        pv_store = pvStore.PVStore(conf, data)
-        with open(params[VAR_STORE], "wb") as fname:
-            pickle.dump(pv_store, fname)
+        if not os.path.exists(params[VAR_STORE]):
+            pv_store = pvStore.PVStore(conf, data)
+            with open(params[VAR_STORE], "wb") as fname:
+                pickle.dump(pv_store, fname)
+        else:
+            with open(params[VAR_STORE], "rb") as fname:
+                pv_store = pickle.load(fname)
+
     else:
         with open(params[VAR_STORE], "rb") as fname:
             pv_store = pickle.load(fname)
@@ -431,25 +435,37 @@ def main(atk_period_time, atk_period_inv, conf, malicious,
         if not cache:
             print("Creating matrices")
             time_checker = TimeChecker(conf, params[TIME_LOG], data)
-            time_checker.fill_matrices()
-            with open(params[MATRIX], "wb") as fname:
-                pickle.dump(time_checker.matrices, fname)
-            pdb.set_trace()
+            if not os.path.exists(params[MATRIX]):
+                time_checker.create_matrices()
+                time_checker.fill_matrices()
+                with open(params[MATRIX], "wb") as fname:
+                    pickle.dump(time_checker.matrices, fname)
+            else:
+                with open(params[MATRIX], "rb") as fname:
+                    time_checker.matrices = pickle.load(fname)
             time_checker.detection_store = data_mal
+            pdb.set_trace()
             print("Running detection")
-            time_checker.detect_suspect_transition()
-            with open(params[MAL_CACHE], "wb") as fname:
-                pickle.dump(time_checker.malicious_activities, fname)
-            time_checker.close()
-            malicious_activities = time_checker.malicious_activities
-            time_checker.create_matrices()
+            if not os.path.exists(params[MAL_CACHE]):
+                time_checker.detect_suspect_transition()
+                with open(params[MAL_CACHE], "wb") as fname:
+                    pickle.dump(time_checker.malicious_activities, fname)
+                time_checker.close()
+                malicious_activities = time_checker.malicious_activities
+            else:
+                with open(params[MAL_CACHE], "rb") as fname:
+                    malicious_activities = pickle.load(fname)
 
-            expected_atk = create_expected_malicious_activities(atk_period_time, True)
-            with open(params[ATK_TIME_TIMEPAT], "wb") as fname:
-                pickle.dump(expected_atk, fname)
+            if not os.path.exists(params[ATK_TIME_TIMEPAT]):
+                expected_atk = create_expected_malicious_activities(atk_period_time, True)
+                with open(params[ATK_TIME_TIMEPAT], "wb") as fname:
+                    pickle.dump(expected_atk, fname)
+            else:
+                with open(params[ATK_TIME_TIMEPAT], "rb") as fname:
+                    expected_atk = pickle.load(fname)
         else:
             with open(params[MATRIX], "rb") as fname:
-                matrices = pickle.load(fname)
+                time_checker = pickle.load(fname)
 
             with open(params[MAL_CACHE], "rb") as fname:
                 malicious_activities = pickle.load(fname)
@@ -457,11 +473,11 @@ def main(atk_period_time, atk_period_inv, conf, malicious,
             with open(params[ATK_TIME_TIMEPAT], "rb") as fname:
                 expected_atk = pickle.load(fname)
 
-        pdb.set_trace()
         res = compare_activities(expected_atk, malicious_activities, data_mal,
                                  pv_store, True, True)
-        pdb.set_trace()
+
         export_ids_result(params[OUTPUT_RES], params[OUTPUT_ANALYSIS], "Time based", data_mal, res)
+        pdb.set_trace()
 
     if params[TEST_INVARIANTS]:
         print("Running invariant IDS")

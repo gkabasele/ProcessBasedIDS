@@ -1,20 +1,8 @@
 #!/usr/bin/env python3
-import sys
-import yaml
 import collections
-import math
-import threading
-from datetime import datetime, timedelta
-import pickle
-import pdb
 from collections import OrderedDict
-from copy import copy
-
-import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
-from sklearn.neighbors import KernelDensity
-from scipy import stats
+from datetime import datetime, timedelta
+import pdb
 
 import utils
 from reqChecker import Checker
@@ -122,10 +110,6 @@ class TransitionMatrix(object):
             transitions.append(b)
             self.val_pos[val] = index
 
-        """
-        a = np.array(transitions)
-        return np.reshape(a, (len(values), (len(values))))
-        """
         return transitions
 
     def display_matrix(self):
@@ -360,16 +344,18 @@ class TransitionMatrix(object):
 
     def compute_transition_time(self, newval, ts, pv, filehandler, malicious_activities):
         # Value greater (resp. lower) than max (resp. min)
-        if not self.same_value(newval, self.min_val, pv) and newval < self.min_val:
+        if self.great_diff(newval, self.min_val, pv) and newval < self.min_val:
 
             self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name,
                            newval, self.min_val, malicious_activities)
 
-        elif not self.same_value(newval, self.max_val, pv) and newval > self.max_val:
+        elif self.great_diff(newval, self.max_val, pv) and newval > self.max_val:
 
             self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name,
                            newval, self.max_val, malicious_activities)
 
+        if pv.name == "p102" and ts >= datetime(year=2015, month=12, day=28, hour=10, minute=51, second=7):
+            pdb.set_trace()
         # If no critical value was found, we need to compute how long the last
         # critical value remained
         found = False
@@ -387,7 +373,7 @@ class TransitionMatrix(object):
                         else:
                             self.last_value = ValueTS(value=crit_val,
                                                       start=ts,
-                                                      end = ts)
+                                                      end=ts)
 
                     # The value has changed since last time
                     else:
@@ -536,8 +522,9 @@ class TimeChecker(Checker):
 
         self.detection_cond = {}
         self.filehandler = open(filename, "w+")
+        self.matrices = None
 
-        self.matrices = self.create_matrices()
+        #self.matrices = self.create_matrices()
 
         # state considered as activities {<ts>:[target1, target2]}
         self.malicious_activities = OrderedDict()
@@ -550,7 +537,8 @@ class TimeChecker(Checker):
         for name, variable in self.vars.items():
             if variable.is_periodic:
                 matrices[name] = TransitionMatrix(variable, self.noisy)
-        return matrices
+        self.matrices = matrices
+        #return matrices
 
     def is_var_of_interest(self, name):
         return name != 'timestamp' and name != 'normal/attack' and self.vars[name].is_periodic
@@ -558,11 +546,11 @@ class TimeChecker(Checker):
     def basic_detection(self, name, value, ts):
         pv = self.vars[name]
         if (value > pv.max_val and
-                not utils.same_value(pv.max_val, pv.min_val, value, pv.max_val, noisy=self.noisy)):
+                utils.normalized_dist(pv.max_val, pv.min_val, value, pv.max_val) >= utils.DIST):
             self.filehandler.write("[{}] Value too high for {} expected:{}, got:{}\n".format(ts, name,
                                                                                              pv.max_val, value))
         elif (value < pv.min_val and
-              not utils.same_value(pv.max_val, pv.min_val, value, pv.min_val, noisy=self.noisy)):
+              utils.normalized_dist(pv.max_val, pv.min_val, value, pv.min_val) >= utils.DIST):
             self.filehandler.write("[{}] Value too low for {} expected:{}, got:{}\n".format(ts, name,
                                                                                             pv.min_val, value))
     def fill_matrices(self):
@@ -592,8 +580,8 @@ class TimeChecker(Checker):
                         pv = self.vars[name]
                         matrix.compute_transition_time(val, ts, pv, self.filehandler,
                                                        self.malicious_activities)
-                    elif name != 'timestamp' and name != 'normal/attack':
-                        self.basic_detection(name, val, ts)
+                    #elif name != 'timestamp' and name != 'normal/attack':
+                    #    self.basic_detection(name, val, ts)
         else:
             raise(ValueError("No data to run on for detection"))
 

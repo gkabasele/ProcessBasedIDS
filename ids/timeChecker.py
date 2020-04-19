@@ -204,21 +204,46 @@ class TransitionMatrix(object):
         if cluster.max_val == cluster.min_val:
             return t1 == cluster.mean
 
+        if t1 < cluster.min_val:
+            if cluster.min_val + t1 >= cluster.max_val:
+                return False
+            dist = cluster.min_val + (cluster.min_val - t1)
+
+        elif t1 > cluster.max_val:
+            if cluster.max_val - t1 <= cluster.min_val:
+                return False
+
+            dist = cluster.max_val - (t1 - cluster.max_val)
+
+        else:
+            dist = t1
+
         diff_max = utils.normalized_dist(cluster.max_val, cluster.min_val,
-                                         t1, cluster.max_val)
+                                         dist, cluster.max_val)
         diff_min = utils.normalized_dist(cluster.max_val, cluster.min_val,
-                                         t1, cluster.min_val)
+                                         dist, cluster.min_val)
 
         diff = min(diff_max, diff_min)
-        return diff >= EQ_NOISY_THRESH
+        return diff <= EQ_NOISY_THRESH
 
     def is_big_time_noisy(self, t1, cluster):
         if cluster.max_val == cluster.min_val:
             return t1 == cluster.mean
+
+        if t1 < cluster.min_val:
+            dist = cluster.min_val + (cluster.min_val - t1)
+
+        elif t1 > cluster.max_val:
+            dist = cluster.max_val - (t1 - cluster.max_val)
+
+        else:
+            dist = t1
+
         diff_max = utils.normalized_dist(cluster.max_val, cluster.min_val,
-                                         t1, cluster.max_val)
+                                         dist, cluster.max_val)
+
         diff_min = utils.normalized_dist(cluster.max_val, cluster.min_val,
-                                         t1, cluster.min_val)
+                                         dist, cluster.min_val)
 
         diff = min(diff_max, diff_min)
         return diff >= BIG_NOISY_THRESH
@@ -354,8 +379,18 @@ class TransitionMatrix(object):
             self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name,
                            newval, self.max_val, malicious_activities)
 
-        if pv.name == "p102" and ts >= datetime(year=2015, month=12, day=28, hour=10, minute=51, second=7):
+        # TODO Debug
+        if (pv.name == "mv101" and
+                (ts == datetime(year=2015, month=12, day=28, hour=10, minute=28, second=58) or
+                 ts == datetime(year=2015, month=12, day=28, hour=10, minute=44, second=33))):
             pdb.set_trace()
+
+
+        if (pv.name == "p102" and
+                (ts == datetime(year=2015, month=12, day=28, hour=10, minute=50, second=46) or
+                 ts == datetime(year=2015, month=12, day=28, hour=10, minute=58, second=11))):
+            pdb.set_trace()
+
         # If no critical value was found, we need to compute how long the last
         # critical value remained
         found = False

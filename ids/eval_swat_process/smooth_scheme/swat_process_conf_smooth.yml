@@ -1,0 +1,418 @@
+variables:
+- variable:
+    critical:
+    - 2.1719888000000003
+    - 2.714986
+    ignore: false
+    max: 2.745092
+    min: 0.0
+    name: fit101
+    type: hr
+- variable:
+    critical:
+    - 489.8352
+    - 555.01046
+    - 783.12387
+    - 815.7115
+    ignore: false
+    max: 817.5565
+    min: 486.3809
+    name: lit101
+    type: hr
+- variable:
+    critical: []
+    ignore: false
+    max: 2.0
+    min: 0.0
+    name: mv101
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 2.0
+    min: 1.0
+    name: p101
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 1.0
+    min: 1.0
+    name: p102
+    type: co
+- variable:
+    critical:
+    - 265.82289000000003
+    - 267.66216000000003
+    ignore: false
+    max: 272.5263
+    min: 252.8518
+    name: ait201
+    type: hr
+- variable:
+    critical:
+    - 8.314728
+    - 8.3801919
+    ignore: false
+    max: 8.988273
+    min: 8.314407
+    name: ait202
+    type: hr
+- variable:
+    critical:
+    - 314.0989
+    - 339.13351
+    ignore: false
+    max: 567.4699
+    min: 312.2789
+    name: ait203
+    type: hr
+- variable:
+    critical:
+    - 2.2246119
+    - 2.471791
+    ignore: false
+    max: 2.487938
+    min: 0.0
+    name: fit201
+    type: hr
+- variable:
+    critical: []
+    ignore: false
+    max: 2.0
+    min: 0.0
+    name: mv201
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 1.0
+    min: 1.0
+    name: p201
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 1.0
+    min: 1.0
+    name: p202
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 2.0
+    min: 1.0
+    name: p203
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 1.0
+    min: 1.0
+    name: p204
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 2.0
+    min: 1.0
+    name: p205
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 1.0
+    min: 1.0
+    name: p206
+    type: co
+- variable:
+    critical:
+    - 18.353608475
+    - 20.38863
+    ignore: false
+    max: 20.55509
+    min: 0.0
+    name: dpit301
+    type: hr
+- variable:
+    critical:
+    - 2.0065589999999998
+    - 2.22951
+    ignore: false
+    max: 2.35839
+    min: 0.0
+    name: fit301
+    type: hr
+- variable:
+    critical:
+    - 793.3062
+    - 815.35988
+    - 991.78932
+    - 1013.843
+    ignore: false
+    max: 1014.724
+    min: 786.1766
+    name: lit301
+    type: hr
+- variable:
+    critical: []
+    ignore: false
+    max: 2.0
+    min: 0.0
+    name: mv301
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 2.0
+    min: 0.0
+    name: mv302
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 2.0
+    min: 0.0
+    name: mv303
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 2.0
+    min: 0.0
+    name: mv304
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 2.0
+    min: 1.0
+    name: p301
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 2.0
+    min: 1.0
+    name: p302
+    type: co
+- variable:
+    critical:
+    - 133.97048999999998
+    - 148.8561
+    ignore: false
+    max: 148.8561
+    min: 0.0
+    name: ait401
+    type: hr
+- variable:
+    critical:
+    - 159.55141
+    - 167.96463
+    ignore: false
+    max: 197.6673
+    min: 155.191
+    name: ait402
+    type: hr
+- variable:
+    critical:
+    - 1.6973053999999999
+    - 1.7039052
+    ignore: false
+    max: 1.745042
+    min: 1.672636
+    name: fit401
+    type: hr
+- variable:
+    critical:
+    - 784.6065
+    - 805.4934499999999
+    - 889.04125
+    - 909.9282000000001
+    - 972.58905
+    - 993.476
+    ignore: false
+    max: 1003.935
+    min: 774.3399
+    name: lit401
+    type: hr
+- variable:
+    critical: []
+    ignore: false
+    max: 1.0
+    min: 1.0
+    name: p401
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 2.0
+    min: 2.0
+    name: p402
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 1.0
+    min: 1.0
+    name: p403
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 1.0
+    min: 1.0
+    name: p404
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 2.0
+    min: 2.0
+    name: uv401
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 7.925084
+    min: 7.808767
+    name: ait501
+    type: hr
+- variable:
+    critical:
+    - 146.55214999999998
+    - 150.75619999999998
+    - 171.77644999999998
+    - 175.9805
+    ignore: false
+    max: 184.85
+    min: 142.3481
+    name: ait502
+    type: hr
+- variable:
+    critical:
+    - 267.71979999999996
+    - 272.7826
+    ignore: false
+    max: 283.3568
+    min: 252.0828
+    name: ait503
+    type: hr
+- variable:
+    critical:
+    - 10.804924
+    - 11.189441
+    ignore: false
+    max: 13.95796
+    min: 9.997437
+    name: ait504
+    type: hr
+- variable:
+    critical:
+    - 1.7065496
+    - 1.7134068
+    ignore: false
+    max: 1.755191
+    min: 1.685081
+    name: fit501
+    type: hr
+- variable:
+    critical:
+    - 1.2459847
+    - 1.2950944
+    ignore: false
+    max: 1.361983
+    min: 1.194057
+    name: fit502
+    type: hr
+- variable:
+    critical:
+    - 0.7391736
+    - 0.74411552
+    ignore: false
+    max: 0.7521685
+    min: 0.7256666
+    name: fit503
+    type: hr
+- variable:
+    critical:
+    - 0.307882
+    - 0.30906701999999997
+    - 0.31025204
+    - 0.31143706
+    ignore: false
+    max: 0.3138712
+    min: 0.3017647
+    name: fit504
+    type: hr
+- variable:
+    critical: []
+    ignore: false
+    max: 2.0
+    min: 2.0
+    name: p501
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 1.0
+    min: 1.0
+    name: p502
+    type: co
+- variable:
+    critical:
+    - 254.13034
+    - 255.60913
+    ignore: false
+    max: 260.0936
+    min: 245.1775
+    name: pit501
+    type: hr
+- variable:
+    critical:
+    - 0.97715692
+    - 1.18540344
+    ignore: false
+    max: 1.842181
+    min: 0.7689104
+    name: pit502
+    type: hr
+- variable:
+    critical:
+    - 192.96014
+    - 194.29473
+    ignore: false
+    max: 198.2985
+    min: 184.8564
+    name: pit503
+    type: hr
+- variable:
+    critical:
+    - 0.0
+    - 0.1743056
+    ignore: false
+    max: 1.746131
+    min: 0.0
+    name: fit601
+    type: hr
+- variable:
+    critical: []
+    ignore: false
+    max: 1.0
+    min: 1.0
+    name: p601
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 2.0
+    min: 1.0
+    name: p602
+    type: co
+- variable:
+    critical: []
+    ignore: false
+    max: 1.0
+    min: 1.0
+    name: p603
+    type: co

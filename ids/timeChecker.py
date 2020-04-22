@@ -379,18 +379,6 @@ class TransitionMatrix(object):
             self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name,
                            newval, self.max_val, malicious_activities)
 
-        # TODO Debug
-        if (pv.name == "mv101" and
-                (ts == datetime(year=2015, month=12, day=28, hour=10, minute=28, second=58) or
-                 ts == datetime(year=2015, month=12, day=28, hour=10, minute=44, second=33))):
-            pdb.set_trace()
-
-
-        if (pv.name == "p102" and
-                (ts == datetime(year=2015, month=12, day=28, hour=10, minute=50, second=46) or
-                 ts == datetime(year=2015, month=12, day=28, hour=10, minute=58, second=11))):
-            pdb.set_trace()
-
         # If no critical value was found, we need to compute how long the last
         # critical value remained
         found = False

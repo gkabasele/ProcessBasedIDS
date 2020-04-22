@@ -200,6 +200,66 @@ def dict_list_ts(d, timePattern=True):
     except AttributeError:
         return sorted([datetime(t.year, t.month, t.day, t.hour, t.minute, t.second) for t in d])
 
+def time_pattern_comp_v2(mal_expected, mal_computed, attack_store, pv_store):
+    """
+        mal_expected: ts->expected number of malicious transition in timestamp
+        mal_computed: ts->computed number of malicious transition in timestamp ts
+    """
+    i = 0
+    j = 0
+    true_positive = 0
+    false_positive = 0
+    true_negative = 0
+    false_negative = 0
+    expected_timestamps = dict_list_ts(mal_expected)
+    detect_timestamps = dict_list_ts(mal_computed)
+
+    nbr_attack = 0
+    attack_missed = set()
+    attack_false = set()
+
+    for state in attack_store:
+        if i < len(expected_timestamps):
+            attack = expected_timestamps[i]
+        if j < len(detect_timestamps):
+            detect = detect_timestamps[j]
+
+        tmp = state[TS]
+        ts = datetime(year=tmp.year, month=tmp.month, day=tmp.day,
+                      hour=tmp.hour, minute=tmp.minute, second=tmp.second)
+        key = (ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second)
+        attack_detected = ts == detect
+
+        if attack_detected:
+            j += 1
+            nbr_detect = len(mal_computed[ts])
+
+        if attack == ts:
+            i += 1
+            if type(mal_expected[ts]) == int:
+                nbr_expect = mal_expected[ts]
+            else:
+                atk_info = mal_expected[ts].split(",")
+                nbr_expect = int(atk_info[0])
+
+            # No attack in progress
+            if nbr_expect == 0:
+                if attack_detected:
+                    attack_false.add(key)
+                    false_positive += 1
+                else:
+                    true_negative += 1
+            else:
+                nbr_attack += 1
+                if attack_detected:
+                    true_positive += 1
+                else:
+                    attack_missed.add(key)
+                    false_negative += 1
+
+    return EvalResult(true_positive, false_positive, true_negative,
+            false_negative, nbr_attack, attack_missed, attack_false)
+
             
 def time_pattern_comparison(mal_expected, mal_computed, attack_store, pv_store):
 
@@ -285,9 +345,10 @@ def compare_activities(mal_expected, mal_computed, attack_store, pv_store,
 
     # just_after: the end time may represent the last time the attack occured.
     #           or the time just after the last occurence of the attack occured.
-            
+
     if timePattern:
-        res = time_pattern_comparison(mal_expected, mal_computed, attack_store, pv_store)
+        #res = time_pattern_comparison(mal_expected, mal_computed, attack_store, pv_store)
+        res = time_pattern_comp_v2(mal_expected, mal_computed, attack_store, pv_store)
     else:
         res = invariant_comparison(mal_expected, mal_computed, attack_store, just_after)
     return res
@@ -430,6 +491,15 @@ def main(atk_period_time, atk_period_inv, conf, malicious,
 
     pdb.set_trace()
 
+    print("Creating time attacks")
+    if not os.path.exists(params[ATK_TIME_TIMEPAT]):
+        expected_atk = create_expected_malicious_activities(atk_period_time, True)
+        with open(params[ATK_TIME_TIMEPAT], "wb") as fname:
+            pickle.dump(expected_atk, fname)
+    else:
+        with open(params[ATK_TIME_TIMEPAT], "rb") as fname:
+            expected_atk = pickle.load(fname)
+
     if params[TEST_TIMEPATTERN]:
         print("Running time pattern IDS")
         if not cache:
@@ -456,13 +526,6 @@ def main(atk_period_time, atk_period_inv, conf, malicious,
                 with open(params[MAL_CACHE], "rb") as fname:
                     malicious_activities = pickle.load(fname)
 
-            if not os.path.exists(params[ATK_TIME_TIMEPAT]):
-                expected_atk = create_expected_malicious_activities(atk_period_time, True)
-                with open(params[ATK_TIME_TIMEPAT], "wb") as fname:
-                    pickle.dump(expected_atk, fname)
-            else:
-                with open(params[ATK_TIME_TIMEPAT], "rb") as fname:
-                    expected_atk = pickle.load(fname)
         else:
             with open(params[MATRIX], "rb") as fname:
                 time_checker = pickle.load(fname)
@@ -470,8 +533,7 @@ def main(atk_period_time, atk_period_inv, conf, malicious,
             with open(params[MAL_CACHE], "rb") as fname:
                 malicious_activities = pickle.load(fname)
 
-            with open(params[ATK_TIME_TIMEPAT], "rb") as fname:
-                expected_atk = pickle.load(fname)
+        pdb.set_trace()
 
         res = compare_activities(expected_atk, malicious_activities, data_mal,
                                  pv_store, True, True)

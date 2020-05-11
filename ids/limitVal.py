@@ -21,7 +21,7 @@ take some time so those critical values appear more often. Histogram from
 y-axis
 """
 
-THRESH = 0.2
+THRESH = 0.05
 
 class RangeVal(object):
 
@@ -63,7 +63,7 @@ def split_values_spectre(values, n_split=4):
 
 ## Smoothing approach to find critical ##
 
-def find_extreme_from_smooth_data(values, windows=1001, order=3):
+def find_extreme_from_smooth_data(values, windows=101, order=3):
     smooth_vals = savgol_filter(values, windows, order)
     min_pos = argrelextrema(smooth_vals, np.less)
     max_pos = argrelextrema(smooth_vals, np.greater)

@@ -2,9 +2,10 @@ import re
 import ast
 import pdb
 import numpy as np
+import operator
 import predicate as pred
 from utils import TS
-from itemset import sensor_predicates, actuator_predicates
+from itemset import sensor_predicates, actuator_predicates, get_feature_sensors
 
 IMPLY = "->"
 PRED_ID = r"(?P<pred>\d+):\[\(\d+\) (?P<varname>\w+)"
@@ -26,13 +27,13 @@ class Invariant(object):
             if predicate.id in satisfied_predicates:
                 continue
             else:
-                return True, self
+                return True, predicate.id
 
         for predicate in self.effect:
             if predicate.id in satisfied_predicates:
                 continue
             else:
-                return False, self
+                return False, predicate.id
         return True, self
 
     def __str__(self):
@@ -105,16 +106,36 @@ class IDSInvariant(object):
             #    pit_features = np.array(features_p).reshape(1, -1)
             #    pdb.set_trace()
 
-            res, _ = invariant.is_valid(satisfied_pred)
+            res, failed_pred_id = invariant.is_valid(satisfied_pred)
             if not res:
                 if len(invalid) == 0:
                     self.write(state[TS], state)
 
-                self.malicious_activities.add(state[TS])
                 msg = "\t id:{} {}\n".format(invariant.identifier,
                                              invariant.effect)
                 self.filehandler.write(msg)
+
+                failed_pred = mapping_id_pred[failed_pred_id]
+
+                if type(failed_pred) is pred.PredicateEvent:
+
+                    got_value = state[failed_pred.varname]
+                    if failed_pred.operator == operator.eq:
+                        exp_value = failed_pred.value
+                    else:
+                        features = np.array(get_feature_sensors(state, sensors, failed_pred.varname)).reshape(1, -1)
+                        if failed_pred.operator == operator.lt:
+                            exp_value = failed_pred.model.predict(features)[0] - failed_pred.error
+
+                        elif failed_pred.operator == operator.gt:
+                            exp_value = failed_pred.model.predict(features)[0] + failed_pred.error
+
+
+                    msg = "pred_id:{} got: {}, expected: {}{}\n\n".format(failed_pred_id, got_value, failed_pred.operator, exp_value)
+                    self.filehandler.write(msg)
+                self.malicious_activities.add(state[TS])
                 invalid.append(i)
+
         if len(invalid) != 0:
             return invalid
 

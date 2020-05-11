@@ -367,7 +367,6 @@ def retrieve_update_timestamps(actuators, states):
 
     events = {}
     values = {var: None for var in actuators}
-    pdb.set_trace()
 
     for i, state in enumerate(states):
         for var in actuators:
@@ -391,8 +390,8 @@ def retrieve_update_timestamps(actuators, states):
 def generate_all_predicates(conf, data):
     store = PVStore(conf)
 
-    actuators = store.discrete_vars()
-    sensors = store.continous_vars()
+    actuators = store.discrete_monitor_vars()
+    sensors = store.continuous_monitor_vars()
 
     predicates = {}
 

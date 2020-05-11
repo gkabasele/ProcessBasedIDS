@@ -21,13 +21,14 @@ TEST_TIMEPATTERN = "test_with_time_pattern"
 MAL_CACHE = "malicious_cache"
 MATRIX = "matrix"
 TIME_LOG = "time_log"
-OUTPUT_RES = "output_res"
-OUTPUT_ANALYSIS = "output_analysis"
+OUTPUT_RES_PAT = "output_res_pattern"
+OUTPUT_ANALYSIS_PAT = "output_analysis_pattern"
 ATK_TIME_TIMEPAT = "attack_time_time_pattern"
 
 TEST_INVARIANTS = "test_with_invariant"
 INV_FILE = "invariants_file"
-OUTPUT_RES_INV = "invariant_output"
+OUTPUT_RES_INV = "output_res_invariant"
+OUTPUT_ANALYSIS_INV = "output_analysis_invariant"
 INV_LOG = "invariant_log"
 PRED_MAP = "predicate_map_file"
 PREDICATES = "predicates"
@@ -363,10 +364,11 @@ def create_expected_malicious_activities(atk_period, timePattern=False):
 
         if not timePattern:
             for attack in desc:
-                starttime = datetime.strptime(attack[START], '%d/%m/%Y %H:%M:%S')
-                endtime = datetime.strptime(attack[END], '%d/%m/%Y %H:%M:%S')
-                attack[START] = starttime
-                attack[END] = endtime
+                if type(attack[START]) is not datetime:
+                    starttime = datetime.strptime(attack[START], '%d/%m/%Y %H:%M:%S')
+                    endtime = datetime.strptime(attack[END], '%d/%m/%Y %H:%M:%S')
+                    attack[START] = starttime
+                    attack[END] = endtime
         return desc
 
 def run_invariant_ids(params, conf, store, data, data_mal, infile, malicious):
@@ -393,7 +395,6 @@ def run_invariant_ids(params, conf, store, data, data_mal, infile, malicious):
 
         with open(params[PRED_MAP], "rb") as fname:
             mapping_id_pred = pickle.load(fname)
-
 
     ids = IDSInvariant(mapping_id_pred, params[INV_FILE], params[INV_LOG])
     for i, state in enumerate(malicious):
@@ -468,7 +469,7 @@ def test_invariants(params, store, state_filename):
     print(len(ids.malicious_activities) == 1)
 
 def main(atk_period_time, atk_period_inv, conf, malicious,
-         infile, params, cache):
+         infile, params, cache, smooth):
 
     print("Loading all the states from the systems trace")
     data_mal = utils.read_state_file(malicious)
@@ -504,7 +505,7 @@ def main(atk_period_time, atk_period_inv, conf, malicious,
         print("Running time pattern IDS")
         if not cache:
             print("Creating matrices")
-            time_checker = TimeChecker(conf, params[TIME_LOG], data)
+            time_checker = TimeChecker(conf, params[TIME_LOG], data, noisy=(not smooth))
             if not os.path.exists(params[MATRIX]):
                 time_checker.create_matrices()
                 time_checker.fill_matrices()
@@ -538,7 +539,8 @@ def main(atk_period_time, atk_period_inv, conf, malicious,
         res = compare_activities(expected_atk, malicious_activities, data_mal,
                                  pv_store, True, True)
 
-        export_ids_result(params[OUTPUT_RES], params[OUTPUT_ANALYSIS], "Time based", data_mal, res)
+        export_ids_result(params[OUTPUT_RES_PAT], params[OUTPUT_ANALYSIS_PAT],
+                          "Time based", data_mal, res)
         pdb.set_trace()
 
     if params[TEST_INVARIANTS]:
@@ -551,9 +553,10 @@ def main(atk_period_time, atk_period_inv, conf, malicious,
         ids = run_invariant_ids(params, conf, pv_store, data, data_mal, infile, malicious)
 
         inv_res = compare_activities(expected_atk, ids.malicious_activities,
-                                     data_mal, pv_store, False, True)
+                                     data_mal, pv_store, False, (not smooth))
+        pdb.set_trace()
         print("Exporting evaluation result")
-        export_ids_result(params[OUTPUT_RES], params[OUTPUT_ANALYSIS],
+        export_ids_result(params[OUTPUT_RES_INV], params[OUTPUT_ANALYSIS_INV],
                           "Invariant", data_mal, inv_res)
 
 
@@ -575,6 +578,8 @@ if __name__ == "__main__":
                         help="Should we use data previously computed")
     parser.add_argument("--params", type=str, dest="params",
                         help="Configuration file for the evaluation")
+    parser.add_argument("--smooth", action="store_true", dest="smooth",
+                        help="Are the data noisy or not")
 
     args = parser.parse_args()
     with open(args.params, "r") as fname:
@@ -584,4 +589,4 @@ if __name__ == "__main__":
                 params[k] = v == "True"
 
     main(args.atk_period_time, args.atk_period_inv, args.conf, args.malicious,
-         args.infile, params, args.cache)
+         args.infile, params, args.cache, args.smooth)

@@ -353,7 +353,27 @@ class TransitionMatrix(object):
                 #else:
                 #    return TransitionMatrix.SAME, cluster
 
-    def write_msg(self, filehandler, res, ts, pv_name, got, expected, 
+    def compute_remaining(self, val, current_elapsed_time):
+        row = self.val_pos[val]
+        column = self.val_pos[val]
+        pattern = self.transitions[row][column]
+        # Get the maximum clusters for the remaining time
+        cluster = pattern.clusters[-1]
+        if current_elapsed_time > cluster.max_val:
+            if self.noisy:
+                if self.is_close_time_noisy(current_elapsed_time, cluster):
+                    return TransitionMatrix.SAME, cluster
+                else:
+                    return TransitionMatrix.DIFF, cluster
+            else:
+                if self.is_close_time(current_elapsed_time, cluster.max_val):
+                    return TransitionMatrix.SAME, cluster
+                else:
+                    return TransitionMatrix.DIFF, cluster
+        return TransitionMatrix.SAME, cluster
+
+
+    def write_msg(self, filehandler, res, ts, pv_name, got, expected,
                   malicious_activities,crit_val=None, last_val=None):
 
         if res == TransitionMatrix.UNEXPECT:
@@ -397,6 +417,11 @@ class TransitionMatrix(object):
                             self.last_value = ValueTS(value=crit_val,
                                                       start=ts,
                                                       end=ts)
+                        elapsed_time = (ts - self.last_value.start).total_seconds()
+                        res, expected = self.compute_remaining(crit_val, elapsed_time)
+                        if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
+                            self.write_msg(filehandler, res, ts, pv.name, elapsed_time, expected,
+                                           malicious_activities, crit_val=crit_val, last_val=crit_val)
 
                     # The value has changed since last time
                     else:
@@ -558,13 +583,14 @@ class TimeChecker(Checker):
     def create_matrices(self):
         matrices = {}
         for name, variable in self.vars.items():
-            if variable.is_periodic:
+            if variable.is_periodic and not variable.ignore:
                 matrices[name] = TransitionMatrix(variable, self.noisy)
         self.matrices = matrices
         #return matrices
 
     def is_var_of_interest(self, name):
-        return name != 'timestamp' and name != 'normal/attack' and self.vars[name].is_periodic
+        return (name != 'timestamp' and name != 'normal/attack' 
+                and self.vars[name].is_periodic and not self.vars[name].ignore)
 
     def basic_detection(self, name, value, ts):
         pv = self.vars[name]
@@ -588,7 +614,7 @@ class TimeChecker(Checker):
                     matrix.update_transition_matrix(val, ts, pv)
 
         for name, val in self.vars.items():
-            if val.is_periodic:
+            if val.is_periodic and not val.ignore:
                 self.matrices[name].compute_clusters()
 
     def detect_suspect_transition(self):

@@ -63,19 +63,26 @@ def sensor_predicates(state, sensors, sensor, value, predicates, satisfied_pred,
     #FIXME ensure the order of the feature compare to the coefficient
     features = np.array(get_feature_sensors(state, sensors, sensor)).reshape(1, -1)
     for i, p in enumerate(predicates[sensor][pred.GT]):
-        if p.is_true_model(value, features):
-            p.support += 1
-            mapping_id_pred[p.id] = p
-            satisfied_pred.append((sensor, pred.GT, i))
-            if stop:
-                break
+        try:
+            if p.is_true_model(value, features):
+                p.support += 1
+                mapping_id_pred[p.id] = p
+                satisfied_pred.append((sensor, pred.GT, i))
+                if stop:
+                    break
+        except ValueError:
+            pdb.set_trace()
+
     for i, p in enumerate(predicates[sensor][pred.LS]):
-        if p.is_true_model(value, features):
-            p.support += 1
-            mapping_id_pred[p.id] = p
-            satisfied_pred.append((sensor, pred.LS, i))
-            if stop:
-                break
+        try:
+            if p.is_true_model(value, features):
+                p.support += 1
+                mapping_id_pred[p.id] = p
+                satisfied_pred.append((sensor, pred.LS, i))
+                if stop:
+                    break
+        except ValueError:
+            pdb.set_trace()
 
     # Get the GMM model of the deltas for the sensor
     # {Sensor : {Delta: GMM, DIST:[Predicate1, Predicate2]}}

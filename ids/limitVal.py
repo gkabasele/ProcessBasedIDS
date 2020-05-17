@@ -2,6 +2,7 @@ import pickle
 import argparse
 import readline
 import code
+import collections
 import pdb
 import math
 from datetime import datetime, timedelta
@@ -14,6 +15,8 @@ import matplotlib.pyplot as plt
 
 from utils import *
 
+import predicate as pd
+
 """
 Approach that take advantage of the fact that data point tend to group
 around critical value as the slope will change. Drastic increase or decrease
@@ -21,7 +24,7 @@ take some time so those critical values appear more often. Histogram from
 y-axis
 """
 
-THRESH = 0.05
+THRESH = 0.2
 
 class RangeVal(object):
 
@@ -63,8 +66,12 @@ def split_values_spectre(values, n_split=4):
 
 ## Smoothing approach to find critical ##
 
-def find_extreme_from_smooth_data(values, windows=101, order=3):
-    smooth_vals = savgol_filter(values, windows, order)
+def find_extreme_from_smooth_data(values, inputtype, windows=101, order=3):
+    if inputtype == "cont":
+        smooth_vals = savgol_filter(values, windows, order)
+    else:
+        smooth_vals = values
+
     min_pos = argrelextrema(smooth_vals, np.less)
     max_pos = argrelextrema(smooth_vals, np.greater)
 
@@ -74,6 +81,7 @@ def find_extreme_from_smooth_data(values, windows=101, order=3):
     extremes_list = np.concatenate(extremes).ravel()
 
     hist, bin_edges = np.histogram(extremes_list, bins=10)
+
 
     ranges = []
     total = sum(hist)
@@ -190,8 +198,22 @@ def get_values(data, pv, limit=None):
     else:
         values = np.array([x[pv] for x in data[:limit]])
         times = np.array([x['timestamp'] for x in data[:limit]])
-
     return values, times
+
+def get_values_at_ts(data, pv, timestamps, inputtype, windows=101, order=3):
+    values = np.array([x[pv] for x in data])
+    min_val = np.min(values)
+    max_val = np.max(values)
+
+    if inputtype == "cont":
+        smooth_vals = savgol_filter(values, windows, order)
+    else:
+        smooth_vals = values.tolist()
+
+    return [smooth_vals[i] for i in timestamps], min_val, max_val
+
+def counter_at_ts(data, inputtype, min_val, max_val):
+    return collections.Counter(data)
 
 def compute_window_average(data, i, win):
     low = max(0, i - win)
@@ -257,25 +279,13 @@ def main(data, conf, output, strategy, cool_time, inputtype):
                 values, _ = get_values(data, var['name'])
                 min_val = np.min(values)
                 max_val = np.max(values)
-                if strategy == "simple":
-                    vals = split_values_spectre(values[cool_time:])
 
-                elif strategy == "smooth":
-                    blocks = find_extreme_from_smooth_data(values[cool_time:])
-                    vals = []
-                    for block in blocks:
-                        vals.append(block.lower.item())
-                        vals.append(block.upper.item())
-
-                elif strategy == "hist":
-                    blocks = divide_and_conquer(values[cool_time:], inputtype)
-                    vals = []
-                    for block in blocks:
-                        vals.append(block.lower.item())
-                        vals.append(block.upper.item())
-                elif strategy == "kde":
-                    vals = [float(x) for x in find_limit_values(values[cool_time:])]
-
+                blocks = find_extreme_from_smooth_data(values[cool_time:], inputtype)
+                vals = []
+                for block in blocks:
+                    vals.append(block.lower.item())
+                    vals.append(block.upper.item())
+                
                 var['critical'] = vals
                 var['min'] = float(min_val)
                 var['max'] = float(max_val)
@@ -283,6 +293,44 @@ def main(data, conf, output, strategy, cool_time, inputtype):
         with open(output, "w") as ofh:
             content = yaml.dump(desc, default_flow_style=False)
             ofh.write(content)
+
+def main_v2(conf, data, inputtype, output):
+    with open(conf) as fh:
+        content = fh.read()
+        desc = yaml.load(content, Loader=yaml.Loader)
+        actuators = []
+        sensors = []
+        for variable in desc['variables']:
+            var = variable['variable']
+            if var["type"] == "hr" or var["type"] == "ir":
+                sensors.append(var["name"])
+                var['critical'] = set()
+            else:
+                actuators.append(var["name"])
+
+        events = pd.retrieve_update_timestamps(actuators, data)
+
+        for _, act_state in events.items():
+            for _, event in act_state.items():
+                for variable in desc['variables']:
+                    var = variable['variable']
+                    if var["type"] == "hr" or var["type"] == "ir":
+                        values, min_val, max_val = get_values_at_ts(data, var['name'], event.timestamps, inputtype)
+                        counter = counter_at_ts(values, inputtype, min_val, max_val)
+                        if type(counter) is collections.Counter:
+                            for k, v in counter.items():
+                                if v == len(event.timestamps):
+                                    var["critical"].add(k)
+
+        for variable in desc["variables"]:
+            var = variable["variable"]
+            if var["type"] == "hr" or var["type"] == "ir":
+                var["critical"] = list(var["critical"])
+                var["critical"].sort()
+
+    with open(output, "w") as ofh:
+        content = yaml.dump(desc, default_flow_style=False)
+        ofh.write(content)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -297,7 +345,10 @@ if __name__ == "__main__":
     with open(args.filename, "rb") as filename:
         data = pickle.load(filename)
 
-    main(data, args.conf, args.output, args.strategy, args.cool_time, args.inputtype)
+    if args.inputtype == "cont":
+       main(data, args.conf, args.output, args.strategy, args.cool_time, args.inputtype)
+    else:
+        main_v2(args.conf, data, args.inputtype, args.output)
     """
     variables = globals().copy()
     variables.update(locals())

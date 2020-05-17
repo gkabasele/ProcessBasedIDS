@@ -251,6 +251,7 @@ class TransitionMatrix(object):
     def outlier_handler(self, column, row, elapsed_time, cluster):
         pattern = self.transitions[row][column]
         nbr_outlier = 0
+        #TODO Relative size instead of harcoding
         for c in pattern.clusters:
             if c.std == 0 and c.k < 3:
                 nbr_outlier += 1
@@ -357,6 +358,8 @@ class TransitionMatrix(object):
         row = self.val_pos[val]
         column = self.val_pos[val]
         pattern = self.transitions[row][column]
+        if type(pattern) is int and (pattern == 0 or pattern == -1):
+            return TransitionMatrix.UNKNOWN, pattern
         # Get the maximum clusters for the remaining time
         cluster = pattern.clusters[-1]
         if current_elapsed_time > cluster.max_val:

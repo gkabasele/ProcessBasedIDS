@@ -34,6 +34,7 @@ PRED_MAP = "predicate_map_file"
 PREDICATES = "predicates"
 GEN_PRED = "generate_predicate"
 ATK_TIME_INV = "attack_time_inv"
+MAL_CACHE_INV = "malicious_cache_invariant"
 
 VAR_STORE = "variable_store"
 
@@ -55,9 +56,9 @@ class EvalResult(object):
         self.false_atk = false_atk
 
     def fpr(self):
-        # Among everything that was detected, what is the ratio of false alert
+        # Among all legitmate state, how much were considered as malicious
         try:
-            return self.fp/(self.tp + self.fp)
+            return self.fp/(self.fp + self.tn)
         except ZeroDivisionError:
             if self.fp == 0:
                return 0 
@@ -550,10 +551,22 @@ def main(atk_period_time, atk_period_inv, conf, malicious,
 
         expected_atk = create_expected_malicious_activities(atk_period_inv)
 
-        ids = run_invariant_ids(params, conf, pv_store, data, data_mal, infile, malicious)
+        if not cache:
+            ids = run_invariant_ids(params, conf, pv_store, data, data_mal, infile, malicious)
 
-        inv_res = compare_activities(expected_atk, ids.malicious_activities,
-                                     data_mal, pv_store, False, (not smooth))
+            pdb.set_trace()
+            with open(params[MAL_CACHE_INV], "wb") as fname:
+                pickle.dump(ids.malicious_activities, fname)
+
+            inv_res = compare_activities(expected_atk, ids.malicious_activities,
+                                         data_mal, pv_store, False, (not smooth))
+        else:
+            with open(params[MAL_CACHE_INV], "rb") as fname:
+                malicious_activies = pickle.load(fname)
+
+                inv_res = compare_activities(expected_atk, malicious_activies, data_mal,
+                                             pv_store, False, (not smooth))
+
         pdb.set_trace()
         print("Exporting evaluation result")
         export_ids_result(params[OUTPUT_RES_INV], params[OUTPUT_ANALYSIS_INV],

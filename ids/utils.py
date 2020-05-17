@@ -4,6 +4,7 @@ import random
 import string
 import yaml
 import pickle
+import collections
 import math
 import numpy as np
 import matplotlib 
@@ -51,6 +52,53 @@ DIST = 0.01
 DIFF = 0.05
 DAY_IN_SEC = 86400
 COOL_TIME = 11000
+
+class SetSWaT():
+    def __init__(self):
+        self.values = list()
+        self.minval = None
+        self.maxval = None
+
+    def set_min_max(self, minval, maxval):
+        self.minval = minval
+        self.maxval = maxval
+
+    def add(self, value):
+        found = False
+        for val in self.values:
+            found = same_value(self.maxval, self.minval, val, value)
+            if found:
+                break
+
+        if not found:
+            self.values.append(value)
+
+    def __iter__(self):
+        return self.values.__iter__()
+
+class CounterSWaT():
+
+    def __init__(self, minval, maxval):
+        self.minval = minval
+        self.maxval = maxval
+
+        self.counter = collections.Counter()
+
+    def count(self, values):
+
+        for val in values:
+            found = False
+            for k, _ in self.counter.items():
+                found = same_value(self.maxval, self.minval, k, val, thresh=0.01)
+                if found:
+                    self.counter.update([k])
+                    break
+            if not found:
+                self.counter.update([val])
+
+    def __iter__(self):
+        return self.counter.__iter__()
+
 
 class ProcessSWaTVar():
 

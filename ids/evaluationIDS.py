@@ -546,8 +546,6 @@ def main(atk_period_time, atk_period_inv, conf, malicious,
 
     if params[TEST_INVARIANTS]:
         print("Running invariant IDS")
-        #dates_false = ["28-12-2015 11:33:32", "28-12-2015 11:36:32", "28-12-2015 12:00:34"]
-        #export_state_from_ts("./false_positive_state", dates_false, data_mal)
 
         expected_atk = create_expected_malicious_activities(atk_period_inv)
 

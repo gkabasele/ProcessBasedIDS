@@ -309,7 +309,6 @@ def predicate_from_model(store, model, X, sens, sensors, event, states, predicat
         prediction = model.predict(X[i].reshape(1, -1))[0]
         norm_pred = float((prediction - var.min_val))/(var.max_val - var.min_val)
         norm_sens = float((sens_value - var.min_val))/(var.max_val - var.min_val)
-        #error = math.fabs(prediction - sens_value)
         error = math.fabs(norm_pred - norm_sens)
         if error >= noise:
             valid = False

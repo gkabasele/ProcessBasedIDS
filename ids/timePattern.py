@@ -62,10 +62,10 @@ def find_extreme_local(data):
                 maxima.append(i)
             continue
 
-        if data[i-1] > data[i] and data[i+1] > data[i]:
+        if data[i-1] > data[i] and data[i+1] >= data[i]:
             minima.append(i)
 
-        if data[i-1] < data[i] and data[i+1] < data[i]:
+        if data[i-1] < data[i] and data[i+1] <= data[i]:
             maxima.append(i)
 
     return minima, maxima

@@ -13,15 +13,24 @@ ValueTS = collections.namedtuple('ValueTS', ['value', 'start', 'end'])
 
 # Threshold to compare the times
 BIG_THRESH = 1
-EQ_THRESH = 0.1
+EQ_THRESH = 0.5
+#EQ_THRESH = 0.5
+#0.05, 0.1, 0.15, 0.2, 0.5, 0.7
+
+#0.1, 0.05, 0.07, 0.15
 
 # Threshold to compare times, noisy precision
 BIG_NOISY_THRESH = 0.25
 EQ_NOISY_THRESH = 0.05
+#EQ_NOISY_THRESH = 5
+# 0.01, 0.02, 0.03, 0.04, 0.05, 0.07, 0.1
 
 # Number of outliers accpeted to consolidate the patterns
 N_OUTLIER = 3
 N_CLUSTERS = 2
+
+SMALL_CLUSTER  = 0.05
+UNSTABLE_CLUSTER = 0.3
 
 class TransitionMatrix(object):
 
@@ -200,78 +209,67 @@ class TransitionMatrix(object):
         diff = abs(t1 -t2)
         return diff >= BIG_THRESH
 
-    def is_close_time_noisy(self, t1, cluster):
+    def is_close_time_noisy(self, t1, cluster, thresh=EQ_NOISY_THRESH):
+        if cluster.max_val == cluster.min_val:
+            return t1 == cluster.mean
+
+        if cluster.min_val <= t1 and t1 <= cluster.max_val: 
+            return True
+
+        if t1 < cluster.min_val:
+            dist = utils.normalized_dist(cluster.max_val, cluster.min_val,
+                                         cluster.min_val, t1)
+            return dist <= thresh
+
+        if t1 > cluster.max_val:
+            dist = utils.normalized_dist(cluster.max_val, cluster.min_val,
+                                         t1, cluster.max_val)
+            return dist <= thresh
+
+
+    def is_big_time_noisy(self, t1, cluster, thresh=BIG_NOISY_THRESH):
         if cluster.max_val == cluster.min_val:
             return t1 == cluster.mean
 
         if t1 < cluster.min_val:
-            if cluster.min_val + t1 >= cluster.max_val:
-                return False
-            dist = cluster.min_val + (cluster.min_val - t1)
+            diff_min = utils.normalized_dist(cluster.max_val, cluster.min_val,
+                                             cluster.min_val, t1)
+            return diff_min >= thresh
 
         elif t1 > cluster.max_val:
-            if cluster.max_val - t1 <= cluster.min_val:
-                return False
+            diff_max = utils.normalized_dist(cluster.max_val, cluster.min_val,
+                                             t1, cluster.max_val)
 
-            dist = cluster.max_val - (t1 - cluster.max_val)
+            return diff_max >= thresh
 
-        else:
-            dist = t1
+    def is_small_cluster(self, pattern, cluster):
+        total_pol = sum([c.k for c in pattern.clusters])
+        cluster_size  = cluster.k/total_pol
 
-        diff_max = utils.normalized_dist(cluster.max_val, cluster.min_val,
-                                         dist, cluster.max_val)
-        diff_min = utils.normalized_dist(cluster.max_val, cluster.min_val,
-                                         dist, cluster.min_val)
+        return cluster_size < SMALL_CLUSTER
 
-        diff = min(diff_max, diff_min)
-        return diff <= EQ_NOISY_THRESH
-
-    def is_big_time_noisy(self, t1, cluster):
-        if cluster.max_val == cluster.min_val:
-            return t1 == cluster.mean
-
-        if t1 < cluster.min_val:
-            dist = cluster.min_val + (cluster.min_val - t1)
-
-        elif t1 > cluster.max_val:
-            dist = cluster.max_val - (t1 - cluster.max_val)
-
-        else:
-            dist = t1
-
-        diff_max = utils.normalized_dist(cluster.max_val, cluster.min_val,
-                                         dist, cluster.max_val)
-
-        diff_min = utils.normalized_dist(cluster.max_val, cluster.min_val,
-                                         dist, cluster.min_val)
-
-        diff = min(diff_max, diff_min)
-        return diff >= BIG_NOISY_THRESH
+    def is_unstable_cluster(self, pattern):
+        nbr_small = 0
+        for c in pattern.clusters:
+            if self.is_small_cluster(pattern, c):
+                nbr_small += 1
+        return (nbr_small/len(pattern.clusters)) > UNSTABLE_CLUSTER
 
     def outlier_handler(self, column, row, elapsed_time, cluster):
         pattern = self.transitions[row][column]
-        nbr_outlier = 0
-        #TODO Relative size instead of harcoding
-        for c in pattern.clusters:
-            if c.std == 0 and c.k < 3:
-                nbr_outlier += 1
 
-        #Check if cluster is too far from outlier to consolidate cluster or not
-        if (nbr_outlier >= N_OUTLIER and
+        if (self.is_unstable_cluster(pattern) and
                 not self.is_big_time(elapsed_time, cluster.mean)):
             cluster(elapsed_time)
             return TransitionMatrix.SAME, cluster
         else:
             return TransitionMatrix.DIFF, cluster
 
+        
     def outlier_handler_noisy(self, column, row, elapsed_time, cluster):
         pattern = self.transitions[row][column]
-        nbr_outlier = 0
-        for c in pattern.clusters:
-            if c.std == 0 and c.k < 3:
-                nbr_outlier += 1
 
-        if (nbr_outlier >= N_OUTLIER and
+        if (self.is_unstable_cluster(pattern) and
                 not self.is_big_time_noisy(elapsed_time, cluster)):
             cluster(elapsed_time)
             return TransitionMatrix.SAME, cluster
@@ -282,8 +280,6 @@ class TransitionMatrix(object):
         row = self.val_pos[oldval]
         column = self.val_pos[newval]
         expected = self.transitions[row][column]
-        #if pv.name == "tankFinal" or pv.name == "silo2" or pv.name == "wagonlidOpen":
-        #    pdb.set_trace()
         if expected == -1 or expected == 0:
             return TransitionMatrix.UNKNOWN, expected
 
@@ -296,64 +292,29 @@ class TransitionMatrix(object):
 
         ## Test with the simulator##
         if not self.noisy:
-            if cluster.std == 0:
-                if cluster.k >= 3:
-                    if self.is_close_time(elapsed_time, cluster.mean):
-                        return TransitionMatrix.SAME, cluster
-                    else:
-                        return TransitionMatrix.DIFF, cluster
-                else:
-                    if self.is_close_time(elapsed_time, cluster.mean):
-                        return TransitionMatrix.SAME, cluster
-                    else:
-                        return self.outlier_handler(column, row, elapsed_time, cluster)
-            else:
-                # Chebyshev's inequality
-                z = (elapsed_time - cluster.mean)/cluster.std
-                ztest = abs(z) <= 3
-                close = self.is_close_time(elapsed_time, cluster.mean)
-                if ztest or close:
+            if not self.is_small_cluster(expected, cluster):
+                if self.is_close_time_noisy(elapsed_time, cluster, thresh=EQ_THRESH):
                     return TransitionMatrix.SAME, cluster
                 else:
                     return TransitionMatrix.DIFF, cluster
+            else:
+                if self.is_close_time_noisy(elapsed_time, cluster, thresh=EQ_THRESH):
+                    return TransitionMatrix.SAME, cluster
+                else:
+                    return self.outlier_handler(column, row, elapsed_time, cluster)
         else:
 
-            if cluster.std == 0:
-                #FIXME number of time a value has been seen consider it meaningfull
-                # If the exact same elapsed_time keep repeating itself then it is 
-                # constant so the value should always be the same
-                # Otherwise there was an outlier in during the training process
-
-                # Min/max value should be the local value (cluster) not global
-                if  cluster.k >= 3:
-                    if self.is_close_time_noisy(elapsed_time, cluster):
-                        return TransitionMatrix.SAME, cluster
-                    else:
-                        return TransitionMatrix.DIFF, cluster
-                else:
-                    if self.is_close_time_noisy(elapsed_time, cluster):
-                        return TransitionMatrix.SAME, cluster
-                    else:
-                        return self.outlier_handler_noisy(column, row, elapsed_time, cluster)
-
-            else:
-                z = (elapsed_time - cluster.mean)/cluster.std
-                ztest = abs(z) <= 3
-                close = self.is_close_time_noisy(elapsed_time, cluster)
-
-                if ztest or close:
+            if not self.is_small_cluster(expected, cluster):
+                if self.is_close_time_noisy(elapsed_time, cluster):
                     return TransitionMatrix.SAME, cluster
                 else:
                     return TransitionMatrix.DIFF, cluster
-                #z = (elapsed_time - cluster.mean)/cluster.k
-                ##How likely a elapsed time diff from the mean to be from the same
-                ##group of observation
-                #prob_same = 1 - stats.norm.cdf(z)
-                #if prob_same < 0.05:
-                #    return TransitionMatrix.DIFF, cluster
-                #else:
-                #    return TransitionMatrix.SAME, cluster
-
+            else:
+                if self.is_close_time_noisy(elapsed_time, cluster):
+                    return TransitionMatrix.SAME, cluster
+                else:
+                    return self.outlier_handler_noisy(column, row, elapsed_time, cluster)
+            
     def compute_remaining(self, val, current_elapsed_time):
         row = self.val_pos[val]
         column = self.val_pos[val]
@@ -439,7 +400,6 @@ class TransitionMatrix(object):
                                                last_val=self.last_value.value)
                         # When a value change from one critical value to another without transition
                         # value so we must compute how long a value remained (only boolean?)
-                        #if pv.is_bool_var():
                         same_value_t = (self.last_value.end - self.last_value.start).total_seconds()
                         res, expected = self.check_transition_time(self.last_value.value,
                                                                    self.last_value.value,
@@ -532,7 +492,7 @@ class TransitionMatrix(object):
 
         # The case where the end training period was reached and no computation
         # of transition time was done because no transition time was reach
-        if ts == self.end_time and not self.computation_trigger:
+        if ts == self.end_time and not self.computation_trigger and self.last_val_train is not None:
             row = self.val_pos[self.last_val_train.value]
             same_value_t = (self.last_val_train.end - self.last_val_train.start).total_seconds()
             self.transitions[row][row].update(same_value_t)
@@ -575,9 +535,6 @@ class TimeChecker(Checker):
         self.filehandler = open(filename, "w+")
         self.matrices = None
 
-        #self.matrices = self.create_matrices()
-
-        # state considered as activities {<ts>:[target1, target2]}
         self.malicious_activities = OrderedDict()
 
     def close(self):
@@ -589,7 +546,6 @@ class TimeChecker(Checker):
             if variable.is_periodic and not variable.ignore:
                 matrices[name] = TransitionMatrix(variable, self.noisy)
         self.matrices = matrices
-        #return matrices
 
     def is_var_of_interest(self, name):
         return (name != 'timestamp' and name != 'normal/attack' 
@@ -632,8 +588,6 @@ class TimeChecker(Checker):
                         pv = self.vars[name]
                         matrix.compute_transition_time(val, ts, pv, self.filehandler,
                                                        self.malicious_activities)
-                    #elif name != 'timestamp' and name != 'normal/attack':
-                    #    self.basic_detection(name, val, ts)
         else:
             raise(ValueError("No data to run on for detection"))
 

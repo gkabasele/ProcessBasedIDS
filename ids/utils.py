@@ -53,6 +53,31 @@ DIFF = 0.05
 DAY_IN_SEC = 86400
 COOL_TIME = 11000
 
+class RangeVal(object):
+
+    def __init__(self, lower, upper, count, normalized=None):
+
+        self.lower = lower
+        self.upper = upper
+        self.count = count
+        self.norm = normalized
+
+    def normalized(self, number):
+        self.norm = self.count/number
+
+    def __str__(self):
+        return "{}-{}".format(self.lower, self.upper)
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __eq__(self, other):
+        return self.lower == other.lower and self.upper == other.upper
+
+    def hash(self):
+        return hash(self.__str__())
+
+
 class SetSWaT():
     def __init__(self):
         self.values = list()

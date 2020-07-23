@@ -76,13 +76,13 @@ public class MainTestAllAssociationRules_CFPGrowth_saveToFile {
 	public static void main(String [] arg) throws IOException{
 		File directory = new File("./");
 		System.out.println(directory.getAbsolutePath());
-		String transactions = fileToPath("/textfiles_mod_medium/database.txt");
-		String frequentItemsetsComplete = ".//output_mod_medium_process.txt";
-		String supportFile = fileToPath("/textfiles_mod_medium/support.txt");
-		String MISfileComplete = fileToPath("/textfiles_mod_medium/mis.txt");
+		String transactions = fileToPath("/textfiles_real_medium/database.txt");
+		String frequentItemsetsComplete = ".//output_real_medium_process.txt";
+		String supportFile = fileToPath("/textfiles_real_medium/support.txt");
+		String MISfileComplete = fileToPath("/textfiles_real_medium/mis.txt");
 		//String closeOutputComplete = ".//close_output_swat_complete_sorted.txt";
-		String invariants = ".//invariants_mod_medium_process.txt";
-		String filteredInvariants = ".//filtered_invariants_mod_medium_process.txt";
+		String invariants = ".//invariants_real_medium_process.txt";
+		String filteredInvariants = ".//filtered_invariants_real_medium_process.txt";
 
 		// Check how to input is organised to determine if it need some prepocessing
 		/*
@@ -92,7 +92,7 @@ public class MainTestAllAssociationRules_CFPGrowth_saveToFile {
 		*/
 
 		// STEP 1: Applying the CFP-GROWTH algorithm to find frequent itemsets but only close itemsets
-		//getFrequentItemsets(transactions, MISfileComplete, frequentItemsetsComplete);
+		getFrequentItemsets(transactions, MISfileComplete, frequentItemsetsComplete);
 
 		//approachList(frequentItemsetsComplete, closeOutputComplete);
 
@@ -116,7 +116,7 @@ public class MainTestAllAssociationRules_CFPGrowth_saveToFile {
 		//approachMap(frequentItemsets, closeOutput, invariants);
 
 		// STEP 3: Filter the invariants
-		filterInvariants(invariants, filteredInvariants);
+		//filterInvariants(invariants, filteredInvariants);
 
 		System.out.println("Done");
 	}

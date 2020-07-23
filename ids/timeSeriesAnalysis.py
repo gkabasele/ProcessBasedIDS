@@ -6,7 +6,7 @@ import numpy as np
 import utils
 import string
 from scipy import stats
-from limitVal import RangeVal
+
 
 NBR_RANGE = 10
 
@@ -70,7 +70,7 @@ class Digitizer(object):
         for i in range(nbr_ranges):
             lower = self.min_val + i * ranges_width
             upper = self.min_val + (i+1)*ranges_width
-            r = RangeVal(lower, upper, 0)
+            r = utils.RangeVal(lower, upper, 0)
             ranges.append(r)
 
         return ranges
@@ -183,27 +183,50 @@ def polynomial_fitting(x, y, deg=2):
         res.append(z)
     return res
 
-def main(data, pv_name, training_size):
-    lit_ts = utils.get_all_values_pv(data, pv_name)[:training_size]
+def main(input_data, pv_name_period, pv_name_non_period):
+    data = input_data[:86401] 
+    lit_ts = utils.get_all_values_pv(data, pv_name_period)
+    ait_ts = utils.get_all_values_pv(data, pv_name_non_period)
+
+    ts = [state["timestamp"] for state in data]
+
     min_val = np.min(lit_ts)
     max_val = np.max(lit_ts)
+
+    min_val_non_per = np.min(ait_ts)
+    max_val_non_per = np.max(ait_ts)
+
     print("Length of input: {}, range:{}".format(len(lit_ts), (max_val-min_val)))
     d = Digitizer(min_val, max_val)
     res = d.digitize(lit_ts)
     x_axis = np.arange(len(res))
     model = polynomial_fitting(x_axis, res)
-    print("Model mean:{} , variance:{}".format(np.mean(model), np.var(model)))
+    print("Model mean:{}, variance:{}".format(np.mean(model), np.var(model)))
+
+    d_np = Digitizer(min_val_non_per, max_val_non_per)
+    res_np = d_np.digitize(ait_ts)
+    model_np = polynomial_fitting(x_axis, res_np)
+    print("Model mean:{}, variance:{}".format(np.mean(model_np), np.var(model_np)))
+
+    fig, axs = plt.subplots(2)
+    axs[0].plot(ts, res)
+    axs[0].plot(ts, model)
+
+    axs[1].plot(ts, res_np)
+    axs[1].plot(ts, model_np)
+    
+    plt.show()
+    
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", action="store", dest="input")
-    parser.add_argument("--size", type=int, default=utils.DAY_IN_SEC, action="store", dest="training_size",
-                        help="number of sample to consider")
-    parser.add_argument("--cool", type=int, default=utils.COOL_TIME, action="store", dest="cool")
+    parser.add_argument("--cool", type=int, default=0, action="store", dest="cool")
 
     args = parser.parse_args()
     data = utils.read_state_file(args.input)[args.cool:]
-    pv_name = "dpit301"
-    main(data,pv_name, args.training_size)
+    pv_name_period = "lit101"
+    pv_name_non_period = "ait402"
+    main(data, pv_name_period, pv_name_non_period)
     pdb.set_trace()

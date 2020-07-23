@@ -1,18 +1,11 @@
 import pickle
 import argparse
-import readline
-import code
-import collections
 import pdb
-import math
-from datetime import datetime, timedelta
 
 from scipy.signal import savgol_filter, argrelextrema
 import numpy as np
-import pprint
-import matplotlib
-import matplotlib.pyplot as plt
 
+from timePattern import find_extreme_local
 from utils import *
 
 import predicate as pd
@@ -24,78 +17,73 @@ take some time so those critical values appear more often. Histogram from
 y-axis
 """
 
-THRESH = 0.2
+#THRESH = 0.2
+THRESH = 1
+# 0.01, 0.05 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1
 
-class RangeVal(object):
-
-    def __init__(self, lower, upper, count, normalized=None):
-
-        self.lower = lower
-        self.upper = upper
-        self.count = count
-        self.norm = normalized
-
-    def normalized(self, number):
-        self.norm = self.count/number
-
-    def __str__(self):
-        return "{}-{}".format(self.lower, self.upper)
-
-    def __repr__(self):
-        return self.__str__()
-
-    def __eq__(self, other):
-        return self.lower == other.lower and self.upper == other.upper
-    
-    def hash(self):
-        return hash(self.__str__())
-
-## Simple splitting ##
-
-def split_values_spectre(values, n_split=4):
-    min_val = float(min(values))
-    max_val = float(max(values))
-    spectre = max_val - min_val
-    gap = float(spectre)/n_split
-    vals = list()
-    curr = min_val
-    while curr <= max_val:
-        vals.append(curr)
-        curr += gap
-    return vals
 
 ## Smoothing approach to find critical ##
 
 def find_extreme_from_smooth_data(values, inputtype, windows=101, order=3):
+    min_val = min(values)
+    max_val = max(values)
+    crit_vals = []
     if inputtype == "cont":
         smooth_vals = savgol_filter(values, windows, order)
+        min_pos = argrelextrema(smooth_vals, np.less)
+        max_pos = argrelextrema(smooth_vals, np.greater)
+
+        extremes = [values[i] for i in min_pos]
+        extremes.extend([values[i] for i in max_pos])
+
+        extremes_list = np.concatenate(extremes).ravel()
+
+        ###
+        hist, bin_edges = np.histogram(extremes_list, bins=10)
+
+
+        ranges = []
+        total = sum(hist)
+        if total == 0:
+            return []
+
+        for i in range(len(bin_edges) - 1):
+            lower = bin_edges[i]
+            upper = bin_edges[i+1]
+            count = hist[i]
+            norm = hist[i]/total
+            if norm >= THRESH:
+                ranges.append(RangeVal(lower, upper, count, norm))
+
+        blocks = merge_ranges(ranges, len(values))
+        return blocks
+        
     else:
         smooth_vals = values
+        min_pos, max_pos = find_extreme_local(smooth_vals)
 
-    min_pos = argrelextrema(smooth_vals, np.less)
-    max_pos = argrelextrema(smooth_vals, np.greater)
+        extremes = [values[i] for i in min_pos]
+        extremes.extend([values[i] for i in max_pos])
 
-    extremes = [values[i] for i in min_pos]
-    extremes.extend([values[i] for i in max_pos])
+        extremes_list = extremes
 
-    extremes_list = np.concatenate(extremes).ravel()
+        hist, bin_edges = np.histogram(extremes_list, bins=10)
 
-    hist, bin_edges = np.histogram(extremes_list, bins=10)
+        ranges = []
+        total = sum(hist)
+        if total == 0:
+            return []
 
+        for i in range(len(bin_edges) - 1):
+            lower = bin_edges[i]
+            upper = bin_edges[i+1]
+            count = hist[i]
+            norm = hist[i]/total
+            if norm >= THRESH:
+                ranges.append(RangeVal(lower, upper, count, norm))
 
-    ranges = []
-    total = sum(hist)
-    for i in range(len(bin_edges) - 1):
-        lower = bin_edges[i]
-        upper = bin_edges[i+1]
-        count = hist[i]
-        norm = hist[i]/total
-        if norm >= THRESH:
-            ranges.append(RangeVal(lower, upper, count, norm))
-
-    blocks = merge_ranges(ranges, len(values))
-    return blocks
-
+        blocks = merge_ranges(ranges, len(values))
+        return blocks
 
 def find_inflection_point(data):
     maximas = list()
@@ -135,7 +123,7 @@ def compute_ranges(values, inputtype):
         upper = bin_edges[i+1]
         count = hist[i]
         norm = hist[i]/total
-        if norm >= TRESH:
+        if norm >= THRESH:
             ranges.append(RangeVal(lower, upper, count, norm))
     return ranges
 
@@ -143,7 +131,7 @@ def merge_ranges(ranges, number):
 
     blocks = []
     if len(ranges) <= 1:
-        return ranges 
+        return ranges
 
     start_block = ranges[0].lower
     end_block = ranges[0].upper
@@ -177,13 +165,6 @@ def merge_ranges(ranges, number):
 
     return blocks
 
-def find_limit_values(values):
-    xs, y_data = compute_kde(values)
-    maxima_indices, minima_indices = find_inflection_point(y_data)
-    minimas = [xs[i] for i in minima_indices]
-    minimas.extend([xs[i] for i in maxima_indices])
-    minimas.sort()
-    return minimas
 
 def divide_and_conquer(values, inputtype):
     ranges = compute_ranges(values, inputtype)
@@ -200,74 +181,6 @@ def get_values(data, pv, limit=None):
         times = np.array([x['timestamp'] for x in data[:limit]])
     return values, times
 
-def get_values_at_ts(data, pv, timestamps, inputtype, windows=101, order=3):
-    values = np.array([x[pv] for x in data])
-    min_val = np.min(values)
-    max_val = np.max(values)
-
-    if inputtype == "cont":
-        smooth_vals = savgol_filter(values, windows, order)
-    else:
-        smooth_vals = values.tolist()
-
-    return [smooth_vals[i] for i in timestamps], min_val, max_val
-
-def counter_at_ts(data, inputtype, min_val, max_val):
-    return collections.Counter(data)
-
-def compute_window_average(data, i, win):
-    low = max(0, i - win)
-    high = min(len(data)-1, i + win)
-    mv_avg = sum(data[low:high])/(high - low)
-    return mv_avg
-
-def compute_trends(values, win):
-    trends = []
-    for i in range(len(values)):
-        new_val = compute_window_average(values, i, win)
-        trends.append(new_val)
-    return np.array(trends)
-
-def limit_values(data, pv, win, limit=None):
-
-    values, times = get_values(data, pv, limit)
-
-    seconds = np.arange(len(times))
-    
-    ma = compute_trends(values, win)
-
-    slopes = compute_trends(slope_graph(seconds, ma), win)
-    change_points = np.diff(slopes)
-
-    plt.subplot(4, 1, 1)
-    plt.plot(times, values)
-    plt.ylabel(pv)
-
-    plt.subplot(4, 1, 2)
-    plt.plot(times, ma)
-    plt.ylabel('moving_average')
-
-    plt.subplot(4, 1, 3)
-    plt.plot(times[:-1], slopes)
-    plt.ylabel('Ft Deri')
-
-    plt.subplot(4, 1, 4)
-    plt.plot(times[:-2], change_points)
-    plt.ylabel('Sd Deri')
-    plt.xlabel('time(s)')
-
-    plt.show()
-
-
-def slope_graph(times, values):
-    trends = []
-    for i in range(len(values)-1):
-        xdiff = times[i+1] - times[i]
-        ydiff = values[i+1] - values[i]
-        trends.append(ydiff/xdiff)
-    slopes = np.array(trends)
-
-    return slopes
 
 def main(data, conf, output, strategy, cool_time, inputtype):
     with open(conf) as fh:
@@ -279,13 +192,21 @@ def main(data, conf, output, strategy, cool_time, inputtype):
                 values, _ = get_values(data, var['name'])
                 min_val = np.min(values)
                 max_val = np.max(values)
-
-                blocks = find_extreme_from_smooth_data(values[cool_time:], inputtype)
-                vals = []
-                for block in blocks:
-                    vals.append(block.lower.item())
-                    vals.append(block.upper.item())
                 
+                if inputtype == "cont":
+                    blocks = find_extreme_from_smooth_data(values[cool_time:], inputtype)
+                    vals = []
+                    for block in blocks:
+                        vals.append(block.lower.item())
+                        vals.append(block.upper.item())
+
+                elif inputtype == "disc":
+                    blocks = find_extreme_from_smooth_data(values[cool_time:], inputtype)
+                    vals = []
+                    for block in blocks:
+                        vals.append(block.lower.item())
+                        vals.append(block.upper.item())
+
                 var['critical'] = vals
                 var['min'] = float(min_val)
                 var['max'] = float(max_val)
@@ -294,43 +215,6 @@ def main(data, conf, output, strategy, cool_time, inputtype):
             content = yaml.dump(desc, default_flow_style=False)
             ofh.write(content)
 
-def main_v2(conf, data, inputtype, output):
-    with open(conf) as fh:
-        content = fh.read()
-        desc = yaml.load(content, Loader=yaml.Loader)
-        actuators = []
-        sensors = []
-        for variable in desc['variables']:
-            var = variable['variable']
-            if var["type"] == "hr" or var["type"] == "ir":
-                sensors.append(var["name"])
-                var['critical'] = set()
-            else:
-                actuators.append(var["name"])
-
-        events = pd.retrieve_update_timestamps(actuators, data)
-
-        for _, act_state in events.items():
-            for _, event in act_state.items():
-                for variable in desc['variables']:
-                    var = variable['variable']
-                    if var["type"] == "hr" or var["type"] == "ir":
-                        values, min_val, max_val = get_values_at_ts(data, var['name'], event.timestamps, inputtype)
-                        counter = counter_at_ts(values, inputtype, min_val, max_val)
-                        if type(counter) is collections.Counter:
-                            for k, v in counter.items():
-                                if v == len(event.timestamps):
-                                    var["critical"].add(k)
-
-        for variable in desc["variables"]:
-            var = variable["variable"]
-            if var["type"] == "hr" or var["type"] == "ir":
-                var["critical"] = list(var["critical"])
-                var["critical"].sort()
-
-    with open(output, "w") as ofh:
-        content = yaml.dump(desc, default_flow_style=False)
-        ofh.write(content)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -348,10 +232,4 @@ if __name__ == "__main__":
     if args.inputtype == "cont":
        main(data, args.conf, args.output, args.strategy, args.cool_time, args.inputtype)
     else:
-        main_v2(args.conf, data, args.inputtype, args.output)
-    """
-    variables = globals().copy()
-    variables.update(locals())
-    shell = code.InteractiveConsole(variables)
-    shell.interact()
-    """
+       main(data, args.conf, args.output, args.strategy, args.cool_time, args.inputtype)

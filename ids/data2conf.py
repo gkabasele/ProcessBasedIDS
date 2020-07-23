@@ -32,7 +32,7 @@ def read_data(inputname, outputname):
                     max_value[k] = max(v, max_value[k])
 
     for k, v in diff_value.items():
-        _type = utils.HOL_REG if len(v) > 3  else utils.DIS_COIL
+        _type = utils.HOL_REG if len(v) > 2  else utils.DIS_COIL
         var = {"variable":
                {"name": k,
                 "type": _type,

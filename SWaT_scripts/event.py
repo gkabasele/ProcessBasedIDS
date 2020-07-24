@@ -233,6 +233,11 @@ def get_hole_in_ts(data):
                 print("prev:{}\n curr:{}".format(prev, state["timestamp"]))
         prev = state["timestamp"]
 
+def export_var_as_row(data, pv, filename):
+    with open(filename, "w") as f:
+        for x in data:
+            f.write("{}\n".format(x[pv]))
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=str, dest="input")

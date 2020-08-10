@@ -11,10 +11,16 @@ class ARpredictor(object):
         self.coef = list()
         self.residual_mean = None
         self.residual_var = None
+        self.upper_limit = None
+        self.lower_limit = None
+        self.def_free = None
 
     def train(self, data):
         a = arsel(data, False, True, "AIC")
         self.coef = [-x for x in a.AR[0]]
+
+    def order(self):
+        return len(self.coef) - 1
 
     def predict(self, data):
         # epsilon value
@@ -40,33 +46,13 @@ class ARpredictor(object):
             i += 1
             j += 1
 
+        self.deg_free = len(residuals) - 1
+
         self.residual_mean = np.mean(residuals)
         self.residual_var = np.var(residuals)
 
         return predictions
 
-    def make_detections(self, dataset, upper_limit, lower_limit):
-        order = len(self.coef) - 1
-        i = 0
-        j = order
-        pred_residual_error = Welford()
-        predictions = list()
-
-        while j < len(dataset):
-            value = dataset[i:j]
-            pred = self.predict(value)
-            pred_residual_error(dataset[j] - pred)
-
-            # TODO perform f-test to detect deviation
-            self.detection_test(var_pred, var_error, upper_limit, lower_limit)
-            i += 1
-            j += 1
-        
-        
-        pass
-
-    def detection_test(self, var_pred, var_error, upper_limit, lower_limit):
-        pass
 
 def compute_coef_and_predict(filename, split_index):
     with open(filename, "r") as f:
@@ -99,4 +85,4 @@ def compute_coef_and_predict(filename, split_index):
         plt.show()
 
 #compute_coef_and_predict("../autoregressive_opensource/test1.dat", 100)
-compute_coef_and_predict("./SWaT_scripts/lit301_normal.dat", 209700) # 419 400/209 700
+compute_coef_and_predict("../SWaT_scripts/lit301_normal.dat", 209700) # 419 400/209 700

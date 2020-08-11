@@ -15,13 +15,6 @@ keep_var = ["fit101", "lit101", "mv101", "p101", "p102", "ait201","ait202", "ait
             "p502", "pit501", "pit502", "pit503", "fit601", "p601", "p602",
             "p603", "timestamp"]
 """
-parser = argparse.ArgumentParser()
-parser.add_argument("--input", dest="input", action="store")
-parser.add_argument("--output", dest="output", action="store")
-
-args = parser.parse_args()
-
-export_one_read(args.infile, args.outfile)
 
 def export_multiple_read(infile, outfile):
     states = []
@@ -32,7 +25,7 @@ def export_multiple_read(infile, outfile):
             for x in row:
                 key = x.lower().replace(" ", "")
                 if key == 'timestamp':
-                    ts = datetime.strptime(row[x], " %d/%m/%Y %I:%M:%S %p")
+                    ts = datetime.strptime(row[x], "%d/%m/%Y %I:%M:%S %p")
                     state[key] = ts
                 elif key == 'normal/attack':
                     state[key] = row[x]
@@ -43,7 +36,7 @@ def export_multiple_read(infile, outfile):
     with open(outfile, mode="wb") as bin_file:
         pickle.dump(states, bin_file)
 
-def export_one_read(infile, outfile):
+def export_one_read(infile, outfile, keep_pv=None):
 
     with open(infile, mode="r") as csv_file:
         csv_reader = csv.DictReader(csv_file, delimiter=',')
@@ -57,8 +50,19 @@ def export_one_read(infile, outfile):
                 elif key == 'normal/attack':
                     column[key].append(row[x])
                 else:
-                    value = float(row[x].replace(",", "."))
-                    column[key].append(value)
-
+                    if keep_pv is None or key in keep_pv:
+                        value = float(row[x].replace(",", "."))
+                        column[key].append(value)
+        pdb.set_trace()
     with open(outfile, mode="wb") as bin_file:
         pickle.dump(column, bin_file)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", dest="infile", action="store", help="csv input file")
+    parser.add_argument("--output", dest="outfile", action="store", help="binary output file")
+    parser.add_argument("--keep", nargs="+", help="variables to keep in export",
+                        dest="list_keep")
+
+    args = parser.parse_args()
+    export_one_read(args.infile, args.outfile, args.list_keep)

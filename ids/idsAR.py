@@ -7,10 +7,39 @@ from argparse import ArgumentParser
 import pdb
 import numpy as np
 from scipy.stats import f
+import matplotlib.pyplot as plt
 from autoreg import ARpredictor
+from autoreg import plot_residuals_stats
 from reqChecker import Checker
 from welford import Welford
 import utils
+
+class MyQueue(object):
+
+    def __init__(self, maxlen=None):
+        self.queue = []
+        self.maxlen = maxlen
+        
+
+    def is_empty(self):
+        return len(self.queue) == 0
+    
+    def add(self, val):
+        self.queue.insert(0, val) 
+        if len(self.queue) > self.maxlen:
+            self.queue.pop()
+
+    def __str__(self):
+        return self.queue.__str__()
+
+    def __repr__(self):
+        return self.queue.__str__()
+
+    def __len__(self):
+        return self.queue.__len__()
+
+    def __iter__(self):
+        return self.queue.__iter__()
 
 class IDSAR(Checker):
 
@@ -53,8 +82,13 @@ class IDSAR(Checker):
 
     def run_detection_mode(self, detection_store, debug_file=None):
 
-        map_pv_hist = {k: deque(maxlen=v.order()) for k, v in self.map_pv_predictor.items()}
+        map_pv_hist = {k: MyQueue(maxlen=v.order()) for k, v in self.map_pv_predictor.items()}
         map_pv_pred_err = {k: Welford() for k in self.map_pv_predictor.keys()}
+
+        if debug_file is not None:
+            pred_residuals = list()
+            confidence_interval_pos = list()
+            confidence_interval_neg = list()
 
         for i, state in enumerate(detection_store):
             ts = state["timestamp"]
@@ -66,16 +100,35 @@ class IDSAR(Checker):
                     continue
 
                 model = self.map_pv_predictor[name]
-                data = map_pv_hist[name]
+                data = map_pv_hist[name].queue
 
                 if len(data) == model.order():
                     prediction = model.predict(data)
-                    map_pv_pred_err[name](val - prediction)
+                    residual = val - prediction
+                    map_pv_pred_err[name](residual)
+                    if debug_file is not None:
+                        pred_residuals.append(residual)
+                        confidence_interval_neg.append(-6*model.res_dist.std)
+                        confidence_interval_pos.append(6*model.res_dist.std)
 
-                    if self.anomaly_detected(name, val, map_pv_pred_err):
+                    #if self.anomaly_detected(name, val, map_pv_pred_err, differences_f):
+                    if self.is_outlier(val, residual, model):
                         self.add_malicious_activities(ts, name)
+                    else:
+                        model.res_dist(residual)
 
-                map_pv_hist[name].append(val)
+                map_pv_hist[name].add(val)
+
+
+        if debug_file is not None:
+            plt.plot(pred_residuals)
+            plt.plot(confidence_interval_pos, color="yellow")
+            plt.plot(confidence_interval_neg, color="yellow")
+            plt.show()
+            plt.show()
+            plt.hist(residual, density=True)
+            plt.show()
+            pdb.set_trace()
 
     def add_malicious_activities(self, ts, name):
 
@@ -86,36 +139,51 @@ class IDSAR(Checker):
 
         self.malicious_activities[time_key].add(name)
 
-    def anomaly_detected(self, name, val, pred_err):
+    def anomaly_detected(self, name, val, pred_err, differences_f):
 
         model = self.map_pv_predictor[name]
         if val > model.upper_limit or val < model.lower_limit:
-            pdb.set_trace()
             return True
 
         try:
-            F = model.residual_var/(pred_err[name].std**2)
-            df1 = model.deg_free
-            df2 = pred_err[name].k - 1
+            num, df1, denom, df2 = self.get_num_denom(model, pred_err[name])
+            F = num/denom
 
             # H0: The variances of the residual during the training phase and the detection phase are the same
             # Ha: The variances are different
+            # H0 is rejected if the F value is higher than the critical value
 
-            crit1 = f.ppf(1-self.alpha/2, df1, df2)
-            crit2 = f.ppf(self.alpha/2, df1, df2)
-
-            if F < crit1 or F > crit2:
-                pdb.set_trace()
+            # Two-tailed test so alpha is divided by two
+            crit = f.ppf(1 - self.alpha/2, df1, df2)
+            if F > crit:
+                differences_f.append(F-crit)
                 return True
-            return False
         except ZeroDivisionError:
             return False
+
+    # Residual follows a normal distribution so we can use the z-score to
+    # detect if one is an outliers or not
+
+    def is_outlier(self, val, residual, model):
+        if val > model.upper_limit or val < model.lower_limit:
+            return True
+
+        z_score = (residual - model.res_dist.mean)/model.res_dist.std
+
+        return z_score > 6 or z_score < -6
+
+    def get_num_denom(self, res_model, pre_model):
+        if res_model.residual_var > pre_model.std**2:
+            return res_model.residual_var, res_model.deg_free, pre_model.std**2, pre_model.k - 1
+        else:
+            return pre_model.std**2, pre_model.k - 1, res_model.residual_var, res_model.deg_free 
+
+
 
 def main(normal_file, attack_file, conf_file, mal_file):
     data_norm = utils.read_state_file(normal_file)
     data_mal = utils.read_state_file(attack_file)
-    pdb.set_trace()
-    ids = IDSAR(conf_file, data_norm)
+    ids = IDSAR(conf_file, data_norm, alpha=0.02)
     ids.create_predictors()
     ids.train_predictors()
     pdb.set_trace()

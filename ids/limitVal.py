@@ -7,6 +7,7 @@ import numpy as np
 
 from timePattern import find_extreme_local
 from utils import *
+from welford import Welford
 
 import predicate as pd
 
@@ -17,16 +18,45 @@ take some time so those critical values appear more often. Histogram from
 y-axis
 """
 
+IGNORE_COL = ["timestamp", "normal/attack"]
+
 #THRESH = 0.2
 THRESH = 1
 # 0.01, 0.05 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1
 
+def fill_map_from_ts(state, actuators, map_var_event_val, event):
+    for k, v in state.items():
+        if k not in actuators and k not in IGNORE_COL:
+            if map_var_event_val[k] is None:
+                map_var_event_val[k] = {event : list()}
+            elif event not in map_var_event_val[k]:
+                map_var_event_val[k][event] = list()
+
+            map_var_event_val[k][event].append(v)
+
+def get_values_and_event_values(data, actuators, map_var_event_val, events):
+    # map_var_event_val: {var1: {Event1: [val], Event2: [val],...}, }
+    # events: {var1 : {ON: Event, OFF: Event}, var2: ...}
+    for types in events.values():
+        for event in types.values():
+            for ts in event.timestamps:
+                    state = data[ts]
+                    fill_map_from_ts(state, actuators, map_var_event_val, event)
+
+def eligible_critical(max_val, min_val, val):
+    return (same_value(max_val, min_val, val.mean, val.mean + val.std) and
+            same_value(max_val, min_val, val.mean, val.mean - val.std))
+
+            
 
 ## Smoothing approach to find critical ##
 
-def find_extreme_from_smooth_data(values, inputtype, windows=101, order=3):
+def find_extreme_from_smooth_data(name, values, event_values, inputtype,
+                                  windows=101, order=3):
     min_val = min(values)
     max_val = max(values)
+    filtered_event_values = [x for x in event_values if eligible_critical(max_val, min_val, x)]
+
     crit_vals = []
     if inputtype == "cont":
         smooth_vals = savgol_filter(values, windows, order)
@@ -38,9 +68,9 @@ def find_extreme_from_smooth_data(values, inputtype, windows=101, order=3):
 
         extremes_list = np.concatenate(extremes).ravel()
 
+        pdb.set_trace()
         ###
         hist, bin_edges = np.histogram(extremes_list, bins=10)
-
 
         ranges = []
         total = sum(hist)
@@ -57,7 +87,7 @@ def find_extreme_from_smooth_data(values, inputtype, windows=101, order=3):
 
         blocks = merge_ranges(ranges, len(values))
         return blocks
-        
+
     else:
         smooth_vals = values
         min_pos, max_pos = find_extreme_local(smooth_vals)
@@ -85,27 +115,6 @@ def find_extreme_from_smooth_data(values, inputtype, windows=101, order=3):
         blocks = merge_ranges(ranges, len(values))
         return blocks
 
-def find_inflection_point(data):
-    maximas = list()
-    minimas = list()
-
-    for i in range(len(data)):
-        if i == 0:
-            if data[i] > data[i+1]:
-                maximas.append(i)
-            elif data[i] < data[i+1]:
-                minimas.append(i)
-        elif i == len(data)-1:
-            if data[i] > data[i-1]:
-                maximas.append(i)
-            elif data[i] < data[i-1]:
-                minimas.append(i)
-        else:
-            if data[i-1] < data[i] and data[i+1] < data[i]:
-                maximas.append(i)
-            elif data[i-1] > data[i] and data[i+1] > data[i]:
-                minimas.append(i)
-    return maximas, minimas
 
 def compute_ranges(values, inputtype):
     if inputtype == "cont":
@@ -181,31 +190,44 @@ def get_values(data, pv, limit=None):
         times = np.array([x['timestamp'] for x in data[:limit]])
     return values, times
 
+def get_actuators(conf_file):
+    with open(conf_file) as fh:
+        content = fh.read()
+        desc = yaml.load(content, Loader=yaml.Loader)
+        actuators = list()
+        for variable in desc['variables']:
+            var = variable['variable']
+            if var["type"] == "co":
+                actuators.append(var['name'])
+        return actuators
 
 def main(data, conf, output, strategy, cool_time, inputtype):
+    actuators = get_actuators(conf)
+    events = pd.retrieve_update_timestamps(actuators, data)
+    map_var_event_val = {x:None for x in data[0].keys() if x not in actuators and x not in IGNORE_COL}
+    get_values_and_event_values(data, actuators, map_var_event_val, events)
+    pdb.set_trace()
     with open(conf) as fh:
         content = fh.read()
         desc = yaml.load(content, Loader=yaml.Loader)
         for variable in desc['variables']:
             var = variable['variable']
+            values, _ = get_values(data, var["name"])
             if var["type"] == "hr" or var["type"] == "ir":
-                values, _ = get_values(data, var['name'])
                 min_val = np.min(values)
                 max_val = np.max(values)
-                
-                if inputtype == "cont":
-                    blocks = find_extreme_from_smooth_data(values[cool_time:], inputtype)
-                    vals = []
-                    for block in blocks:
-                        vals.append(block.lower.item())
-                        vals.append(block.upper.item())
 
-                elif inputtype == "disc":
-                    blocks = find_extreme_from_smooth_data(values[cool_time:], inputtype)
-                    vals = []
-                    for block in blocks:
-                        vals.append(block.lower.item())
-                        vals.append(block.upper.item())
+                event_values = list()
+                for event, group in map_var_event_val[var["name"]].items():
+                    event_values.append(group)
+
+                blocks = find_extreme_from_smooth_data(var["name"], values,
+                                                       event_values,
+                                                       inputtype)
+                vals = []
+                for block in blocks:
+                    vals.append(block.lower.item())
+                    vals.append(block.upper.item())
 
                 var['critical'] = vals
                 var['min'] = float(min_val)

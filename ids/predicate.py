@@ -184,6 +184,9 @@ class Event(object):
     def __repr__(self):
         return self.__str__()
 
+    def __hash__(self):
+        return self.__str__().__hash__()
+
 def get_sensors_updates(sensors, states, store):
 
     last_values = {k : None for k in sensors if not store[k].ignore}

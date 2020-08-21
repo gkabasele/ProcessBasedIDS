@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 import numpy as np
 from statsmodels.graphics.tsaplots import plot_acf
+import pandas as pd
 from statsmodels.tsa.seasonal import seasonal_decompose
 import readline 
 import code
@@ -178,7 +179,6 @@ def y_histogram(data, pv):
     values = get_values(data, pv)
     fig, ax = plt.subplots()
     hist, bin_edges, patches = ax.hist(values, bins=100)
-    pdb.set_trace()
     normalized = np.array([x/len(values) for x in hist])
 
     plt.show()
@@ -192,9 +192,9 @@ def plot_acorr(data, pv):
     plt.ylabel('Autocorrelation')
     plt.show()
 
-def plot_decomp(data, pv, freq=86400):
+def plot_decomp(data, pv, freq=3600):
     values = get_values(data, pv)
-    result = seasonal_decompose(values, model='additive', freq=freq)
+    result = seasonal_decompose(values, model='additive', period=freq)
     result.plot()
     plt.show()
 

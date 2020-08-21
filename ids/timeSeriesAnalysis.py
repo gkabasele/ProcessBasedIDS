@@ -56,18 +56,17 @@ class SymbolEntry(object):
 
 class Digitizer(object):
 
-    def __init__(self, min_val, max_val):
+    def __init__(self, min_val, max_val, nbr_range=NBR_RANGE):
         self.min_val = min_val
         self.max_val = max_val
-        self.ranges = self.compute_ranges()
+        self.ranges = self.compute_ranges(nbr_range)
         self.res = list()
 
-    def compute_ranges(self):
+    def compute_ranges(self, nbr_range):
         ranges = list()
-        nbr_ranges = NBR_RANGE
-        ranges_width = (self.max_val - self.min_val)/nbr_ranges
+        ranges_width = (self.max_val - self.min_val)/nbr_range
 
-        for i in range(nbr_ranges):
+        for i in range(nbr_range):
             lower = self.min_val + i * ranges_width
             upper = self.min_val + (i+1)*ranges_width
             r = utils.RangeVal(lower, upper, 0)

@@ -1,16 +1,18 @@
-import argparse
-from copy import deepcopy
-from collections import Iterable
-from operator import attrgetter
-import math
-import pickle
 import pdb
-from bisect import insort
+import math
+import argparse
+from collections import Counter
 
 import yaml
-import jsonpickle
 import pprint
+import numpy as np
+from scipy.signal import savgol_filter
+import matplotlib.pyplot as plt
+
 from utils import *
+import predicate as pd
+import limitVal
+from timeSeriesAnalysis import Digitizer
 
 """
 J-Measure approach. Looking for values occuring when one of the
@@ -24,509 +26,188 @@ MAGNITUDE = 0.1
 
 TRESH = 0.0001
 
-CACHE_ON = "./sensors_on.bin"
-CACHE_OFF = "./sensors_off.bin"
+class EventCriticalVal(object):
 
-class CandVal(object):
-
-    def __init__(self, val=0, nbr_seen=1, j_measure=0):
-        self.nbr_seen = nbr_seen
-        self.cur_avg = val
-        self.j_measure = j_measure
-        self.prob = 0
-
-    def add_value(self, val):
-        self.nbr_seen += 1
-        self.cur_avg = self.cur_avg + (val - self.cur_avg)/self.nbr_seen
-
-    def normalize(self, nbr):
-        if nbr != 0 and nbr >= self.nbr_seen:
-            self.prob = self.nbr_seen/nbr
-
-    def __repr__(self):
-        return "{} ({})".format(self.cur_avg, self.nbr_seen)
-
-    def __hash__(self):
-        return self.cur_avg.__hash__()
-    
-    def __lt__(self, other):
-        return self.j_measure < other.j_measure
-
-    def __gt__(self, other):
-        return self.j_measure > other.j_measure
-
-    def from_json(self, text):
-        val, freq = text.split()
-        self.cur_avg = float(val)
-        self.nbr_seen = int(freq.replace('(', '').replace(')', ''))
-        return self
-
-class Readings(object):
-
-    def __init__(self):
-        self.readings = []
-        self.times = 0
-
-    def add_reading(self, pv, new, debug=False):
-        #if debug:
-        #        pdb.set_trace()
-
-        if len(self.readings) == 0:
-            val = CandVal(new)
-            self.readings.append(val)
-        else:
-            found = False
-            for val in self.readings:
-                if pv.normalized_dist(new, val.cur_avg) <= DIST:
-                    val.add_value(new)
-                    found = True
-                    break
-            if not found:
-                val = CandVal(new)
-                self.readings.append(val)
-        self.times += 1
-
-
-    def __len__(self):
-        return len(self.readings)
+    def __init__(self, event_name):
+        self.event_name = event_name
+        self.var_to_val = dict()
 
     def __str__(self):
-        return str(self.readings)
+        return str(self.var_to_val)
 
     def __repr__(self):
-        return self.__str__()
+        return str(self)
 
-    def __iter__(self):
-        return self.readings.__iter__()
+def get_all_values(data):
+    map_var_val = {x: list() for x in data[0].keys()}
 
-    def __getitem__(self, key):
-        return self.readings.__getitem__(key)
+    for state in data:
+        for k, v in state.items():
+            map_var_val[k].append(state[k])
 
-class ProbVal(object):
+    return map_var_val
 
-    def __init__(self):
-        self.prob = 0
-        self.act_prob = {}
+def filter_data(data, actuators, windows=101, order=3):
+    map_var_val = {x: list() for x in data[0].keys() if x not in actuators and x not in limitVal.IGNORE_COL}
+    for state in data:
+        for k, v in state.items():
+            if k in map_var_val:
+                map_var_val[k].append(state[k])
 
-    def add_act_prob(self, key):
-        if isinstance(key, str):
-            self.act_prob[key] = 0.0
-        elif isinstance(key, Iterable):
-            for k in key:
-                self.act_prob[k] = 0.0
+    for k in map_var_val:
+        map_var_val[k] = np.array(savgol_filter(map_var_val[k], windows, order))
 
-    def normalized_act(self):
-        for act in self.act_prob:
-            self.act_prob[act] = self.act_prob[act]/self.prob
+    data_filtered = list()
 
-    def __str__(self):
-        return "Prob: {}, Act: {}".format(self.prob, self.act_prob)
-
-    def __repr__(self):
-        return self.__str__()
-
-    def __iter__(self):
-        return self.act_prob.__iter__()
-
-
-def same_value(val1, val2, pv):
-    if isinstance(val1, CandVal) and isinstance(val2, CandVal):
-        return pv.normalized_dist(val1.cur_avg, val2.cur_avg) <= DIST
-
-    elif isinstance(val1, CandVal):
-        return pv.normalized_dist(val1.cur_avg, val2) <= DIST
-
-    elif isinstance(val2, CandVal):
-        return pv.normalized_dist(val1, val2.cur_avg) <= DIST
-
-def get_bool_vars(pv_store):
-    return [x for x in pv_store if pv_store[x].is_bool_var()]
-
-def get_num_vars(pv_store):
-    return [x for x in pv_store if not pv_store[x].is_bool_var()]
-
-def setup(filename, pv_store):
-    with open(filename) as fh:
-        content = fh.read()
-        desc = yaml.load(content, Loader=yaml.Loader)
-        for var_desc in desc['variables']:
-            var = var_desc['variable']
-            if var['type'] == DIS_COIL or var['type'] == DIS_INP:
-                limit_values = [1, 2]
-                min_val = 1
-                max_val = 2
-            else:
-                limit_values = var['values']
-                min_val = var['min']
-                max_val = var['max']
-
-            pv = ProcessSWaTVar(var['name'], var['type'],
-                                limit_values=limit_values,
-                                min_val=min_val,
-                                max_val=max_val)
-            pv_store[pv.name] = pv
-
-def export_critical(filename, output, critical_vals):
-    with open(filename) as fh:
-        content = fh.read()
-        desc = yaml.load(content, Loader=yaml.Loader)
-        for sens, crit_vals in critical_vals.items():
-            val = [x.cur_avg for x in crit_vals]
-            for variable in desc['variables']:
-                var = variable['variable']
-                if var['name'] == sens:
-                    var["critical"] = val
-                    break
-        with open(output, "w") as ofh:
-            content = yaml.dump(desc)
-            ofh.write(content)
-
-def create_actuators(pv_store):
-    actuators_name = get_bool_vars(pv_store) 
-    sensor_reading = get_num_vars(pv_store)
-    actuators = {}
-
-    for name in actuators_name:
-        readings = [Readings() for i in range(len(sensor_reading))]
-        actuators[name] = dict(zip(sensor_reading, readings))
-
-    return actuators
-
-def display_dict(d1, d2):
-    for key in d1:
-        print("Act:{}".format(key))
-        print("On Value")
-        for k, v in d1[key].items():
-            if len(v) < 10 and len(v) != 0:
-                print("{}:{}".format(k, v))
-        print("\nOff Value")
-        for k, v in d2[key].items():
-            if len(v) < 10 and len(v) != 0:
-                print("{}:{}".format(k,v))
-        print("---------------------\n")
-
-def sort_candidate(d1, d2):
-    for key in d1:
-        for _, val in d1[key].items():
-            val = sorted(val, key=attrgetter('nbr_seen', 'cur_avg'))
-        for _, val in d2[key].items():
-            val = sorted(val, key=attrgetter('nbr_seen', 'cur_avg'))
-
-def normalize_readings(actuators, actuators_trans, state):
-    for k in actuators:
-        for key, readings in actuators[k].items():
-            for candval in readings:
-                candval.normalize(actuators_trans[k][state])
-
-def create_sensors_cand(actuators, actuators_trans, state, pv_store):
-    sensors = {}
-
-    for k in actuators:
-        # Sensor name, readings
-        for key, readings in actuators[k].items():
-            #Only candidate value
-            if key not in sensors:
-                sensors[key] = {}
-
-            pv = pv_store[key]
-            #pdb.set_trace()
-
-            for candval in readings:
-                candval.normalize(actuators_trans[k][state])
-                # in 75% of the case when there was a switch, we observed this value
-                if candval not in sensors[key] and candval.prob >= 0.75:
-                    probval = ProbVal()
-                    #probval.add_act_prob(actuators.keys())
-                    sensors[key][candval] = probval
-    return sensors
-
-def decode_sensors_cand(sensors_enc):
-    for k in sensors_enc:
-        candvals = [CandVal().from_json(x) for x in sensors_enc[k].keys()]
-        probvals = sensors_enc[k].values()
-        sensors_enc[k] = dict(zip(candvals, probvals))
-
-
-def get_readings(name, state, pv_store, reading, debug=False):
-
-    """
-    if debug:
-        print("Sensors:{}".format(name))
-        print(state)
-        print("TS: {}".format(state['timestamp']))
-    """
-    for k in get_num_vars(pv_store):
-        pv = pv_store[k]
-        val = state[k]
-        #if debug:
-        #    print("Actuators:{}".format(k))
-        reading[name][k].add_reading(pv, val, (debug and k == "lit101"))
-
-
-def compute_frequence(data, sensors_on, sensors_off, pv_store):
-    for i in range(len(data) - 1):
-        state = data[i]
-        for k in sensors_on:
-            pv = pv_store[k]
-            for val in sensors_on[k]:
-                if same_value(state[k], val, pv):
-                    probval = sensors_on[k][val]
-                    probval.prob += 1
-                    #for act in probval:
-                    #    if i > 0:
-                    #        state_prev = data[i-1]
-                    #        if ((state_prev[act] == 0 or state_prev[act] == 1) and
-                    #                (state[act] == 2)):
-                    #            probval.act_prob[act] += 1
-
-        for k in sensors_off:
-            pv = pv_store[k]
-            for val in sensors_off[k]:
-                if same_value(state[k], val, pv):
-                    probval = sensors_off[k][val]
-                    probval.prob += 1
-                    #for act in probval:
-                    #    if i > 0:
-                    #        state_prev = data[i-1]
-                    #        if ((state_prev[act] == 2) and
-                    #                (state[act] == 1 or state[act] == 0)):
-                    #            probval.act_prob[act] += 1
-
-def normalized_prob(data, actuators_prob, actuators_trans, sensors):
-    n = len(data)
-
-    for key in actuators_prob:
-        actuators_prob[key]["on"] = actuators_prob[key]["on"]/n
-        actuators_prob[key]["off"] = actuators_prob[key]["off"]/n
-
-        actuators_trans[key]["onon"] = actuators_trans[key]["onon"]/(n-1)
-        actuators_trans[key]["onoff"] = actuators_trans[key]["onoff"]/(n-1)
-        actuators_trans[key]["offon"] = actuators_trans[key]["offon"]/(n-1)
-        actuators_trans[key]["offoff"] = actuators_trans[key]["offoff"]/(n-1)
-
-    for sensor in sensors:
-        for key in sensor:
-            for val, probval in sensor[key].items():
-                #probval.normalized_act()
-                probval.prob = probval.prob/n
-
-def _compute_j_measure(p_cond, p_x):
-    try:
-        res = p_cond * math.log2((p_cond/p_x)) + (1 - p_cond) * math.log2((1-p_cond)/(1-p_x))
-    except ValueError:
-        if p_cond == 1:
-            res =  math.log2((p_cond/p_x))
-        elif p_cond == 0:
-            res = math.log2(1/(1-p_x))
-        
-    return res
-
-def compute_j_measure(pv_store, sensors, sensor_name, sensor_value,
-                      actuators, actuators_prob, actuators_trans,
-                      actuator_name, actuator_state):
-
-    pv = pv_store[sensor_name]
-    p_sensor = 0
-    p_sens_given_act = 0
-    p_act = actuators_trans[actuator_name][actuator_state]
-    if sensor_name in actuators[actuator_name]:
-        for candval in actuators[actuator_name][sensor_name]:
-            if same_value(candval, sensor_value, pv):
-                p_sens_given_act = candval.prob
-                break
-
-    for key, probval in sensors[sensor_name].items():
-        if same_value(key, sensor_value, pv):
-            p_sensor = probval.prob
-            break
-
-    return p_act * _compute_j_measure(p_sens_given_act, p_sensor)
-
-def order_magnitude(val1, val2):
-
-    if val1 >= val2 and val1 != 0:
-        return val2/val1
-    elif val2 > val1 and val2 != 0:
-        return val1/val2
-    else:
-        return 0
-
-def cand_rule_quality(pv_store, sensors_on, sensors_off,
-                      actuators_on, actuators_off,
-                      actuators_prob, actuators_trans):
-    on_rule = dict(zip(actuators_on.keys(), [[] for _ in range(len(actuators_on))]))
-    off_rule = copy.deepcopy(on_rule)
-    for key in actuators_on:
-        for k, v in actuators_on[key].items():
-            for value in v:
-                if value.prob >= 0.75:
-                    j_measure = compute_j_measure(pv_store, sensors_on, k,
-                                              value, actuators_on, actuators_prob,
-                                              actuators_trans, key, "offon")
-                    value.j_measure = j_measure
-                    if j_measure >= TRESH:
-                        on_rule[key].append((k, value))
-
-        for k, v in actuators_off[key].items():
-            for value in v:
-                if value.prob >= 0.75:
-                    j_measure = compute_j_measure(pv_store, sensors_off, k,
-                                                  value, actuators_off, actuators_prob,
-                                                  actuators_trans, key, "onoff")
-                    value.j_measure = j_measure
-                    if j_measure >= TRESH:
-                        off_rule[key].append((k, value))
-
-    return on_rule, off_rule
-
-def summarize_critical_val(critical_vals, pv_store):
-    summary = dict(zip(critical_vals.keys(), [[] for _ in range(len(critical_vals))]))
-    for k, vals in critical_vals.items():
-        i = 0
-        pv = pv_store[k]
-        while i<len(vals) - 1:
-            summary[k].append(vals[i])
-            j = i + 1
-            while j < len(vals):
-                if same_value(vals[i], vals[j], pv):
-                    i += 1
-                    j += 1
-                else:
-                    i+= 1
-                    break
-    return summary        
-
-def get_critical_val(on_rule, off_rule, pv_store):
-    critical_vals = {}
-
-    for k in on_rule:
-        for reading in on_rule[k]:
-            sens, val = reading
-            if sens not in critical_vals:
-                critical_vals[sens] = [val]
-            else:
-                critical_vals[sens].append(val)
-
-        for reading in off_rule[k]:
-            sens, val = reading
-            if sens not in critical_vals:
-                critical_vals[sens] = [val]
-            else:
-                critical_vals[sens].append(val)
-
-    for k, val in critical_vals.items():
-        val.sort(key=lambda x: x.cur_avg)
-
-    return summarize_critical_val(critical_vals, pv_store)
-
-def main(phys, variables, output, cache_on, cache_off):
-
-    data = pickle.load(open(phys, "rb"))
-    pv_store = {}
-    setup(variables, pv_store)
-
-    actuators_on = create_actuators(pv_store)
-    actuators_off = deepcopy(actuators_on)
-    actuators = dict(zip(actuators_on.keys(), [0]* len(actuators_on)))
-    actuators_prob = dict(zip(actuators_on.keys(),
-                              [{"on": 0, "off":0} for i in range(len(actuators_on))]))
-    actuators_trans = dict(zip(actuators_on.keys(),
-            [{"onoff": 0, "onon": 0, "offon":0, "offoff":0} for i in range(len(actuators_on))]))
-
-    # Find candidate that impact actuators
     for i, state in enumerate(data):
-        if i == 0:
-            for k in actuators:
-                actuators[k] = state[k]
-                if state[k] == 1 or state[k] == 0:
-                    actuators_prob[k]["off"] += 1
-                elif state[k] == 2:
-                    actuators_prob[k]["on"] += 1
+        new_state = dict()
+        for act in actuators:
+            new_state[act] = state[act]
+        for var in limitVal.IGNORE_COL:
+            new_state[var] = state[var]
+        for var in map_var_val:
+            new_state[var] = map_var_val[var][i]
+
+        data_filtered.append(new_state)
+
+    return data_filtered
+
+def discretize_data(map_var_val, actuators):
+    map_var_discrete = dict()
+    for k, v in map_var_val.items():
+        if k not in actuators and k not in limitVal.IGNORE_COL:
+            min_val = np.min(map_var_val[k])
+            max_val = np.max(map_var_val[k])
+            d = Digitizer(min_val, max_val)
+            map_var_discrete[k] = (d.digitize(v), d)
         else:
-            for k in actuators:
-                if state[k] == 1 or state[k] == 0:
-                    actuators_prob[k]["off"] += 1
+            map_var_discrete[k] = map_var_val[k]
+    return map_var_discrete
 
-                elif state[k] == 2:
-                    actuators_prob[k]["on"] += 1
+# var->event->Counter
+def discrete_event_data(map_var_event_val, map_var_discrete):
+    for var, events in map_var_event_val.items():
+        for k, values in events.items():
+            events[k] = Counter(map_var_discrete[var][1].digitize(values))
 
-                if actuators[k] != state[k]:
-                    if ((actuators[k] == 1 and state[k] == 0) or
-                            (actuators[k] == 0 and state[k] == 1)):
-                        actuators_trans[k]["offoff"] += 1
+def get_prob_from_hist(values, value):
+    ar, bin_edges = np.histogram(values, bins=10)
+    i = np.digitize(value, bin_edges) - 1
+    # if value beyond bound, 0 or len(bins) is returned
+    # len(bin) == len(ar) + 1
+    if i == len(ar):
+        i = len(ar)-1
+    elif i < 0:
+        i = 0
+    return ar[i]/ar.sum()
 
-                    if (actuators[k] == 2 and (state[k] == 0 or state[k] == 1)):
-                        get_readings(k, state, pv_store, actuators_off)
-                        actuators_trans[k]["onoff"] += 1
+def get_event_prob(data, event):
+    nb_trans_occur = actuator_nbr_occurence(data[event.varname],
+                                            event.from_value)
+    return len(event.timestamps)/(nb_trans_occur-1)
 
-                    elif ((actuators[k] == 1 or actuators[k] == 0) and state[k] == 2):
-                        get_readings(k, state, pv_store, actuators_on)
-                        actuators_trans[k]["offon"] += 1
+#Find probability of observing a value in a timeseries
+def get_value_prob(var, map_var_values, value):
+    return get_prob_from_hist(map_var_values[var][0], value)
 
-                    actuators[k] = state[k]
-                else:
-                    if actuators[k] == 1 or actuators[k] == 0:
-                        actuators_trans[k]["offoff"] += 1
+# Get the number of time a actuator has a particular
+# state
+# FIXME testing
+def actuator_nbr_occurence(values, act_state):
+    c = Counter(values)
+    pdb.set_trace()
+    if act_state == pd.ON:
+        return c[pd.ON]
+    else:
+        return c[pd.OFF] + c[pd.OFFZ]
 
-                    elif actuators[k] == 2:
-                        actuators_trans[k]["onon"] += 1
+# Get the probability of observing a value given the
+# occurence of an event
+def get_value_prob_given_event(map_var_event_val, event, var, value):
+    return map_var_event_val[var][event][value]/sum(map_var_event_val[var][event].values())
 
-    #sort_candidate(actuators_on, actuators_off)
-    sensors_on = None
-    sensors_off = None
-    # Filter non impacting sensors
-    if isinstance(cache_on, bool) and cache_on:
-        sensors_on = create_sensors_cand(actuators_on, actuators_trans, "offon", pv_store)
-        sensors_off = create_sensors_cand(actuators_off, actuators_trans, "onoff", pv_store)
+#map_var_values: var->[val0, val1, ...]
+#map_var_event_val: var->(eventa->[vala0, vala1, ...], eventb->[valb0, valb1,...],..)
+def compute_j_measure(map_var_values, map_var_event_val, event, var, value):
+    prob_event = get_event_prob(map_var_values, event)
+    prob_value = get_value_prob(var, map_var_values, value)
+    prob_value_given_event = get_value_prob_given_event(map_var_event_val, event, var, value)
 
-        compute_frequence(data, sensors_on, sensors_off, pv_store)
+    if "mv101" in str(event):
+        pdb.set_trace()
 
-        with open(cache_on, "w") as f:
-            f.write(jsonpickle.encode(sensors_on))
+    # website
+    #j_measure = ((prob_event * prob_value_given_event * math.log(prob_value_given_event/prob_value)) +
+    #             prob_event * (1-prob_value_given_event) * math.log((1-prob_value_given_event)/(1-prob_value)))
+    # paper
+    if prob_value_given_event == 0:
+        j_measure = math.log(1/(1-prob_value))
 
-        with open(cache_off, "w") as f:
-            f.write(jsonpickle.encode(sensors_off))
+    elif prob_value_given_event == 1:
+        j_measure = prob_event * math.log(1/prob_value)
 
-    elif isinstance(cache_on, str):
+    else:
+        j_measure = ((prob_event * prob_value_given_event * math.log(prob_value_given_event/prob_value)) +
+                     (1-prob_value_given_event) * math.log((1-prob_value_given_event)/(1-prob_value)))
 
-        with open(cache_on, "r") as f:
-            sensors_on = jsonpickle.decode(f.read())
+    return j_measure
 
-        with open(cache_off, "r") as f:
-            sensors_off = jsonpickle.decode(f.read())
-        normalize_readings(actuators_on, actuators_trans, "offon")
-        normalize_readings(actuators_off, actuators_trans, "onoff")
-        decode_sensors_cand(sensors_on)
-        decode_sensors_cand(sensors_off)
+def compute_rule_support(map_var_event_val, event, var, value):
+    return get_value_prob_given_event(map_var_event_val, event, var, value)
 
-    normalized_prob(data, actuators_prob, actuators_trans, [sensors_on, sensors_off])
-    pprint.pprint(actuators_prob)
-    pprint.pprint(actuators_trans)
-    #j_measure_lit101 = compute_j_measure(pv_store, sensors_on, "lit101", 495.0656,
-    #                                     actuators_on, actuators_prob, actuators_trans,
-    #                                     "mv101", "offon")
-    #j_measure_lit101 = compute_j_measure(pv_store, sensors_on, "lit101",
-    #                                     495.0656, actuators_prob, actuators_trans,
-    #                                     "mv101", "onoff")
-    on_rule, off_rule = cand_rule_quality(pv_store, sensors_on, sensors_off,
-                                          actuators_on, actuators_off,
-                                          actuators_prob, actuators_trans)
+def get_candidate_value_from_j_measure(map_var_values, map_var_event_val):
+    var = "lit101"
+    for event, values in map_var_event_val[var].items():
+        for value in values:
+            print("Starting value:{} for event {}".format(value, event))
+            j = compute_j_measure(map_var_values, map_var_event_val, event, var, value)
 
-    #print(j_measure_lit101)
-    critical_vals = get_critical_val(on_rule, off_rule, pv_store)
-    export_critical(variables, output, critical_vals)
+def get_candidate_value_from_support(map_var_event_val):
+    critical_values = {x: EventCriticalVal(x.varname) for x in map_var_event_val[list(map_var_event_val.keys())[0]]}
+    for var in map_var_event_val:
+        print("Starting variable:{}".format(var))
+        for event, values in map_var_event_val[var].items():
+            for value in values:
+                support = compute_rule_support(map_var_event_val, event, var, value)
+
+                if support >= 0.9:
+                    critical_values[event].var_to_val[var] = value
+
+    pdb.set_trace() 
+
+def main(conf, data, apply_filter):
+    actuators = limitVal.get_actuators(conf)
+
+    if apply_filter is not None:
+        final_data = filter_data(data, actuators)
+
+    else:
+        final_data = data
+
+    var_to_list = get_all_values(final_data)
+    discrete_var_to_list = discretize_data(var_to_list, actuators)
+
+    events = pd.retrieve_update_timestamps(actuators, final_data)
+    map_var_event_val = {x:None for x in final_data[0].keys() if x not in actuators and x not in limitVal.IGNORE_COL}
+    limitVal.get_values_and_event_values(final_data, actuators, map_var_event_val, events)
+
+    discrete_event_data(map_var_event_val, discrete_var_to_list)
+    #get_candidate_value_from_j_measure(discrete_var_to_list, map_var_event_val)
+    get_candidate_value_from_support(map_var_event_val)
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
+    parser.add_argument("--conf", action="store", dest="conf_file",
+                        help="configuration file of variable")
+    parser.add_argument("--input", action="store", dest="input",
+                        help="binary file of process")
+    parser.add_argument("--filter", action="store_true", dest="apply_filter",
+                        help="apply_filter")
 
-    parser.add_argument("--phys", action="store", dest="phys")
-    parser.add_argument("--vars", action="store", dest="vars")
-    parser.add_argument("--output", action="store", dest="output")
-    parser.add_argument("--cache-on", action="store_const", dest="cache_on",
-                        const=True, default=CACHE_ON)
-    parser.add_argument("--cache-off", action="store_const", dest="cache_off",
-                        const=True, default=CACHE_OFF)
     args = parser.parse_args()
 
-    main(args.phys, args.vars, args.output, args.cache_on, args.cache_off)
+    data = read_state_file(args.input)
+
+    main(args.conf_file, data, args.apply_filter)
+

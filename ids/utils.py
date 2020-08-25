@@ -1,5 +1,3 @@
-import struct
-import sys
 import random
 import string
 import yaml
@@ -7,10 +5,8 @@ import pickle
 import collections
 import math
 import numpy as np
-import matplotlib 
 import matplotlib.pyplot as plt
 from scipy.stats import gaussian_kde
-from scapy.all import *
 
 # PORT
 MODBUS_PORT = [5020, 5021, 5022, 5023, 5024, 5025, 5026, 5027, 5028, 5029,
@@ -252,89 +248,6 @@ def randomName(stringLength=4):
     letters = string.ascii_lowercase
     return ''.join(random.choice(letters) for i in range(stringLength))
 
-class SRTag(Packet):
-    name = "SRTag"
-    fields_desc = [IPField("dst", None),
-                   ShortField("identifier", None),
-                   ByteField("protocol", None),
-                   ByteField("reason", None)
-                  ]
-
-class ModbusReq(Packet):
-    name = "ModbusReq"
-    fields_desc = [ShortField("transId", 0),
-                   ShortField("protoID", 0),
-                   ShortField("length", None),
-                   ByteField("unitID", 0),
-                   ByteField("funcode", None),
-                   ShortField("startAddr", 0)
-                  ]
-
-class ModbusRes(Packet):
-    name = "ModbusRes"
-    fields_desc = [ShortField("transId", 0),
-                   ShortField("protoID", 0),
-                   ShortField("length", None),
-                   ByteField("unitID", 0),
-                   ByteField("funcode", None)
-                  ]
-
-for port in MODBUS_PORT:
-    bind_layers(TCP, ModbusReq, dport=port)
-    bind_layers(TCP, ModbusRes, sport=port)
-
-class ReadCoilsRes(Packet):
-    name = "ReadCoilsRes"
-    fields_desc = [BitFieldLenField("count", None, 8, count_of="status"),
-                   FieldListField("status", [0x00], ByteField("", 0x00), count_from=lambda x:x.count)
-                  ]
-bind_layers(ModbusRes, ReadCoilsRes, funcode=1)
-
-class ReadDiscreteRes(Packet):
-    name = "ReadDiscreteRes"
-    fields_desc = [BitFieldLenField("count", None, 8, count_of="status"),
-                   FieldListField("status", [0x00], ByteField("", 0x00), count_from=lambda x:x.count)
-                  ]
-bind_layers(ModbusRes, ReadDiscreteRes, funcode=2)
-
-class ReadHoldRegRes(Packet):
-    name = "ReadHoldRegRes"
-    fields_desc = [BitFieldLenField("count", None, 8, count_of="value", adjust=lambda pkt, x: x*2),
-                   FieldListField("value", [0x0000], ShortField("", 0x0000), count_from=lambda x: x.count)
-                  ]
-bind_layers(ModbusRes, ReadHoldRegRes, funcode=3)
-
-class ReadInputRes(Packet):
-    name = "ReadInputRes"
-    fields_desc = [BitFieldLenField("count", None, 8, count_of="registers", adjust=lambda pkt, x: x*2),
-                   FieldListField("registers", [0x0000], ShortField("", 0x0000), count_from=lambda x:x.count)
-                  ]
-bind_layers(ModbusRes, ReadInputRes, funcode=4)
-
-class WriteSingleCoilRes(Packet):
-    name = "WriteSingleCoilRes"
-    fields_desc = [ShortField("addr",None),
-                   ShortField("value",None)
-                  ]
-bind_layers(ModbusRes, WriteSingleCoilRes, funcode=5)
-
-class WriteSingleRegRes(Packet):
-    name = "WriteSingleRegRes"
-    fields_desc = [ShortField("addr", None),
-                   ShortField("value", None)
-                  ]
-bind_layers(ModbusRes, WriteSingleRegRes, funcode=6)
-
-
-# Translation between funcode and field name
-func_fields_dict = {
-                     1 : "status",
-                     2 : "status",
-                     3 : "value", 
-                     4 : "registers",
-                     5 : "value",
-                     6 : "value",
-                   }
 
 def is_number(s):
     """ Returns Truse if string s is a number """

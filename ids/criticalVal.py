@@ -72,13 +72,13 @@ def filter_data(data, actuators, windows=101, order=3):
 
     return data_filtered
 
-def discretize_data(map_var_val, actuators):
+def discretize_data(map_var_val, actuators, nbr_range):
     map_var_discrete = dict()
     for k, v in map_var_val.items():
         if k not in actuators and k not in limitVal.IGNORE_COL:
             min_val = np.min(map_var_val[k])
             max_val = np.max(map_var_val[k])
-            d = Digitizer(min_val, max_val)
+            d = Digitizer(min_val, max_val, nbr_range)
             map_var_discrete[k] = (d.digitize(v), d)
         else:
             map_var_discrete[k] = map_var_val[k]
@@ -101,9 +101,9 @@ def get_prob_from_hist(values, value):
         i = 0
     return ar[i]/ar.sum()
 
-def get_event_prob(data, event):
-    nb_trans_occur = actuator_nbr_occurence(data[event.varname],
-                                            event.from_value)
+def get_event_prob(event, act_counters):
+    nb_trans_occur = actuator_nbr_occurence(event.from_value,
+                                            act_counters[event.varname])
     return len(event.timestamps)/(nb_trans_occur-1)
 
 #Find probability of observing a value in a timeseries
@@ -113,18 +113,32 @@ def get_value_prob(var, map_var_values, value):
 # Get the number of time a actuator has a particular
 # state
 # FIXME testing
-def actuator_nbr_occurence(values, act_state):
-    c = Counter(values)
-    pdb.set_trace()
+def actuator_nbr_occurence(act_state, act_counters):
     if act_state == pd.ON:
-        return c[pd.ON]
+        return act_counters[pd.ON]
     else:
-        return c[pd.OFF] + c[pd.OFFZ]
+        off = act_counters[pd.OFF] 
+        if pd.OFFZ in act_counters:
+            off += act_counters[pd.OFFZ]
+        return off
 
 # Get the probability of observing a value given the
 # occurence of an event
 def get_value_prob_given_event(map_var_event_val, event, var, value):
     return map_var_event_val[var][event][value]/sum(map_var_event_val[var][event].values())
+
+def get_support_event_value(map_var_event_val, act_counters, event, var, value):
+    nb_trans_occur = actuator_nbr_occurence(event.from_value, act_counters[event.varname])
+
+    return map_var_event_val[var][event][value]/(nb_trans_occur - 1)
+
+def get_confidence_rule(map_var_event_val, act_counters, event, var, value):
+
+    sup_num = get_support_event_value(map_var_event_val, act_counters, event,
+                                      var, value)
+    sup_denum = get_event_prob(event, act_counters)
+
+    return sup_num/sup_denum
 
 #map_var_values: var->[val0, val1, ...]
 #map_var_event_val: var->(eventa->[vala0, vala1, ...], eventb->[valb0, valb1,...],..)
@@ -162,38 +176,79 @@ def get_candidate_value_from_j_measure(map_var_values, map_var_event_val):
             print("Starting value:{} for event {}".format(value, event))
             j = compute_j_measure(map_var_values, map_var_event_val, event, var, value)
 
-def get_candidate_value_from_support(map_var_event_val):
+def get_candidate_value_from_support(map_var_values, map_var_event_val, act_counters):
     critical_values = {x: EventCriticalVal(x.varname) for x in map_var_event_val[list(map_var_event_val.keys())[0]]}
     for var in map_var_event_val:
         print("Starting variable:{}".format(var))
         for event, values in map_var_event_val[var].items():
             for value in values:
-                support = compute_rule_support(map_var_event_val, event, var, value)
+                #support = compute_rule_support(map_var_event_val, event, var, value)
 
-                if support >= 0.9:
+                confidence = get_confidence_rule(map_var_event_val, act_counters, event, var, value)
+
+                if confidence >= 0.95:
                     critical_values[event].var_to_val[var] = value
 
-    pdb.set_trace() 
+    return critical_values
+
+def find_complementary(critical_values, event):
+    for k in critical_values.keys():
+        if (k.varname == event.varname and
+                k.to_value == event.from_value and
+                k.from_value == event.to_value):
+
+            return k
+
+
+# Remove variable which keep the same value for both transition event
+def filter_non_complementary(critical_values):
+    already_done = set()
+    to_remove = list()
+
+    pdb.set_trace()
+    for event, variables in critical_values.items():
+        if event not in already_done:
+            for var, value in variables.var_to_val.items():
+                c_event = find_complementary(critical_values, event)
+                if c_event is not None:
+                    if (var in critical_values[c_event].var_to_val and
+                            critical_values[c_event].var_to_val[var] == value):
+
+                        to_remove.append((event, var))
+                        already_done.add(c_event)
+
+    for v in to_remove:
+        event, var = v
+        critical_values[event].var_to_val.pop(var)
+
+def get_critical_values(data, var_to_list, actuators, act_counters, nbr_range): 
+
+    discrete_var_to_list = discretize_data(var_to_list, actuators, nbr_range)
+
+    events = pd.retrieve_update_timestamps(actuators, data)
+    map_var_event_val = {x:None for x in data[0].keys() if x not in actuators and x not in limitVal.IGNORE_COL}
+    limitVal.get_values_and_event_values(data, actuators, map_var_event_val, events)
+
+    discrete_event_data(map_var_event_val, discrete_var_to_list)
+    critical_val = get_candidate_value_from_support(discrete_var_to_list, map_var_event_val, act_counters)
+    return critical_val
 
 def main(conf, data, apply_filter):
     actuators = limitVal.get_actuators(conf)
 
     if apply_filter is not None:
         final_data = filter_data(data, actuators)
-
     else:
         final_data = data
 
     var_to_list = get_all_values(final_data)
-    discrete_var_to_list = discretize_data(var_to_list, actuators)
 
-    events = pd.retrieve_update_timestamps(actuators, final_data)
-    map_var_event_val = {x:None for x in final_data[0].keys() if x not in actuators and x not in limitVal.IGNORE_COL}
-    limitVal.get_values_and_event_values(final_data, actuators, map_var_event_val, events)
+    act_counters = {x: Counter(var_to_list[x]) for x in actuators}
 
-    discrete_event_data(map_var_event_val, discrete_var_to_list)
-    #get_candidate_value_from_j_measure(discrete_var_to_list, map_var_event_val)
-    get_candidate_value_from_support(map_var_event_val)
+    for i in [5, 10]:
+        c = get_critical_values(final_data, var_to_list, actuators, act_counters, i)
+        filter_non_complementary(c)
+        print(c)
 
 if __name__ == "__main__":
 

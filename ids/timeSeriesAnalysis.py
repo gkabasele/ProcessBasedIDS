@@ -3,10 +3,10 @@ import math
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
+import random
 import utils
 import string
 from scipy import stats
-
 
 NBR_RANGE = 10
 
@@ -81,10 +81,15 @@ class Digitizer(object):
         if x >= self.ranges[-1].upper:
             return len(self.ranges)-1, self.ranges[-1]
 
-        for i, rangeval in enumerate(self.ranges):
-            if x >= rangeval.lower and x <= rangeval.upper:
-                return i, rangeval
+        dist = self.ranges[0].upper - self.ranges[0].lower
+        i = math.floor((x-self.ranges[0].lower)/dist)
 
+        if x == self.ranges[i].lower:
+            return i-1, self.ranges[i-1]
+
+        return i, self.ranges[i]
+
+        
     def online_digitize(self, x):
         i, _ = self.get_range(x)
         self.res.append(i)
@@ -182,6 +187,56 @@ def polynomial_fitting(x, y, deg=2):
         res.append(z)
     return res
 
+def _test_digitizer(d, val, res):
+
+    print("get_range({})".format(val))
+    i, _ = d.get_range(val)
+
+    try:
+        assert i == res
+    except AssertionError:
+        print("Expected:{}, got:{}".format(res, i))
+
+def test_digitizer():
+
+    d = Digitizer(0, 40, 8)
+
+    print(d.ranges)
+
+    try:
+        assert len(d.ranges) == 8
+    except AssertionError:
+        print("len(d.ranges")
+        print("Expected:8, got: {}".format(len(d.ranges)))
+
+
+    _test_digitizer(d, 5, 0)
+
+    _test_digitizer(d, 0,0) 
+
+    _test_digitizer(d, 45, 7)
+    
+    _test_digitizer(d, 17, 3) 
+
+    d = Digitizer(40.5, 70.3, 10)
+
+    print(d.ranges)
+
+    _test_digitizer(d, 40.5, 0)
+
+    _test_digitizer(d, 70.3, 9)
+
+    _test_digitizer(d, 51.7, 3)
+
+    _test_digitizer(d, 66.83, 8)
+
+    _test_digitizer(d, 0, 0)
+
+    _test_digitizer(d, 71, 9)
+
+    # dist = 2,98
+
+
 def main(input_data, pv_name_period, pv_name_non_period):
     data = input_data[:86401] 
     lit_ts = utils.get_all_values_pv(data, pv_name_period)
@@ -213,12 +268,14 @@ def main(input_data, pv_name_period, pv_name_non_period):
 
     axs[1].plot(ts, res_np)
     axs[1].plot(ts, model_np)
-    
+
     plt.show()
-    
 
 if __name__ == "__main__":
 
+    test_digitizer()
+
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", action="store", dest="input")
     parser.add_argument("--cool", type=int, default=0, action="store", dest="cool")
@@ -229,3 +286,4 @@ if __name__ == "__main__":
     pv_name_non_period = "ait402"
     main(data, pv_name_period, pv_name_non_period)
     pdb.set_trace()
+    """

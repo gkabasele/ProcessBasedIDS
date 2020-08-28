@@ -7,11 +7,13 @@ import yaml
 import pprint
 import numpy as np
 from scipy.signal import savgol_filter
+from scipy import stats
 import matplotlib.pyplot as plt
 
 from utils import *
 import predicate as pd
 import limitVal
+from welford import Welford
 from timeSeriesAnalysis import Digitizer
 
 """
@@ -44,6 +46,19 @@ def get_all_values(data):
     for state in data:
         for k, v in state.items():
             map_var_val[k].append(state[k])
+
+    return map_var_val
+
+def get_min_max_values(data, sensors):
+
+    map_var_val = {x: None for x in sensors}
+
+    for state in data:
+        for k, v in map_var_val.items():
+            if v is None:
+                map_var_val[k] = (state[k], state[k])
+            else:
+                map_var_val[k] = (min(state[k], v[0]), max(state[k], v[1]))
 
     return map_var_val
 
@@ -112,7 +127,6 @@ def get_value_prob(var, map_var_values, value):
 
 # Get the number of time a actuator has a particular
 # state
-# FIXME testing
 def actuator_nbr_occurence(act_state, act_counters):
     if act_state == pd.ON:
         return act_counters[pd.ON]
@@ -233,14 +247,150 @@ def get_critical_values(data, var_to_list, actuators, act_counters, nbr_range):
     critical_val = get_candidate_value_from_support(discrete_var_to_list, map_var_event_val, act_counters)
     return critical_val
 
+def get_most_probable_range(values):
+    c = Counter(values)
+    total = sum(c.values())
+    max_prob = -1
+    max_range = None
+    for k in c:
+        prob = c[k]/total
+
+        if prob > max_prob:
+            max_prob = prob
+            max_range = k
+
+    return max_range, max_prob
+
+def get_cand_critical_values_from_std(data, actuators, sensors):
+
+    events = pd.retrieve_update_timestamps(actuators, data)
+    var_min_max = get_min_max_values(data, sensors)
+    var_max_split = dict()
+    event_var_critical = dict()
+
+    for event_name in events:
+        for event in events[event_name].values():
+            print("Starting event: {}".format(event))
+
+            if len(event.timestamps) < 3:
+                continue
+
+            for var in sensors:
+                event_var_values = [data[ts][var] for ts in event.timestamps]
+                event_mean, event_std = np.mean(event_var_values), np.std(event_var_values)
+                sigma_mul = 6
+                # Six Sigma rule
+                while True:
+                    nbr_range = max(1, math.floor((var_min_max[var][1] - var_min_max[var][0])/(sigma_mul*event_std)))
+
+                    if nbr_range <= 1:
+                        break
+
+                    digitizer = Digitizer(var_min_max[var][0], var_min_max[var][1], nbr_range)
+
+                    dis_var_val = [digitizer.get_range(x)[0] for x in event_var_values]
+
+                    range_index, prob = get_most_probable_range(dis_var_val)
+
+                    if prob >= 0.9:
+                        if event not in event_var_critical:
+                            event_var_critical[event] = dict()
+                        if var not in var_max_split:
+                            var_max_split[var] = nbr_range
+
+                        event_var_critical[event][var] = (nbr_range, range_index)
+
+                        var_max_split[var] = max(nbr_range, var_max_split[var])
+
+                        break
+
+                    sigma_mul += 1
+
+    pdb.set_trace()
+
+
+
+# Splitting strategy to find the critical values for each event
+def get_cand_critical_values(data, actuators, sensors):
+
+    events = pd.retrieve_update_timestamps(actuators, data)
+    var_min_max = get_min_max_values(data, sensors)
+    var_max_split = {x:2 for x in sensors}
+    event_var_critical = dict()
+
+    prob_bound = [0.95, 0.9, 0.75, 0.5]
+
+    for event_name in events:
+        for event in events[event_name].values():
+            print("Starting event: {}".format(event))
+            # The event must happens an certain number of time in order to be meaningfull
+            # otherwise the distribution of the zone for a variable will be dominated by
+            # a single value will which lead to infinite number of splitting
+            if len(event.timestamps) < 3:
+                continue
+
+            for var in sensors:
+                print("\t Starting var: {}".format(var))
+
+                split_nbr = 2
+                range_index = None
+
+                # Look at the last digit to get the lower bound of the noise
+
+                while True and split_nbr < 10**4:
+                    d = Digitizer(var_min_max[var][0], var_min_max[var][1], split_nbr)
+                    event_var = [d.get_range(data[ts][var])[0] for ts in event.timestamps]
+
+                    range_index, prob = get_most_probable_range(event_var)
+
+                    if event not in event_var_critical:
+                        event_var_critical[event] = dict()
+
+                    if prob >= 0.50:
+                        event_var_critical[event][var] = (d.min_val, d.max_val, d.nbr_range, range_index)
+                        var_max_split[var] = max(split_nbr, var_max_split[var])
+                        split_nbr *= 2
+                    else:
+                        break
+
+    return event_var_critical, var_max_split
+
+def filter_based_on_range(data, event_var_critical, var_max_split):
+    event_var_to_remove = {x: set() for x in event_var_critical}
+
+    for event, variables in event_var_critical.items():
+        for var, split in variables.items():
+            min_val, max_val, nbr_range, _ = split
+            max_split = var_max_split[var]
+
+            #if "mv101" in event.varname:
+                #pdb.set_trace()
+
+            if max_split/nbr_range > 2:
+                event_var_to_remove[event].add(var)
+
+        for event, remove_set in event_var_to_remove.items():
+            for var in remove_set:
+                print("Removing var {} for event {}".format(var, event))
+                event_var_critical[event].pop(var, None)
+
+    pdb.set_trace()
+
+
 def main(conf, data, apply_filter):
-    actuators = limitVal.get_actuators(conf)
+    actuators, sensors = limitVal.get_actuators_sensors(conf)
 
     if apply_filter is not None:
         final_data = filter_data(data, actuators)
     else:
         final_data = data
 
+    get_cand_critical_values_from_std(final_data, actuators, sensors)
+    #event_var_critical, var_max_split = get_cand_critical_values(final_data, actuators, sensors)
+    #filter_based_on_range(final_data, event_var_critical, var_max_split)
+
+    pdb.set_trace()
+    """
     var_to_list = get_all_values(final_data)
 
     act_counters = {x: Counter(var_to_list[x]) for x in actuators}
@@ -249,6 +399,7 @@ def main(conf, data, apply_filter):
         c = get_critical_values(final_data, var_to_list, actuators, act_counters, i)
         filter_non_complementary(c)
         print(c)
+    """
 
 if __name__ == "__main__":
 

@@ -293,12 +293,16 @@ def get_cand_critical_values_from_std(data, actuators, sensors):
                     range_index, prob = get_most_probable_range(dis_var_val)
 
                     if prob >= 0.9:
+
                         if event not in event_var_critical:
                             event_var_critical[event] = dict()
+
                         if var not in var_max_split:
                             var_max_split[var] = nbr_range
 
-                        event_var_critical[event][var] = (nbr_range, range_index)
+                        event_var_critical[event][var] = (digitizer.min_val,
+                                                          digitizer.max_val,
+                                                          nbr_range, range_index)
 
                         var_max_split[var] = max(nbr_range, var_max_split[var])
 
@@ -306,9 +310,7 @@ def get_cand_critical_values_from_std(data, actuators, sensors):
 
                     sigma_mul += 1
 
-    pdb.set_trace()
-
-
+    return event_var_critical, var_max_split
 
 # Splitting strategy to find the critical values for each event
 def get_cand_critical_values(data, actuators, sensors):
@@ -347,7 +349,9 @@ def get_cand_critical_values(data, actuators, sensors):
                         event_var_critical[event] = dict()
 
                     if prob >= 0.50:
-                        event_var_critical[event][var] = (d.min_val, d.max_val, d.nbr_range, range_index)
+                        event_var_critical[event][var] = (d.min_val, d.max_val,
+                                                          d.nbr_range, range_index)
+
                         var_max_split[var] = max(split_nbr, var_max_split[var])
                         split_nbr *= 2
                     else:
@@ -358,23 +362,31 @@ def get_cand_critical_values(data, actuators, sensors):
 def filter_based_on_range(data, event_var_critical, var_max_split):
     event_var_to_remove = {x: set() for x in event_var_critical}
 
+    var_min_split = dict()
+
+    # Filter the variable where noise seems inconsistent
     for event, variables in event_var_critical.items():
         for var, split in variables.items():
-            min_val, max_val, nbr_range, _ = split
+            _, _, nbr_range, _ = split
             max_split = var_max_split[var]
 
-            #if "mv101" in event.varname:
-                #pdb.set_trace()
-
-            if max_split/nbr_range > 2:
+            if nbr_range/max_split < 0.6:
                 event_var_to_remove[event].add(var)
 
         for event, remove_set in event_var_to_remove.items():
             for var in remove_set:
-                print("Removing var {} for event {}".format(var, event))
                 event_var_critical[event].pop(var, None)
 
-    pdb.set_trace()
+    # Retrieve min
+    for event, variables in event_var_critical.items():
+        for var, split in variables.items():
+            _, _, nbr_range, _ = split
+            if var in var_min_split:
+                var_min_split[var] = min(var_min_split[var], nbr_range)
+            else:
+                var_min_split[var] = nbr_range
+
+    return var_min_split
 
 
 def main(conf, data, apply_filter):
@@ -385,9 +397,8 @@ def main(conf, data, apply_filter):
     else:
         final_data = data
 
-    get_cand_critical_values_from_std(final_data, actuators, sensors)
-    #event_var_critical, var_max_split = get_cand_critical_values(final_data, actuators, sensors)
-    #filter_based_on_range(final_data, event_var_critical, var_max_split)
+    event_var_critical, var_max_split = get_cand_critical_values_from_std(final_data, actuators, sensors)
+    var_min_split = filter_based_on_range(final_data, event_var_critical, var_max_split)
 
     pdb.set_trace()
     """

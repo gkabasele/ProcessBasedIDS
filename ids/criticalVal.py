@@ -85,7 +85,7 @@ def filter_data(data, actuators, windows=101, order=3):
 
         data_filtered.append(new_state)
 
-    return data_filtered
+    return data_filtered, map_var_val
 
 def discretize_data(map_var_val, actuators, nbr_range):
     map_var_discrete = dict()
@@ -292,7 +292,7 @@ def get_cand_critical_values_from_std(data, actuators, sensors):
 
                     range_index, prob = get_most_probable_range(dis_var_val)
 
-                    if prob >= 0.9:
+                    if prob >= 0.95:
 
                         if event not in event_var_critical:
                             event_var_critical[event] = dict()
@@ -348,7 +348,7 @@ def get_cand_critical_values(data, actuators, sensors):
                     if event not in event_var_critical:
                         event_var_critical[event] = dict()
 
-                    if prob >= 0.50:
+                    if prob >= 0.90:
                         event_var_critical[event][var] = (d.min_val, d.max_val,
                                                           d.nbr_range, range_index)
 
@@ -370,7 +370,7 @@ def filter_based_on_range(data, event_var_critical, var_max_split):
             _, _, nbr_range, _ = split
             max_split = var_max_split[var]
 
-            if nbr_range/max_split < 0.6:
+            if nbr_range/max_split < 0.5:
                 event_var_to_remove[event].add(var)
 
         for event, remove_set in event_var_to_remove.items():
@@ -388,29 +388,60 @@ def filter_based_on_range(data, event_var_critical, var_max_split):
 
     return var_min_split
 
+def get_var_to_critical_value(event_var_critical, var_min_split):
+    # var -> nbr_range, [val1, val2, val3]
+    var_to_crit = {x:set() for x in var_min_split.keys()}
+    var_to_digitizer = dict()
+    for _, variables in event_var_critical.items():
+        for var, split in variables.items():
+            min_val, max_val, nbr_range, i = split
+
+            if var in var_to_digitizer:
+                min_digit = var_to_digitizer[var]
+            else:
+                var_to_digitizer[var] = Digitizer(min_val, max_val, var_min_split[var])
+                min_digit = var_to_digitizer[var]
+
+            event_digit = Digitizer(min_val, max_val, nbr_range)
+            new_index = min_digit.convert_digitizer_index(event_digit, i)
+            var_to_crit[var].add(new_index)
+
+    return var_to_crit, var_to_digitizer
+
+def plot_critical(map_var_val, var_to_crit, var_to_digitizer): 
+
+    for var, values in var_to_crit.items():
+        digitizer = var_to_digitizer[var]
+        zones = set()
+        for crit in values:
+            lower, upper = digitizer.get_range_extreme(crit)
+            zones.add((lower, upper))
+
+        x = np.linspace(0, len(map_var_val[var]), len(map_var_val[var]))
+        plt.plot(map_var_val[var], alpha=0.2)
+        plt.title(var)
+
+        for z in zones:
+            plt.fill_between(x, z[0], z[1], alpha=0.2, color="r")
+
+        plt.show()
 
 def main(conf, data, apply_filter):
     actuators, sensors = limitVal.get_actuators_sensors(conf)
 
     if apply_filter is not None:
-        final_data = filter_data(data, actuators)
+        final_data, map_var_val = filter_data(data, actuators)
     else:
         final_data = data
+        map_var_val = get_all_values(data)
 
     event_var_critical, var_max_split = get_cand_critical_values_from_std(final_data, actuators, sensors)
     var_min_split = filter_based_on_range(final_data, event_var_critical, var_max_split)
+    var_to_crit, var_to_digitizer = get_var_to_critical_value(event_var_critical, var_min_split)
+
+    plot_critical(map_var_val, var_to_crit, var_to_digitizer)
 
     pdb.set_trace()
-    """
-    var_to_list = get_all_values(final_data)
-
-    act_counters = {x: Counter(var_to_list[x]) for x in actuators}
-
-    for i in [5, 10]:
-        c = get_critical_values(final_data, var_to_list, actuators, act_counters, i)
-        filter_non_complementary(c)
-        print(c)
-    """
 
 if __name__ == "__main__":
 

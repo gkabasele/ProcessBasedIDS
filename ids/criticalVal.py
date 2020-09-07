@@ -8,6 +8,8 @@ import pprint
 import numpy as np
 from scipy.signal import savgol_filter
 from scipy import stats
+from sklearn.cluster import KMeans, MeanShift
+from sklearn.metrics import silhouette_score
 import matplotlib.pyplot as plt
 
 from utils import *
@@ -27,6 +29,8 @@ DIST = 0.01
 MAGNITUDE = 0.1
 
 TRESH = 0.0001
+
+MAX_RANGE = 100
 
 class EventCriticalVal(object):
 
@@ -131,7 +135,7 @@ def actuator_nbr_occurence(act_state, act_counters):
     if act_state == pd.ON:
         return act_counters[pd.ON]
     else:
-        off = act_counters[pd.OFF] 
+        off = act_counters[pd.OFF]
         if pd.OFFZ in act_counters:
             off += act_counters[pd.OFFZ]
         return off
@@ -183,70 +187,6 @@ def compute_j_measure(map_var_values, map_var_event_val, event, var, value):
 def compute_rule_support(map_var_event_val, event, var, value):
     return get_value_prob_given_event(map_var_event_val, event, var, value)
 
-def get_candidate_value_from_j_measure(map_var_values, map_var_event_val):
-    var = "lit101"
-    for event, values in map_var_event_val[var].items():
-        for value in values:
-            print("Starting value:{} for event {}".format(value, event))
-            j = compute_j_measure(map_var_values, map_var_event_val, event, var, value)
-
-def get_candidate_value_from_support(map_var_values, map_var_event_val, act_counters):
-    critical_values = {x: EventCriticalVal(x.varname) for x in map_var_event_val[list(map_var_event_val.keys())[0]]}
-    for var in map_var_event_val:
-        print("Starting variable:{}".format(var))
-        for event, values in map_var_event_val[var].items():
-            for value in values:
-                #support = compute_rule_support(map_var_event_val, event, var, value)
-
-                confidence = get_confidence_rule(map_var_event_val, act_counters, event, var, value)
-
-                if confidence >= 0.95:
-                    critical_values[event].var_to_val[var] = value
-
-    return critical_values
-
-def find_complementary(critical_values, event):
-    for k in critical_values.keys():
-        if (k.varname == event.varname and
-                k.to_value == event.from_value and
-                k.from_value == event.to_value):
-
-            return k
-
-
-# Remove variable which keep the same value for both transition event
-def filter_non_complementary(critical_values):
-    already_done = set()
-    to_remove = list()
-
-    pdb.set_trace()
-    for event, variables in critical_values.items():
-        if event not in already_done:
-            for var, value in variables.var_to_val.items():
-                c_event = find_complementary(critical_values, event)
-                if c_event is not None:
-                    if (var in critical_values[c_event].var_to_val and
-                            critical_values[c_event].var_to_val[var] == value):
-
-                        to_remove.append((event, var))
-                        already_done.add(c_event)
-
-    for v in to_remove:
-        event, var = v
-        critical_values[event].var_to_val.pop(var)
-
-def get_critical_values(data, var_to_list, actuators, act_counters, nbr_range): 
-
-    discrete_var_to_list = discretize_data(var_to_list, actuators, nbr_range)
-
-    events = pd.retrieve_update_timestamps(actuators, data)
-    map_var_event_val = {x:None for x in data[0].keys() if x not in actuators and x not in limitVal.IGNORE_COL}
-    limitVal.get_values_and_event_values(data, actuators, map_var_event_val, events)
-
-    discrete_event_data(map_var_event_val, discrete_var_to_list)
-    critical_val = get_candidate_value_from_support(discrete_var_to_list, map_var_event_val, act_counters)
-    return critical_val
-
 def get_most_probable_range(values):
     c = Counter(values)
     total = sum(c.values())
@@ -267,6 +207,7 @@ def get_cand_critical_values_from_std(data, actuators, sensors):
     var_min_max = get_min_max_values(data, sensors)
     var_max_split = dict()
     event_var_critical = dict()
+    event_var_ratio = dict()
 
     for event_name in events:
         for event in events[event_name].values():
@@ -277,8 +218,9 @@ def get_cand_critical_values_from_std(data, actuators, sensors):
 
             for var in sensors:
                 event_var_values = [data[ts][var] for ts in event.timestamps]
-                event_mean, event_std = np.mean(event_var_values), np.std(event_var_values)
+                event_std = np.std(event_var_values)
                 sigma_mul = 6
+
                 # Six Sigma rule
                 while True:
                     nbr_range = max(1, math.floor((var_min_max[var][1] - var_min_max[var][0])/(sigma_mul*event_std)))
@@ -292,10 +234,14 @@ def get_cand_critical_values_from_std(data, actuators, sensors):
 
                     range_index, prob = get_most_probable_range(dis_var_val)
 
-                    if prob >= 0.95:
+                    if prob >= 1:
 
                         if event not in event_var_critical:
                             event_var_critical[event] = dict()
+
+                        if var not in event_var_ratio:
+                            event_var_ratio[var] = dict()
+
 
                         if var not in var_max_split:
                             var_max_split[var] = nbr_range
@@ -304,62 +250,19 @@ def get_cand_critical_values_from_std(data, actuators, sensors):
                                                           digitizer.max_val,
                                                           nbr_range, range_index)
 
-                        var_max_split[var] = max(nbr_range, var_max_split[var])
+                        width_norm = digitizer.width/(var_min_max[var][1] - var_min_max[var][0])
+
+                        event_var_ratio[var][event] = [width_norm, prob]
 
                         break
 
                     sigma_mul += 1
 
-    return event_var_critical, var_max_split
 
-# Splitting strategy to find the critical values for each event
-def get_cand_critical_values(data, actuators, sensors):
+    return event_var_critical, event_var_ratio
 
-    events = pd.retrieve_update_timestamps(actuators, data)
-    var_min_max = get_min_max_values(data, sensors)
-    var_max_split = {x:2 for x in sensors}
-    event_var_critical = dict()
 
-    prob_bound = [0.95, 0.9, 0.75, 0.5]
-
-    for event_name in events:
-        for event in events[event_name].values():
-            print("Starting event: {}".format(event))
-            # The event must happens an certain number of time in order to be meaningfull
-            # otherwise the distribution of the zone for a variable will be dominated by
-            # a single value will which lead to infinite number of splitting
-            if len(event.timestamps) < 3:
-                continue
-
-            for var in sensors:
-                print("\t Starting var: {}".format(var))
-
-                split_nbr = 2
-                range_index = None
-
-                # Look at the last digit to get the lower bound of the noise
-
-                while True and split_nbr < 10**4:
-                    d = Digitizer(var_min_max[var][0], var_min_max[var][1], split_nbr)
-                    event_var = [d.get_range(data[ts][var])[0] for ts in event.timestamps]
-
-                    range_index, prob = get_most_probable_range(event_var)
-
-                    if event not in event_var_critical:
-                        event_var_critical[event] = dict()
-
-                    if prob >= 0.90:
-                        event_var_critical[event][var] = (d.min_val, d.max_val,
-                                                          d.nbr_range, range_index)
-
-                        var_max_split[var] = max(split_nbr, var_max_split[var])
-                        split_nbr *= 2
-                    else:
-                        break
-
-    return event_var_critical, var_max_split
-
-def filter_based_on_range(data, event_var_critical, var_max_split):
+def filter_based_on_range(data, event_var_critical, var_max_split, event_var_ratio):
     event_var_to_remove = {x: set() for x in event_var_critical}
 
     var_min_split = dict()
@@ -388,27 +291,153 @@ def filter_based_on_range(data, event_var_critical, var_max_split):
 
     return var_min_split
 
-def get_var_to_critical_value(event_var_critical, var_min_split):
+def get_all_ratio(event_var_ratio):
+
+    X = list()
+
+    for _, events in event_var_ratio.items():
+        for value in events.values():
+            X.append(value)
+
+    return np.array(X)
+
+def get_clusters_closest_to_zero(clusters):
+    min_label = None
+    min_score = 2
+
+    for label, centroid in enumerate(clusters):
+        width, prob = centroid
+        score = width/prob
+        if score < min_score:
+            min_score = score
+            min_label = label
+
+    return min_label
+
+def filter_based_on_ratio(data, event_var_critical, event_var_ratio):
+
+    event_var_to_remove = {x: set() for x in event_var_critical}
+
+    array = get_all_ratio(event_var_ratio)
+
+    clusters = MeanShift().fit(array)
+
+    min_label = get_clusters_closest_to_zero(clusters.cluster_centers_)
+
+    for event, variables in event_var_critical.items():
+        for var in variables:
+            if clusters.predict([event_var_ratio[var][event]])[0] != min_label:
+                event_var_to_remove[event].add(var)
+
+    for event, remove_set in event_var_to_remove.items():
+        for var in remove_set:
+            event_var_critical[event].pop(var, None)
+
+def get_max_split_per_var(event_var_critical):
+
+    var_min_max = dict()
+
+    for _, variables in event_var_critical.items():
+        for var, values in variables.items():
+            _, _, nbr_range, _ = values
+            if var in var_min_max:
+                var_min_max[var] = (min(nbr_range, var_min_max[var][0]),
+                                    max(min(nbr_range, MAX_RANGE), var_min_max[var][1]))
+            else:
+                var_min_max[var] = (nbr_range, min(nbr_range, MAX_RANGE))
+
+    return var_min_max
+
+
+def compute_range_for_event(data, actuators, sensors):
+
+    events = pd.retrieve_update_timestamps(actuators, data)
+    var_min_max = get_min_max_values(data, sensors)
+    var_max_split = dict()
+
+    for event_name in events:
+        for event in events[event_name].values():
+
+            if len(event.timestamps) < 3:
+                continue
+
+            for var in sensors:
+                event_var_values = [data[ts][var] for ts in event.timestamps]
+                event_std = np.std(event_var_values)
+
+                nbr_range = max(1, math.floor((var_min_max[var][1] - var_min_max[var][0])/(6*event_std)))
+
+                if nbr_range <= 1:
+                    break
+
+                if var in var_max_split:
+                    var_max_split[var] = max(nbr_range, var_max_split[var])
+                else:
+                    var_max_split[var] = nbr_range
+
+    event_var_critical = compute_range_from_std(events, var_max_split, var_min_max)
+
+    pdb.set_trace()
+
+    return event_var_critical
+
+def compute_range_from_std(events, var_max_split, var_min_max):                
+    event_var_critical = dict()
+    for event_name in events:
+        for event in events[event_name].values():
+
+            print("Starting event: {}".format(event))
+
+            if len(event.timestamps) < 3:
+                continue
+
+            for var in var_max_split:
+                event_var_values = [data[ts][var] for ts in event.timestamps]
+                nbr_range = var_max_split[var]
+                digitizer = Digitizer(var_min_max[var][0], var_min_max[var][1], nbr_range)
+                dis_var_val = [digitizer.get_range(x)[0] for x in event_var_values]
+
+                range_index, prob = get_most_probable_range(dis_var_val)
+
+                if prob >= 0.50:
+
+                    if event not in event_var_critical:
+                        event_var_critical[event] = dict()
+
+                    event_var_critical[event][var] = (digitizer.min_val,
+                                                      digitizer.max_val,
+                                                      nbr_range, range_index)
+
+    return event_var_critical
+
+def get_var_to_critical_value(event_var_critical, var_max_split, var_min_max_val):
     # var -> nbr_range, [val1, val2, val3]
-    var_to_crit = {x:set() for x in var_min_split.keys()}
+    var_to_crit = {x:set() for x in var_max_split.keys()}
     var_to_digitizer = dict()
     for _, variables in event_var_critical.items():
         for var, split in variables.items():
             min_val, max_val, nbr_range, i = split
 
             if var in var_to_digitizer:
-                min_digit = var_to_digitizer[var]
+                max_digit = var_to_digitizer[var]
             else:
-                var_to_digitizer[var] = Digitizer(min_val, max_val, var_min_split[var])
-                min_digit = var_to_digitizer[var]
+                var_to_digitizer[var] = Digitizer(min_val, max_val, var_max_split[var][1])
+                max_digit = var_to_digitizer[var]
+                var_to_crit[var].add(max_digit.get_range(var_min_max_val[var][0])[0])
+                var_to_crit[var].add(max_digit.get_range(var_min_max_val[var][1])[0])
 
             event_digit = Digitizer(min_val, max_val, nbr_range)
-            new_index = min_digit.convert_digitizer_index(event_digit, i)
-            var_to_crit[var].add(new_index)
+            new_index = max_digit.convert_digitizer_index(event_digit, i)
+
+            if isinstance(new_index, list):
+                for v in new_index:
+                    var_to_crit[var].add(v)
+            else:
+                var_to_crit[var].add(new_index)
 
     return var_to_crit, var_to_digitizer
 
-def plot_critical(map_var_val, var_to_crit, var_to_digitizer): 
+def plot_critical(map_var_val, var_to_crit, var_to_digitizer):
 
     for var, values in var_to_crit.items():
         digitizer = var_to_digitizer[var]
@@ -435,11 +464,21 @@ def main(conf, data, apply_filter):
         final_data = data
         map_var_val = get_all_values(data)
 
-    event_var_critical, var_max_split = get_cand_critical_values_from_std(final_data, actuators, sensors)
-    var_min_split = filter_based_on_range(final_data, event_var_critical, var_max_split)
-    var_to_crit, var_to_digitizer = get_var_to_critical_value(event_var_critical, var_min_split)
+    var_min_max_val = get_min_max_values(data, sensors)
+
+    event_var_critical, event_var_ratio = get_cand_critical_values_from_std(final_data,
+                                                                            actuators,
+                                                                            sensors)
+    filter_based_on_ratio(data, event_var_critical, event_var_ratio)
+    var_min_split = get_max_split_per_var(event_var_critical)
+
+    var_to_crit, var_to_digitizer = get_var_to_critical_value(event_var_critical, var_min_split, var_min_max_val)
+
+    pdb.set_trace()
 
     plot_critical(map_var_val, var_to_crit, var_to_digitizer)
+
+    #event_var_critical = compute_range_for_event(data, actuators, sensors)
 
     pdb.set_trace()
 

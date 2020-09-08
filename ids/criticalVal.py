@@ -410,7 +410,7 @@ def compute_range_from_std(events, var_max_split, var_min_max):
 
     return event_var_critical
 
-def get_var_to_critical_value(event_var_critical, var_max_split, var_min_max_val):
+def get_var_to_critical_value(event_var_critical, var_max_split):
     # var -> nbr_range, [val1, val2, val3]
     var_to_crit = {x:set() for x in var_max_split.keys()}
     var_to_digitizer = dict()
@@ -423,8 +423,8 @@ def get_var_to_critical_value(event_var_critical, var_max_split, var_min_max_val
             else:
                 var_to_digitizer[var] = Digitizer(min_val, max_val, var_max_split[var][1])
                 max_digit = var_to_digitizer[var]
-                var_to_crit[var].add(max_digit.get_range(var_min_max_val[var][0])[0])
-                var_to_crit[var].add(max_digit.get_range(var_min_max_val[var][1])[0])
+                var_to_crit[var].add(max_digit.get_range(min_val)[0])
+                var_to_crit[var].add(max_digit.get_range(max_val)[0])
 
             event_digit = Digitizer(min_val, max_val, nbr_range)
             new_index = max_digit.convert_digitizer_index(event_digit, i)
@@ -436,6 +436,28 @@ def get_var_to_critical_value(event_var_critical, var_max_split, var_min_max_val
                 var_to_crit[var].add(new_index)
 
     return var_to_crit, var_to_digitizer
+
+def merge_successive_range(var_to_crit):
+
+    var_to_list  = {x:list() for x in var_to_crit.keys()}
+    for var, crits in var_to_crit.items():
+        l = sorted(list(crits))
+        i = 0
+        while i <= len(l)-2:
+            sub = list()
+            while l[i]+1 == l[i+1] and i <= len(l)-2:
+                sub.append(l[i])
+                i += 1
+
+            sub.append(l[i])
+            i += 1
+            var_to_list[var].append(sub)
+
+        if l[i]-1 == l[i-1]:
+            var_to_list[var][-1].append(l[i])
+        else:
+            var_to_list[var].append([l[i]])
+    return var_to_list
 
 def plot_critical(map_var_val, var_to_crit, var_to_digitizer):
 
@@ -464,21 +486,15 @@ def main(conf, data, apply_filter):
         final_data = data
         map_var_val = get_all_values(data)
 
-    var_min_max_val = get_min_max_values(data, sensors)
-
     event_var_critical, event_var_ratio = get_cand_critical_values_from_std(final_data,
                                                                             actuators,
                                                                             sensors)
     filter_based_on_ratio(data, event_var_critical, event_var_ratio)
     var_min_split = get_max_split_per_var(event_var_critical)
 
-    var_to_crit, var_to_digitizer = get_var_to_critical_value(event_var_critical, var_min_split, var_min_max_val)
+    var_to_crit, var_to_digitizer = get_var_to_critical_value(event_var_critical, var_min_split)
 
-    pdb.set_trace()
-
-    plot_critical(map_var_val, var_to_crit, var_to_digitizer)
-
-    #event_var_critical = compute_range_for_event(data, actuators, sensors)
+    var_to_list = merge_successive_range(var_to_crit)
 
     pdb.set_trace()
 

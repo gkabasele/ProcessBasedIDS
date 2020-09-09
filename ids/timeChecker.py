@@ -3,6 +3,7 @@ import collections
 from collections import OrderedDict
 from datetime import datetime, timedelta
 import pdb
+import numpy as np
 
 import utils
 from reqChecker import Checker
@@ -61,18 +62,18 @@ class TransitionMatrix(object):
         self.noisy = noisy
         self.min_val = variable.min_val
         self.max_val = variable.max_val
-        self.header = self.compute_header(variable)
+        self.header = [x for x in range(len(variable.limit_values))]
         self.name = variable.name
         self.historic_val = []
 
         # map value -> position to row or column of the value in the matrix
         self.val_pos = {}
-        self.transitions = self.compute_transition(self.header)
+        self.transitions = self.compute_transition()
         #Last value of the variable in the detection phase
         self.last_value = None
         # Last value of the variable in the training phase
         self.last_val_train = None
-        # 
+        #
         self.start_same_train = None
         #
         self.end_same_train = None
@@ -90,31 +91,16 @@ class TransitionMatrix(object):
         # then come back to it without passing by another critical value
         self.has_changed = False
 
+        # variable to keep track of the update step
+        self.last_exact_val = None
+        self.update_step = list()
 
-    def compute_header(self, variable):
-        header = []
-        start_index = 0
-        end_index = 0
-        values = variable.limit_values
-        i = 0
-        while i < len(values):
-            if i == 0:
-                header.append(values[i])
-            else:
-                if self.same_value(values[start_index], values[i], variable):
-                    pass
-                else:
-                    header.append(values[i])
-                    start_index = i
-            i += 1
-
-        return header
 
     # Create matrix of transitions
-    def compute_transition(self, values):
+    def compute_transition(self):
         transitions = []
-        for index, val in enumerate(values):
-            b = [-1] * len(values)
+        for index, val in enumerate(self.header):
+            b = [-1] * len(self.header)
             b[index] = 0
             transitions.append(b)
             self.val_pos[val] = index
@@ -139,16 +125,19 @@ class TransitionMatrix(object):
         return self.__str__()
 
     def same_value(self, val1, val2, pv):
-        if self.noisy:
-            return pv.normalized_dist(val1, val2) <= utils.DIST
+        if not pv.is_bool_var():
+            range_val1, _ = pv.digitizer.get_range(val1)
+            range_val2, _ = pv.digitizer.get_range(val2)
+            return range_val1 == range_val2
         else:
             return val1 == val2
 
-    def great_diff(self, val1, val2, pv):
-        if self.noisy:
-            return pv.normalized_dist(val1, val2) >= utils.DIFF
+    def is_out_of_bound(self, newval, extrema, pv, mincheck=True):
+        if mincheck:
+            return newval < extrema - (2*pv.digitizer.width)
         else:
-            return val1 != val2
+            return newval > extrema + (2*pv.digitizer.width)
+
 
     def nbr_transition(self):
         return len(self.historic_val) - 1
@@ -182,9 +171,16 @@ class TransitionMatrix(object):
 
 
     def find_crit_val(self, val, pv):
-        for crit_val in self.header:
-            if self.same_value(crit_val, val, pv):
-                return crit_val
+        if not pv.is_bool_var():
+            range_index, _ = pv.digitizer.get_range(val)
+
+            for crit_val in self.header:
+                if range_index in pv.limit_values[crit_val]:
+                    return crit_val
+        else:
+            for crit_val in self.header:
+                if crit_val == val:
+                    return crit_val
 
     def _find_closest(self, elapsed_time, prev, curr, i):
         dist_prev = elapsed_time - prev.mean
@@ -314,14 +310,15 @@ class TransitionMatrix(object):
                     return TransitionMatrix.SAME, cluster
                 else:
                     return self.outlier_handler_noisy(column, row, elapsed_time, cluster)
-            
+
     def compute_remaining(self, val, current_elapsed_time):
         row = self.val_pos[val]
         column = self.val_pos[val]
         pattern = self.transitions[row][column]
-        if type(pattern) is int and (pattern == 0 or pattern == -1):
+        if isinstance(pattern, int) and (pattern == 0 or pattern == -1):
             return TransitionMatrix.UNKNOWN, pattern
         # Get the maximum clusters for the remaining time
+        # FIXME what about the case where a value is suddenly switched?
         cluster = pattern.clusters[-1]
         if current_elapsed_time > cluster.max_val:
             if self.noisy:
@@ -342,7 +339,7 @@ class TransitionMatrix(object):
 
         if res == TransitionMatrix.UNEXPECT:
             filehandler.write("[{}][{}] Unexpected value for {}, expected:{}, got {}\n".format(ts, res, pv_name,
-                                                                                              expected, got))
+                                                                                               expected, got))
             self.add_malicious_activities(malicious_activities, ts, pv_name)
 
         else:
@@ -353,26 +350,32 @@ class TransitionMatrix(object):
 
     def compute_transition_time(self, newval, ts, pv, filehandler, malicious_activities):
         # Value greater (resp. lower) than max (resp. min)
-        if self.great_diff(newval, self.min_val, pv) and newval < self.min_val:
+        if self.is_out_of_bound(newval, self.min_val, pv):
 
             self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name,
                            newval, self.min_val, malicious_activities)
 
-        elif self.great_diff(newval, self.max_val, pv) and newval > self.max_val:
+        elif self.is_out_of_bound(newval, self.max_val, pv):
 
             self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name,
                            newval, self.max_val, malicious_activities)
 
+        
         # If no critical value was found, we need to compute how long the last
         # critical value remained
         found = False
         for crit_val in self.header:
-            if self.same_value(newval, crit_val, pv):
+            if self.find_crit_val(newval, pv) == crit_val:
                 self.detection_trigger = True
                 found = True
                 if self.last_value is not None:
                     # The value did not change
                     if self.last_value.value == crit_val:
+                        # This is the case where a loop transition occured
+                        # We update the end time to compute the remaining of
+                        # the critical value. The second case means that the
+                        # left the critical value than came back so we need
+                        # to update when it started
                         if not self.has_changed:
                             self.last_value = ValueTS(value=crit_val,
                                                       start=self.last_value.start,
@@ -381,23 +384,34 @@ class TransitionMatrix(object):
                             self.last_value = ValueTS(value=crit_val,
                                                       start=ts,
                                                       end=ts)
+
+                        # This test is performed every remaining time to detect attack
+                        # faster
                         elapsed_time = (ts - self.last_value.start).total_seconds()
                         res, expected = self.compute_remaining(crit_val, elapsed_time)
+
                         if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
-                            self.write_msg(filehandler, res, ts, pv.name, elapsed_time, expected,
-                                           malicious_activities, crit_val=crit_val, last_val=crit_val)
+                            self.write_msg(filehandler, res, ts, pv.name,
+                                           elapsed_time, expected, malicious_activities,
+                                           crit_val=crit_val, last_val=crit_val)
+
+                        self.update_step = list()
 
                     # The value has changed since last time
                     else:
                         if not pv.is_bool_var():
                             elapsed_trans_t = (ts - self.last_value.end).total_seconds()
-                            res, expected = self.check_transition_time(crit_val, self.last_value.value,
+                            update_mean = np.mean(self.update_step)
+                            res, expected = self.check_transition_time(crit_val, 
+                                                                       self.last_value.value,
                                                                        elapsed_trans_t, pv)
 
                             if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
-                                self.write_msg(filehandler, res, ts, pv.name, elapsed_trans_t, expected,
+                                self.write_msg(filehandler, res, ts, pv.name,
+                                               elapsed_trans_t, expected,
                                                malicious_activities, crit_val=crit_val,
                                                last_val=self.last_value.value)
+
                         # When a value change from one critical value to another without transition
                         # value so we must compute how long a value remained (only boolean?)
                         same_value_t = (self.last_value.end - self.last_value.start).total_seconds()
@@ -413,6 +427,9 @@ class TransitionMatrix(object):
                         self.last_value = ValueTS(value=crit_val, start=ts, end=ts)
                 else:
                     self.last_value = ValueTS(value=crit_val, start=ts, end=ts)
+                    self.update_step.append(newval - self.last_exact_val)
+                    self.last_exact_val = newval
+                    
                 self.has_changed = False
                 break
 
@@ -423,6 +440,8 @@ class TransitionMatrix(object):
         # There is no more modification than will occur
         if not found or ts == self.end_time:
             self.has_changed = True
+
+            self.update_step = list()
 
 
             # Case where a variable was on critical value and just changed to non-critical
@@ -442,7 +461,7 @@ class TransitionMatrix(object):
     def update_transition_matrix(self, value, ts, pv):
         found = False
         for crit_val in self.header:
-            if self.same_value(value, crit_val, pv):
+            if self.find_crit_val(value, pv) == crit_val:
                 found = True
 
                 if self.last_val_train is not None:
@@ -450,10 +469,10 @@ class TransitionMatrix(object):
                     column = self.val_pos[crit_val]
 
                     if self.transitions[row][column] == -1:
-                        self.transitions[row][column] = TimePattern()
+                        self.transitions[row][column] = TimePattern(same_crit_val=False)
 
                     if self.transitions[row][row] == 0:
-                        self.transitions[row][row] = TimePattern()
+                        self.transitions[row][row] = TimePattern(same_crit_val=True)
 
                     if self.last_val_train.value == crit_val:
 
@@ -469,6 +488,10 @@ class TransitionMatrix(object):
                             self.last_val_train = ValueTS(value=crit_val,
                                                           start=ts,
                                                           end=ts)
+
+                        # Reset of the update list because we can back
+                        self.update_step = list()
+
                         self.computation_trigger = False
                     else:
                         same_value_t = (self.last_val_train.end - self.last_val_train.start).total_seconds()
@@ -477,6 +500,9 @@ class TransitionMatrix(object):
                         elapsed_trans_t = (ts - self.last_val_train.end).total_seconds()
                         self.last_val_train = ValueTS(value=crit_val, start=ts, end=ts)
                         self.transitions[row][column].update(elapsed_trans_t)
+                        # A new transition was completed to we have to store the update behavior
+                        self.transitions[row][column].add_update_step(np.mean(self.update_step))
+                        self.update_step = list()
                 else:
                     self.last_val_train = ValueTS(value=crit_val, start=ts, end=ts)
                     self.computation_trigger = False
@@ -490,12 +516,20 @@ class TransitionMatrix(object):
         if not found and self.last_val_train is not None:
             self.has_changed = True
 
+            #Since the variable left a critical value, we need to keep track of the
+            #behavior of update to complete the next transition
+            self.update_step.append(value - self.last_exact_val)
+
+            #FIXME we should check the remaining time
+
         # The case where the end training period was reached and no computation
         # of transition time was done because no transition time was reach
         if ts == self.end_time and not self.computation_trigger and self.last_val_train is not None:
             row = self.val_pos[self.last_val_train.value]
             same_value_t = (self.last_val_train.end - self.last_val_train.start).total_seconds()
             self.transitions[row][row].update(same_value_t)
+
+        self.last_exact_val = value
 
     def compute_elapsed_time(self):
         elapsed_time = []
@@ -517,12 +551,11 @@ class TransitionMatrix(object):
 
 class TimeChecker(Checker):
 
-    def __init__(self, descFile, filename, store, noisy=True, detection_store=None,
-                 network=False, frameSize=10):
-                 
-        Checker.__init__(self, descFile, store, network)
+    def __init__(self, data, pv_store, filename, noisy=True,
+                 detection_store=None):
+
+        Checker.__init__(self, data, pv_store)
         self.done = False
-        self.frame_size = timedelta(seconds=frameSize)
         self.detection_store = detection_store
         self.messages = {}
 
@@ -572,9 +605,12 @@ class TimeChecker(Checker):
                     pv = self.vars[name]
                     matrix.update_transition_matrix(val, ts, pv)
 
+        pdb.set_trace()
         for name, val in self.vars.items():
             if val.is_periodic and not val.ignore:
                 self.matrices[name].compute_clusters()
+                self.matrices[name].last_exact_val = None
+                self.matrices[name].update_step = list()
 
     def detect_suspect_transition(self):
         if self.detection_store is not None:

@@ -12,30 +12,17 @@ NBR_RANGE = 10
 
 class Digitizer(object):
 
-    def __init__(self, min_val, max_val, nbr_range=NBR_RANGE):
+    def __init__(self, min_val=None, max_val=None, nbr_range=NBR_RANGE):
         self.min_val = min_val
         self.max_val = max_val
-        #self.ranges = self.compute_ranges(nbr_range)
         self.nbr_range = nbr_range
-        self.width = (self.max_val - self.min_val)/nbr_range
+        if (self.min_val is not None and 
+            self.max_val is not None and 
+            nbr_range is not None):
+            self.width = (self.max_val - self.min_val)/nbr_range
         self.res = list()
 
-    def compute_ranges(self, nbr_range):
-        ranges = list()
-        ranges_width = (self.max_val - self.min_val)/nbr_range
-
-        for i in range(nbr_range):
-            lower = self.min_val + i * ranges_width
-            upper = self.min_val + (i+1)*ranges_width
-            r = utils.RangeVal(lower, upper, 0)
-            ranges.append(r)
-
-        return ranges
-
-    def get_range(self, x, debug):
-
-        if debug:
-            pdb.set_trace()
+    def get_range(self, x):
 
         if x <= self.min_val:
             return 0, (self.min_val, self.min_val + self.width)
@@ -44,11 +31,10 @@ class Digitizer(object):
             return self.nbr_range-1, (self.max_val - self.width, self.max_val)
 
 
-        float_i = abs(x-self.min_val)/self.width
-        i = math.floor(float_i)
+        i = math.floor(abs(x-self.min_val)/self.width)
 
         # if x is on a limit, we consider is in the zone just before
-        if i != 0 and float_i % self.width == 0:
+        if i != 0 and abs(x-self.min_val) % self.width == 0:
             lower = self.min_val + (i-1)*self.width
             return i-1, (lower, lower + self.width)
 
@@ -71,14 +57,33 @@ class Digitizer(object):
             i, _ = self.get_range(val)
             res.append(i)
         return res
+    
+    def serialize(self):
+        return "{},{},{}".format(self.min_val, self.max_val, self.nbr_range)
 
-    def convert_digitizer_index(self, other_digitizer, i, debug):
-        if debug:
-            pdb.set_trace()
+    def deserialize(self, data):
+        min_val, max_val, nbr_range = data.split(",")
+        self.min_val = float(min_val)
+        self.max_val = float(max_val)
+        self.nbr_range = int(nbr_range)
+        self.width = (self.max_val - self.min_val)/self.nbr_range
 
+    def convert_digitizer_index(self, other_digitizer, i):
+        if other_digitizer.nbr_range >= self.nbr_range:
+            return self.convert_small_to_big(other_digitizer, i)
+        else:
+            return self.convert_big_to_small(other_digitizer, i)
+
+    def convert_big_to_small(self, other_digitizer, i):
         other_lower, other_upper = other_digitizer.get_range_extreme(i)
-        i_lower, _ = self.get_range(other_lower, debug)
-        i_upper, _ = self.get_range(other_upper, debug)
+        range_low, _ = self.get_range(other_lower)
+        range_up, _ = self.get_range(other_upper)
+        return [x for x in range(range_low, range_up+1)]
+
+    def convert_small_to_big(self, other_digitizer, i):
+        other_lower, other_upper = other_digitizer.get_range_extreme(i)
+        i_lower, _ = self.get_range(other_lower)
+        i_upper, _ = self.get_range(other_upper)
 
         if i_lower == i_upper:
             return i_lower
@@ -95,9 +100,8 @@ class Digitizer(object):
         else:
             return i_upper
 
-
     def __str__(self):
-        return str("(Min:{},Max:{},#width:{}".format(self.min_val, self.max_val, self.width))
+        return str("(Min:{},Max:{},#width:{})".format(self.min_val, self.max_val, self.width))
 
     def __repr__(self):
         return str(self)
@@ -116,10 +120,10 @@ def polynomial_fitting(x, y, deg=2):
         res.append(z)
     return res
 
-def _test_digitizer(d, val, res, res_ranges, debug=False):
+def _test_digitizer(d, val, res, res_ranges):
 
     print("get_range({})".format(val))
-    i, ranges = d.get_range(val, debug)
+    i, ranges = d.get_range(val)
 
     try:
         assert i == res
@@ -163,11 +167,11 @@ def test_digitizer():
 
     _test_digitizer(d, -3, 3, (-4, -2))
 
-def _test_convert(big, small, i, res, debug=False):
+def _test_convert(big, small, i, res):
 
     print("convert({})".format(i))
     try:
-        new_index = big.convert_digitizer_index(small, i, debug)
+        new_index = big.convert_digitizer_index(small, i)
         assert new_index == res
     except AssertionError:
         print("Expected: {}, got: {}".format(res, new_index))
@@ -182,7 +186,13 @@ def test_convert():
     _test_convert(dig_big, dig_small, 0, 0)
     _test_convert(dig_big, dig_small, 15, 7)
 
-    #--------------------
+    _test_convert(dig_small, dig_big, 4, [7, 8, 9])
+    _test_convert(dig_small, dig_big, 3, [5, 6, 7])
+    _test_convert(dig_small, dig_big, 5, [9, 10, 11])
+    _test_convert(dig_small, dig_big, 0, [0, 1])
+    _test_convert(dig_small, dig_big, 7, [13, 14, 15])
+
+    #------------------------------------------------#
 
     dig_small = Digitizer(0, 40, 13)
 
@@ -192,14 +202,28 @@ def test_convert():
     _test_convert(dig_big, dig_small, 0, 0)
     _test_convert(dig_big, dig_small, 12, 7)
 
-    #---------------------
+
+    _test_convert(dig_small, dig_big, 2, [3, 4])
+    _test_convert(dig_small, dig_big, 0, [0, 1])
+    _test_convert(dig_small, dig_big, 4, [6, 7, 8])
+    _test_convert(dig_small, dig_big, 7, [11, 12])
+
+    #------------------------------------------------#
+
     dig_big = Digitizer(-8, 16, 8)
     dig_small = Digitizer(-8, 16, 12)
+
     _test_convert(dig_big, dig_small, 4, 2)
     _test_convert(dig_big, dig_small, 9, 6)
     _test_convert(dig_big, dig_small, 1, 0)
     _test_convert(dig_big, dig_small, 11, 7)
     _test_convert(dig_big, dig_small, 2, 1)
+
+    _test_convert(dig_small, dig_big, 2, [2, 3, 4])
+    _test_convert(dig_small, dig_big, 6, [8, 9, 10])
+    _test_convert(dig_small, dig_big, 0, [0, 1])
+    _test_convert(dig_small, dig_big, 7, [10, 11])
+    _test_convert(dig_small, dig_big, 1, [1, 2])
 
 def main(input_data, pv_name_period, pv_name_non_period):
     data = input_data[:86401]

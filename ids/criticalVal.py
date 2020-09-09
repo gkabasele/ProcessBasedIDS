@@ -32,18 +32,6 @@ TRESH = 0.0001
 
 MAX_RANGE = 100
 
-class EventCriticalVal(object):
-
-    def __init__(self, event_name):
-        self.event_name = event_name
-        self.var_to_val = dict()
-
-    def __str__(self):
-        return str(self.var_to_val)
-
-    def __repr__(self):
-        return str(self)
-
 def get_all_values(data):
     map_var_val = {x: list() for x in data[0].keys()}
 
@@ -89,103 +77,8 @@ def filter_data(data, actuators, windows=101, order=3):
 
         data_filtered.append(new_state)
 
-    return data_filtered, map_var_val
+    return data_filtered
 
-def discretize_data(map_var_val, actuators, nbr_range):
-    map_var_discrete = dict()
-    for k, v in map_var_val.items():
-        if k not in actuators and k not in limitVal.IGNORE_COL:
-            min_val = np.min(map_var_val[k])
-            max_val = np.max(map_var_val[k])
-            d = Digitizer(min_val, max_val, nbr_range)
-            map_var_discrete[k] = (d.digitize(v), d)
-        else:
-            map_var_discrete[k] = map_var_val[k]
-    return map_var_discrete
-
-# var->event->Counter
-def discrete_event_data(map_var_event_val, map_var_discrete):
-    for var, events in map_var_event_val.items():
-        for k, values in events.items():
-            events[k] = Counter(map_var_discrete[var][1].digitize(values))
-
-def get_prob_from_hist(values, value):
-    ar, bin_edges = np.histogram(values, bins=10)
-    i = np.digitize(value, bin_edges) - 1
-    # if value beyond bound, 0 or len(bins) is returned
-    # len(bin) == len(ar) + 1
-    if i == len(ar):
-        i = len(ar)-1
-    elif i < 0:
-        i = 0
-    return ar[i]/ar.sum()
-
-def get_event_prob(event, act_counters):
-    nb_trans_occur = actuator_nbr_occurence(event.from_value,
-                                            act_counters[event.varname])
-    return len(event.timestamps)/(nb_trans_occur-1)
-
-#Find probability of observing a value in a timeseries
-def get_value_prob(var, map_var_values, value):
-    return get_prob_from_hist(map_var_values[var][0], value)
-
-# Get the number of time a actuator has a particular
-# state
-def actuator_nbr_occurence(act_state, act_counters):
-    if act_state == pd.ON:
-        return act_counters[pd.ON]
-    else:
-        off = act_counters[pd.OFF]
-        if pd.OFFZ in act_counters:
-            off += act_counters[pd.OFFZ]
-        return off
-
-# Get the probability of observing a value given the
-# occurence of an event
-def get_value_prob_given_event(map_var_event_val, event, var, value):
-    return map_var_event_val[var][event][value]/sum(map_var_event_val[var][event].values())
-
-def get_support_event_value(map_var_event_val, act_counters, event, var, value):
-    nb_trans_occur = actuator_nbr_occurence(event.from_value, act_counters[event.varname])
-
-    return map_var_event_val[var][event][value]/(nb_trans_occur - 1)
-
-def get_confidence_rule(map_var_event_val, act_counters, event, var, value):
-
-    sup_num = get_support_event_value(map_var_event_val, act_counters, event,
-                                      var, value)
-    sup_denum = get_event_prob(event, act_counters)
-
-    return sup_num/sup_denum
-
-#map_var_values: var->[val0, val1, ...]
-#map_var_event_val: var->(eventa->[vala0, vala1, ...], eventb->[valb0, valb1,...],..)
-def compute_j_measure(map_var_values, map_var_event_val, event, var, value):
-    prob_event = get_event_prob(map_var_values, event)
-    prob_value = get_value_prob(var, map_var_values, value)
-    prob_value_given_event = get_value_prob_given_event(map_var_event_val, event, var, value)
-
-    if "mv101" in str(event):
-        pdb.set_trace()
-
-    # website
-    #j_measure = ((prob_event * prob_value_given_event * math.log(prob_value_given_event/prob_value)) +
-    #             prob_event * (1-prob_value_given_event) * math.log((1-prob_value_given_event)/(1-prob_value)))
-    # paper
-    if prob_value_given_event == 0:
-        j_measure = math.log(1/(1-prob_value))
-
-    elif prob_value_given_event == 1:
-        j_measure = prob_event * math.log(1/prob_value)
-
-    else:
-        j_measure = ((prob_event * prob_value_given_event * math.log(prob_value_given_event/prob_value)) +
-                     (1-prob_value_given_event) * math.log((1-prob_value_given_event)/(1-prob_value)))
-
-    return j_measure
-
-def compute_rule_support(map_var_event_val, event, var, value):
-    return get_value_prob_given_event(map_var_event_val, event, var, value)
 
 def get_most_probable_range(values):
     c = Counter(values)
@@ -258,9 +151,7 @@ def get_cand_critical_values_from_std(data, actuators, sensors):
 
                     sigma_mul += 1
 
-
     return event_var_critical, event_var_ratio
-
 
 def filter_based_on_range(data, event_var_critical, var_max_split, event_var_ratio):
     event_var_to_remove = {x: set() for x in event_var_critical}
@@ -348,68 +239,6 @@ def get_max_split_per_var(event_var_critical):
 
     return var_min_max
 
-
-def compute_range_for_event(data, actuators, sensors):
-
-    events = pd.retrieve_update_timestamps(actuators, data)
-    var_min_max = get_min_max_values(data, sensors)
-    var_max_split = dict()
-
-    for event_name in events:
-        for event in events[event_name].values():
-
-            if len(event.timestamps) < 3:
-                continue
-
-            for var in sensors:
-                event_var_values = [data[ts][var] for ts in event.timestamps]
-                event_std = np.std(event_var_values)
-
-                nbr_range = max(1, math.floor((var_min_max[var][1] - var_min_max[var][0])/(6*event_std)))
-
-                if nbr_range <= 1:
-                    break
-
-                if var in var_max_split:
-                    var_max_split[var] = max(nbr_range, var_max_split[var])
-                else:
-                    var_max_split[var] = nbr_range
-
-    event_var_critical = compute_range_from_std(events, var_max_split, var_min_max)
-
-    pdb.set_trace()
-
-    return event_var_critical
-
-def compute_range_from_std(events, var_max_split, var_min_max):                
-    event_var_critical = dict()
-    for event_name in events:
-        for event in events[event_name].values():
-
-            print("Starting event: {}".format(event))
-
-            if len(event.timestamps) < 3:
-                continue
-
-            for var in var_max_split:
-                event_var_values = [data[ts][var] for ts in event.timestamps]
-                nbr_range = var_max_split[var]
-                digitizer = Digitizer(var_min_max[var][0], var_min_max[var][1], nbr_range)
-                dis_var_val = [digitizer.get_range(x)[0] for x in event_var_values]
-
-                range_index, prob = get_most_probable_range(dis_var_val)
-
-                if prob >= 0.50:
-
-                    if event not in event_var_critical:
-                        event_var_critical[event] = dict()
-
-                    event_var_critical[event][var] = (digitizer.min_val,
-                                                      digitizer.max_val,
-                                                      nbr_range, range_index)
-
-    return event_var_critical
-
 def get_var_to_critical_value(event_var_critical, var_max_split):
     # var -> nbr_range, [val1, val2, val3]
     var_to_crit = {x:set() for x in var_max_split.keys()}
@@ -477,14 +306,14 @@ def plot_critical(map_var_val, var_to_crit, var_to_digitizer):
 
         plt.show()
 
-def main(conf, data, apply_filter):
+def main(conf, output, data, apply_filter):
+
     actuators, sensors = limitVal.get_actuators_sensors(conf)
 
     if apply_filter is not None:
-        final_data, map_var_val = filter_data(data, actuators)
+        final_data = filter_data(data, actuators)
     else:
         final_data = data
-        map_var_val = get_all_values(data)
 
     event_var_critical, event_var_ratio = get_cand_critical_values_from_std(final_data,
                                                                             actuators,
@@ -496,15 +325,33 @@ def main(conf, data, apply_filter):
 
     var_to_list = merge_successive_range(var_to_crit)
 
-    pdb.set_trace()
+    with open(conf) as fh:
+        content = fh.read()
+        desc = yaml.load(content, Loader=yaml.Loader)
+        for variable in desc["variables"]:
+            var = variable["variable"]
+            name = var["name"]
+            if name in var_to_list:
+                var["critical"] = var_to_list[name]
+                var["digitizer"] = var_to_digitizer[name].serialize()
+
+        with open(output, "w") as ofh:
+            content = yaml.safe_dump(desc, allow_unicode=False)
+            ofh.write(content)
+
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--conf", action="store", dest="conf_file",
                         help="configuration file of variable")
+
     parser.add_argument("--input", action="store", dest="input",
                         help="binary file of process")
+
+    parser.add_argument("--output", action="store", dest="output",
+                        help="output file with the critical values")
+
     parser.add_argument("--filter", action="store_true", dest="apply_filter",
                         help="apply_filter")
 
@@ -512,5 +359,5 @@ if __name__ == "__main__":
 
     data = read_state_file(args.input)
 
-    main(args.conf_file, data, args.apply_filter)
+    main(args.conf_file, args.output, data, args.apply_filter)
 

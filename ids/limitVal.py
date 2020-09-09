@@ -40,8 +40,8 @@ def get_values_and_event_values(data, actuators, map_var_event_val, events):
     for types in events.values():
         for event in types.values():
             for ts in event.timestamps:
-                    state = data[ts]
-                    fill_map_from_ts(state, actuators, map_var_event_val, event)
+                state = data[ts]
+                fill_map_from_ts(state, actuators, map_var_event_val, event)
 
 def eligible_critical(max_val, min_val, val):
     return (same_value(max_val, min_val, val.mean, val.mean + val.std) and
@@ -200,6 +200,21 @@ def get_actuators(conf_file):
             if var["type"] == "co":
                 actuators.append(var['name'])
         return actuators
+
+def get_actuators_sensors(conf_file):
+    with open(conf_file) as fh:
+        content = fh.read()
+        desc = yaml.load(content, Loader=yaml.Loader)
+        actuators = list()
+        sensors = list()
+        for variable in desc["variables"]:
+            var = variable["variable"]
+            if var["type"] == "co":
+                actuators.append(var["name"])
+            elif var["type"] == "hr":
+                sensors.append(var["name"])
+
+        return actuators, sensors
 
 def main(data, conf, output, strategy, cool_time, inputtype):
     actuators = get_actuators(conf)

@@ -15,13 +15,20 @@ Clustering of 1-D array
 """
 class TimePattern(object):
 
-    def __init__(self):
+    def __init__(self, same_crit_val=True):
+        #time transition
         self.values = []
+        # updates means for transition
+        self.steps = []
         self.breakpoints = None
         self.clusters = None
+        self.same_crit_val=same_crit_val
 
     def update(self, value):
         self.values.append(value)
+
+    def add_update_step(self, val):
+        self.steps.append(val)
 
     def create_clusters(self):
         clusters, breakpoints = clustering_1D(self.values)

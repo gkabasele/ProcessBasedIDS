@@ -6,7 +6,8 @@ import collections
 import math
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.stats import gaussian_kde
+from scipy.stats import gaussian_kde, norm
+
 
 # PORT
 MODBUS_PORT = [5020, 5021, 5022, 5023, 5024, 5025, 5026, 5027, 5028, 5029,
@@ -50,6 +51,8 @@ DAY_IN_SEC = 86400
 COOL_TIME = 11000
 
 class RangeVal(object):
+
+    __slots__= ["lower", "upper", "count", "norm"]
 
     def __init__(self, lower, upper, count, normalized=None):
 
@@ -124,7 +127,7 @@ class CounterSWaT():
 class ProcessSWaTVar():
 
     def __init__(self, name, kind, min_val=None, max_val=None, 
-                 limit_values=None, ignore=False):
+                 digitizer=None, limit_values=None, ignore=False):
         self.name = name
         self.kind = kind
         self.value = None
@@ -133,6 +136,7 @@ class ProcessSWaTVar():
         self.last_transition = None
         self.elapsed_time_transition = []
         self.ignore = ignore
+        self.digitizer = digitizer
 
         self.is_periodic = kind in DISCRETE
 

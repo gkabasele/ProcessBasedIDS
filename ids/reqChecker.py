@@ -31,43 +31,15 @@ class Requirement(object):
     def __repr__(self):
         return self.__str__()
 
-class Checker(threading.Thread):
+class Checker(object):
 
-    def __init__(self, descFile, data, network=False):
-        threading.Thread.__init__(self)
+    def __init__(self, data, pv_store):
         # name -> Process Variable
-        self.vars = PVStore(descFile, data)
+        self.vars = pv_store
         #key -> name
         self.map_key_name = {}
 
         self.store = data
-        self.network = network
-
-        """
-        if network:
-            self.setup(descFile)
-        else:
-            self.setupSWaT(descFile)
-        """
-
-    def setup(self, descFile):
-        fh = open(descFile)
-        content = fh.read()
-        desc = yaml.load(content, Loader=yaml.Loader)
-        for var_desc in desc['variables']:
-            var = var_desc['variable']
-            if var['type'] == DIS_COIL or var['type'] == DIS_INP:
-                limit_values = [0, 1]
-            else:
-                limit_values = var['values']
-            pv = ProcessVariable(var['host'], var['port'], var['type'],
-                                 var['address'], limit_values=limit_values,
-                                 gap=var.get('gap', 1), size=var['size'],
-                                 name=var['name'])
-
-            self.vars[pv.name] = pv
-            self.map_key_name[pv.key()] = pv.name
-        fh.close()
 
     def setupSWaT(self, descFile):
         with open(descFile) as fh:
@@ -101,9 +73,9 @@ class Checker(threading.Thread):
 
 class ReqChecker(Checker):
 
-    def __init__(self, descFile, store, bool_weight=5, num_weight=1):
+    def __init__(self, descFile, store, pv_store, bool_weight=5, num_weight=1):
 
-        Checker.__init__(self, descFile, store)
+        Checker.__init__(self, store)
         self.reqs = [] 
         self.bool_weight = bool_weight
         self.num_weight = num_weight

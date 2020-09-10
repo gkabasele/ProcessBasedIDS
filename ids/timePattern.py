@@ -8,6 +8,7 @@ from scipy.stats import gaussian_kde
 from scipy.signal import argrelextrema
 
 from welford import Welford
+import dbscanFunc
 import utils
 
 """
@@ -17,12 +18,13 @@ class TimePattern(object):
 
     def __init__(self, same_crit_val=True):
         #time transition
-        self.values = []
+        self.values = list()
         # updates means for transition
-        self.steps = []
+        self.steps = list()
         self.breakpoints = None
         self.clusters = None
         self.same_crit_val=same_crit_val
+        self.model = None
 
     def update(self, value):
         self.values.append(value)
@@ -37,13 +39,24 @@ class TimePattern(object):
             self.clusters = cluster_property(clusters)
         else:
             self.clusters = clusters
-        self.values.clear()
+        self.values = list()
+        self.steps = list()
 
     def get_cluster(self, data):
         arr = [x.mean for x in self.clusters]
         i = find_closest_bp(arr, data)
         cluster = self.clusters[i]
         return cluster
+
+    def compute_dbscan_clusters(self):
+        minPts = 4 # Dimension + 1
+        data = self.get_matrix_from_data()
+        distances = dbscanFunc.compute_knn_distance(data, minPts)
+        self.model = dbscanFunc.compute_dbscan_model(distances, data, minPts)
+        utils.plot_clusters(data, self.model.labels_)
+
+    def get_matrix_from_data(self):
+        return np.array(list(zip(self.steps, self.values)))
 
     def __str__(self):
         return "(BP:{} C:{})".format(self.breakpoints, self.clusters)

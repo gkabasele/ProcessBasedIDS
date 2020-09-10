@@ -309,3 +309,16 @@ def get_all_values_pv(data, pvname, limit=None):
         return np.array([x[pvname] for x in data])
     else:
         return np.array([x[pvname] for x in data[:limit]])
+
+def get_colors_vectorizer():
+    colors = ["royalblue", "maroon", "forestgreen", "mediumorchid",
+              "tan", "deeppink", "olive", "goldenrod", "lightcyan",
+              "navy"]
+
+    return np.vectorize(lambda x: colors[x % len(colors)])
+
+def plot_clusters(X, cluster_mapping):
+    vectorizer = get_colors_vectorizer()
+    plt.scatter(X[:, 0], X[:, 1], c=vectorizer(cluster_mapping))
+    plt.show()
+

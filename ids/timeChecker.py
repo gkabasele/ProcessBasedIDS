@@ -540,14 +540,14 @@ class TransitionMatrix(object):
         return elapsed_time
 
     def compute_clusters(self):
-        try:
-            for row in range(len(self.header)):
-                for column in range(len(self.header)):
-                    entry = self.transitions[row][column]
-                    if not isinstance(entry, int):
+        for row in range(len(self.header)):
+            for column in range(len(self.header)):
+                entry = self.transitions[row][column]
+                if not isinstance(entry, int):
+                    if entry.same_crit_val:
                         entry.create_clusters()
-        except ValueError:
-            pdb.set_trace()
+                    else:
+                        entry.compute_dbscan_clusters()
 
 class TimeChecker(Checker):
 
@@ -605,7 +605,6 @@ class TimeChecker(Checker):
                     pv = self.vars[name]
                     matrix.update_transition_matrix(val, ts, pv)
 
-        pdb.set_trace()
         for name, val in self.vars.items():
             if val.is_periodic and not val.ignore:
                 self.matrices[name].compute_clusters()

@@ -20,29 +20,31 @@ class PVStore(object):
         with open(descFile) as fh:
             content = fh.read()
             desc = yaml.load(content, Loader=yaml.Loader)
-            for var_desc in desc['variables']:
-                var = var_desc['variable']
-                if var['type'] == utils.DIS_COIL or var['type'] == utils.DIS_INP:
+            for var_desc in desc["variables"]:
+                var = var_desc["variable"]
+                if var["type"] == utils.DIS_COIL or var["type"] == utils.DIS_INP:
                     limit_values = [0, 1, 2]
-                    pv = utils.ProcessSWaTVar(var['name'], var['type'],
+                    pv = utils.ProcessSWaTVar(var["name"], var["type"],
                                               limit_values=limit_values,
                                               min_val=0,
                                               max_val=2,
-                                              ignore=var['ignore'])
+                                              ignore=var["ignore"])
                 else:
-                    if 'critical' in var:
+                    if 'critical' in var and "digitizer" in var:
                         limit_values = var['critical']
-                        if len(limit_values) == 0:
-                            limit_values.extend([var['min'], var['max']])
-                        limit_values.sort()
+                        digitizer = Digitizer()
+                        digitizer.deserialize(var["digitizer"])
+                        ignore = False
                     else:
-                        limit_values = [var['min'], var['max']]
-                        limit_values.sort()
+                        limit_values = None
+                        digitizer = None
+                        ignore = True
                     pv = utils.ProcessSWaTVar(var['name'], var['type'],
                                               limit_values=limit_values,
+                                              digitizer=digitizer,
                                               min_val=var['min'],
                                               max_val=var['max'],
-                                              ignore=var['ignore'])
+                                              ignore=ignore)
                 self.vars[pv.name] = pv
 
     def detect_periodic_shape(self, data):

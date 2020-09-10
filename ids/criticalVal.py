@@ -30,7 +30,7 @@ MAGNITUDE = 0.1
 
 TRESH = 0.0001
 
-MAX_RANGE = 100
+MAX_RANGE = 60
 
 def get_all_values(data):
     map_var_val = {x: list() for x in data[0].keys()}
@@ -116,7 +116,11 @@ def get_cand_critical_values_from_std(data, actuators, sensors):
 
                 # Six Sigma rule
                 while True:
-                    nbr_range = max(1, math.floor((var_min_max[var][1] - var_min_max[var][0])/(sigma_mul*event_std)))
+                    try:
+                        nbr_range = max(1, math.floor((var_min_max[var][1] - var_min_max[var][0])/(sigma_mul*event_std)))
+                    except OverflowError:
+                        # event_std is so small that the nbr range would be to high
+                        nbr_range = MAX_RANGE
 
                     if nbr_range <= 1:
                         break
@@ -127,7 +131,7 @@ def get_cand_critical_values_from_std(data, actuators, sensors):
 
                     range_index, prob = get_most_probable_range(dis_var_val)
 
-                    if prob >= 1:
+                    if prob == 1:
 
                         if event not in event_var_critical:
                             event_var_critical[event] = dict()
@@ -266,30 +270,42 @@ def get_var_to_critical_value(event_var_critical, var_max_split):
 
     return var_to_crit, var_to_digitizer
 
+def merge_successive_range_(l):
+    res = list()
+    i = 0
+    sub = list()
+    while i < len(l)-1:
+        if l[i]+1 == l[i+1]:
+            sub.append(l[i])
+        else:
+            sub.append(l[i])
+            res.append(sub)
+            sub = list()
+
+        i += 1
+
+    if len(sub) != 0:
+        res.append(sub)
+
+    if l[i]-1 == l[i-1]:
+        res[-1].append(l[i])
+    else:
+        res.append([l[i]])
+
+    return res
+
 def merge_successive_range(var_to_crit):
 
-    var_to_list  = {x:list() for x in var_to_crit.keys()}
+    var_to_list = {x:None for x in var_to_crit.keys()}
     for var, crits in var_to_crit.items():
         l = sorted(list(crits))
-        i = 0
-        while i <= len(l)-2:
-            sub = list()
-            while l[i]+1 == l[i+1] and i <= len(l)-2:
-                sub.append(l[i])
-                i += 1
+        res = merge_successive_range_(l)
+        var_to_list[var] = res
 
-            sub.append(l[i])
-            i += 1
-            var_to_list[var].append(sub)
-
-        if l[i]-1 == l[i-1]:
-            var_to_list[var][-1].append(l[i])
-        else:
-            var_to_list[var].append([l[i]])
     return var_to_list
 
-def plot_critical(map_var_val, var_to_crit, var_to_digitizer):
-
+def plot_critical(data, var_to_crit, var_to_digitizer):
+    map_var_val = get_all_values(data)
     for var, values in var_to_crit.items():
         digitizer = var_to_digitizer[var]
         zones = set()
@@ -310,7 +326,7 @@ def main(conf, output, data, apply_filter):
 
     actuators, sensors = limitVal.get_actuators_sensors(conf)
 
-    if apply_filter is not None:
+    if apply_filter:
         final_data = filter_data(data, actuators)
     else:
         final_data = data
@@ -324,6 +340,8 @@ def main(conf, output, data, apply_filter):
     var_to_crit, var_to_digitizer = get_var_to_critical_value(event_var_critical, var_min_split)
 
     var_to_list = merge_successive_range(var_to_crit)
+
+    plot_critical(final_data, var_to_crit, var_to_digitizer)
 
     with open(conf) as fh:
         content = fh.read()

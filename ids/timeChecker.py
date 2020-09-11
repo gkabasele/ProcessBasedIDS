@@ -498,11 +498,17 @@ class TransitionMatrix(object):
                         self.transitions[row][row].update(same_value_t)
                         self.computation_trigger = True
                         elapsed_trans_t = (ts - self.last_val_train.end).total_seconds()
-                        self.last_val_train = ValueTS(value=crit_val, start=ts, end=ts)
                         self.transitions[row][column].update(elapsed_trans_t)
+
                         # A new transition was completed to we have to store the update behavior
-                        self.transitions[row][column].add_update_step(np.mean(self.update_step))
+                        # If the transition is between successive range there put directly the update step
+                        if len(self.update_step) != 0:
+                            self.transitions[row][column].add_update_step(np.mean(self.update_step))
+                        else:
+                            self.transitions[row][column].add_update_step(crit_val - self.last_val_train.value)
                         self.update_step = list()
+
+                        self.last_val_train = ValueTS(value=crit_val, start=ts, end=ts)
                 else:
                     self.last_val_train = ValueTS(value=crit_val, start=ts, end=ts)
                     self.computation_trigger = False

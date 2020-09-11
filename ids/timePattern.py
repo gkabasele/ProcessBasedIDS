@@ -24,6 +24,7 @@ class TimePattern(object):
         self.breakpoints = None
         self.clusters = None
         self.same_crit_val=same_crit_val
+        self.few = None
         self.model = None
 
     def update(self, value):
@@ -51,9 +52,14 @@ class TimePattern(object):
     def compute_dbscan_clusters(self):
         minPts = 4 # Dimension + 1
         data = self.get_matrix_from_data()
-        distances = dbscanFunc.compute_knn_distance(data, minPts)
-        self.model = dbscanFunc.compute_dbscan_model(distances, data, minPts)
-        utils.plot_clusters(data, self.model.labels_)
+        if len(data) >= minPts:
+            distances = dbscanFunc.compute_knn_distance(data, minPts)
+            self.model = dbscanFunc.compute_dbscan_model(distances, data, minPts)
+            self.few = False
+            utils.plot_clusters(data, self.model.labels_)
+        else:
+            self.model = data
+            self.few = False
 
     def get_matrix_from_data(self):
         return np.array(list(zip(self.steps, self.values)))

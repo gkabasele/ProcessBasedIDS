@@ -44,7 +44,12 @@ def compute_dbscan_model(distances, data, n):
                     max_silhouette = sil
                     max_model = model
 
-    return max_model
+    if max_model is not None:
+        return max_model
+    else:
+        e = max(1/10**6, np.quantile(distances, 0.5))
+        dbscan = DBSCAN(eps=e, min_samples=n)
+        return dbscan.fit(data)
 
 
 def main():

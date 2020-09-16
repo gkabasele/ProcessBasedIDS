@@ -94,6 +94,7 @@ class TransitionMatrix(object):
         # variable to keep track of the update step
         self.last_exact_val = None
         self.update_step = list()
+        self.update_step_still = list()
 
 
     # Create matrix of transitions
@@ -209,7 +210,7 @@ class TransitionMatrix(object):
         if cluster.max_val == cluster.min_val:
             return t1 == cluster.mean
 
-        if cluster.min_val <= t1 and t1 <= cluster.max_val: 
+        if cluster.min_val <= t1 and t1 <= cluster.max_val:
             return True
 
         if t1 < cluster.min_val:
@@ -261,7 +262,7 @@ class TransitionMatrix(object):
         else:
             return TransitionMatrix.DIFF, cluster
 
-        
+
     def outlier_handler_noisy(self, column, row, elapsed_time, cluster):
         pattern = self.transitions[row][column]
 
@@ -456,6 +457,22 @@ class TransitionMatrix(object):
                                    malicious_activities, crit_val=self.last_value.value,
                                    last_val=self.last_value.value)
 
+    def add_update_step_same(self, value, row):
+        if len(self.update_step_still) != 0:
+            self.transitions[row][row].add_update_step(np.mean(self.update_step_still))
+        else:
+            self.transitions[row][row].add_update_step(value - self.last_exact_val)
+        self.update_step_still = list()
+
+    def add_update_step_diff(self, crit_val, row, column):
+
+
+        if len(self.update_step) != 0:
+            self.transitions[row][column].add_update_step(np.mean(self.update_step))
+        else:
+            self.transitions[row][column].add_update_step(crit_val - self.last_val_train.value)
+        self.update_step = list()
+
     # Add the elasped times of each transition.
     @Decorators
     def update_transition_matrix(self, value, ts, pv):
@@ -480,35 +497,38 @@ class TransitionMatrix(object):
                             self.last_val_train = ValueTS(value=crit_val,
                                                           start=self.last_val_train.start,
                                                           end=ts)
+                            # Keeping track of update in the critical zone
+                            self.update_step_still.append(value - self.last_exact_val)
                         else:
                             # Since it has changed, we have to compute last value
                             same_value_t = (self.last_val_train.end - self.last_val_train.start).total_seconds()
                             self.transitions[row][row].update(same_value_t)
+                            self.add_update_step_same(value, row)
 
                             self.last_val_train = ValueTS(value=crit_val,
                                                           start=ts,
                                                           end=ts)
 
-                        # Reset of the update list because we can back
+                        # Reset of the update list because we came back
                         self.update_step = list()
-
                         self.computation_trigger = False
                     else:
                         same_value_t = (self.last_val_train.end - self.last_val_train.start).total_seconds()
                         self.transitions[row][row].update(same_value_t)
-                        self.computation_trigger = True
+
+                        # We have to store the update behavior in the range
+                        self.add_update_step_same(value, row)
+
                         elapsed_trans_t = (ts - self.last_val_train.end).total_seconds()
                         self.transitions[row][column].update(elapsed_trans_t)
 
-                        # A new transition was completed to we have to store the update behavior
+
+                        # A new transition was completed so we have to store the update behavior
                         # If the transition is between successive range there put directly the update step
-                        if len(self.update_step) != 0:
-                            self.transitions[row][column].add_update_step(np.mean(self.update_step))
-                        else:
-                            self.transitions[row][column].add_update_step(crit_val - self.last_val_train.value)
-                        self.update_step = list()
+                        self.add_update_step_diff(crit_val, row, column)
 
                         self.last_val_train = ValueTS(value=crit_val, start=ts, end=ts)
+                        self.computation_trigger = True
                 else:
                     self.last_val_train = ValueTS(value=crit_val, start=ts, end=ts)
                     self.computation_trigger = False
@@ -521,6 +541,7 @@ class TransitionMatrix(object):
 
         if not found and self.last_val_train is not None:
             self.has_changed = True
+            self.update_step_still = list()
 
             #Since the variable left a critical value, we need to keep track of the
             #behavior of update to complete the next transition
@@ -553,7 +574,7 @@ class TransitionMatrix(object):
                     if entry.same_crit_val:
                         entry.create_clusters()
                     else:
-                        entry.compute_dbscan_clusters()
+                        entry.compute_dbscan_clusters(self.name, row, column)
 
 class TimeChecker(Checker):
 
@@ -587,7 +608,7 @@ class TimeChecker(Checker):
         self.matrices = matrices
 
     def is_var_of_interest(self, name):
-        return (name != 'timestamp' and name != 'normal/attack' 
+        return (name != 'timestamp' and name != 'normal/attack'
                 and self.vars[name].is_periodic and not self.vars[name].ignore)
 
     def basic_detection(self, name, value, ts):

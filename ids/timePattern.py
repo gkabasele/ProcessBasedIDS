@@ -1,6 +1,6 @@
 import pdb
 import math
-import matplotlib
+
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.neighbors import KernelDensity
@@ -16,16 +16,17 @@ Clustering of 1-D array
 """
 class TimePattern(object):
 
-    def __init__(self, same_crit_val=True):
+    def __init__(self, minPts=3, same_crit_val=True):
         #time transition
         self.values = list()
         # updates means for transition
         self.steps = list()
         self.breakpoints = None
         self.clusters = None
-        self.same_crit_val=same_crit_val
-        self.few = None
+        self.same_crit_val = same_crit_val
         self.model = None
+        self.minPts = minPts
+        self.data = None
 
     def update(self, value):
         self.values.append(value)
@@ -40,8 +41,6 @@ class TimePattern(object):
             self.clusters = cluster_property(clusters)
         else:
             self.clusters = clusters
-        self.values = list()
-        self.steps = list()
 
     def get_cluster(self, data):
         arr = [x.mean for x in self.clusters]
@@ -49,26 +48,46 @@ class TimePattern(object):
         cluster = self.clusters[i]
         return cluster
 
-    def compute_dbscan_clusters(self):
-        minPts = 4 # Dimension + 1
-        data = self.get_matrix_from_data()
-        if len(data) >= minPts:
-            distances = dbscanFunc.compute_knn_distance(data, minPts)
-            self.model = dbscanFunc.compute_dbscan_model(distances, data, minPts)
-            self.few = False
-            utils.plot_clusters(data, self.model.labels_)
-        else:
-            self.model = data
-            self.few = False
+    def compute_dbscan_clusters(self, name=None, row=None, col=None):
+        print("Name:{}, Row:{}, Col:{}".format(name, row, col))
+        self.data = self.get_matrix_from_data(self.steps, self.values)
+        """
+        density = gaussian_kde(self.values)
+        xs = np.linspace(min(self.values), max(self.values), 200)
+        plt.plot(xs, density(xs))
+        plt.show()
+        """
 
-    def get_matrix_from_data(self):
-        return np.array(list(zip(self.steps, self.values)))
+        if len(self.data) >= self.minPts:
+            distances = dbscanFunc.compute_knn_distance(self.data, self.minPts)
+            self.model = dbscanFunc.compute_dbscan_model(distances, self.data, self.minPts)
+            #Number of outliers
+            num_outliers = (self.model.labels_ == -1).sum()
+            expected_fpr = num_outliers/len(self.model.labels_)
+            print("Expected FPR: {}".format(expected_fpr))
+            utils.plot_clusters(self.data, self.model.labels_)
+        else:
+            self.model = self.data
+
+    def get_matrix_from_data(self, steps, values):
+        return np.array(list(zip(steps, values)))
 
     def __str__(self):
-        return "(BP:{} C:{})".format(self.breakpoints, self.clusters)
+        return str(self.model)
 
     def __repr__(self):
         return self.__str__()
+
+    def is_outlier(self, update_step, time_elapsed):
+        curr_data = np.append(self.data, [update_step, time_elapsed])
+
+        if not len(self.data) > self.minPts:
+            labels = self.model.fit_predict(curr_data)
+            return labels[-1] == -1
+
+        else:
+            return [update_step, time_elapsed] in self.model
+
 
 def find_extreme_local(data):
     minima = []

@@ -1,4 +1,5 @@
 import random
+import pdb
 import string
 import yaml
 import pickle
@@ -321,4 +322,28 @@ def plot_clusters(X, cluster_mapping):
     vectorizer = get_colors_vectorizer()
     plt.scatter(X[:, 0], X[:, 1], c=vectorizer(cluster_mapping))
     plt.show()
+
+def plot_datapoint(X):
+    plt.scatter(X[:, 0], X[:, 1])
+    plt.show()
+
+def plot_normal_attack(normal, attack):
+    plt.subplot(211)
+    plt.scatter(normal[:, 0], normal[:, 1])
+    plt.subplot(212)
+    plt.scatter(attack[:, 0], attack[:, 1])
+    plt.show()
+
+
+def plot_clusters_with_outlier(X, cluster_mapping, new_data, mapping_new_data):
+    vectorizer = get_colors_vectorizer()
+    plt.scatter(X[:, 0], X[:, 1], c=vectorizer(cluster_mapping), alpha=0.5)
+    plt.scatter(new_data[:, 0], new_data[:, 1],
+                c=vectorizer(mapping_new_data), marker="^")
+    plt.show()
+
+def save_plot_clusters(X, cluster_mapping, filename):
+    vectorizer = get_colors_vectorizer()
+    plt.scatter(X[:, 0], X[:, 1], c=vectorizer(cluster_mapping))
+    plt.savefig(filename)
 

@@ -334,9 +334,20 @@ class TransitionMatrix(object):
                     return TransitionMatrix.DIFF, cluster
         return TransitionMatrix.SAME, cluster
 
+    def test_validity_transition(self, elapsed_time, updates, oldval, newval):
+        row = self.val_pos[oldval]
+        col = self.val_pos[newval]
+        pattern = self.transitions[row][col]
+        # Unknown transition since there is no pattern associated
+        if isinstance(pattern, int) and (pattern == 0 or pattern == -1):
+            return TransitionMatrix.UNKNOWN, pattern
+        if pattern.is_outlier_hdbscan(elapsed_time, updates):
+            return TransitionMatrix.SAME
+        else:
+            return TransitionMatrix.DIFF
 
     def write_msg(self, filehandler, res, ts, pv_name, got, expected,
-                  malicious_activities,crit_val=None, last_val=None):
+                  malicious_activities, crit_val=None, last_val=None):
 
         if res == TransitionMatrix.UNEXPECT:
             filehandler.write("[{}][{}] Unexpected value for {}, expected:{}, got {}\n".format(ts, res, pv_name,
@@ -348,6 +359,19 @@ class TransitionMatrix(object):
                                                                                                 last_val, crit_val,
                                                                                                 expected, got))
             self.add_malicious_activities(malicious_activities, ts, pv_name)
+
+    def perform_detection_test(self, filehandler, ts, pv, malicious_activities,
+                               elapsed_val, update_mean, oldval, newval):
+        res = self.test_validity_transition(elapsed_val, update_mean,
+                                            oldval,
+                                            newval)
+
+        if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
+            self.write_msg(filehandler, res, ts, pv.name,
+                           elapsed_val, "",
+                           malicious_activities, crit_val=newval,
+                           last_val=oldval)
+
 
     def compute_transition_time(self, newval, ts, pv, filehandler, malicious_activities):
         # Value greater (resp. lower) than max (resp. min)
@@ -361,7 +385,7 @@ class TransitionMatrix(object):
             self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name,
                            newval, self.max_val, malicious_activities)
 
-        
+
         # If no critical value was found, we need to compute how long the last
         # critical value remained
         found = False
@@ -375,26 +399,33 @@ class TransitionMatrix(object):
                         # This is the case where a loop transition occured
                         # We update the end time to compute the remaining of
                         # the critical value. The second case means that the
-                        # left the critical value than came back so we need
-                        # to update when it started
-                        if not self.has_changed:
+                        # variable left the critical value than came back so 
+                        # we need to update when it started
+
+                        # check if the change was done due to the noise
+                        if not self.has_changed or (ts - self.last_value.end == 1):
                             self.last_value = ValueTS(value=crit_val,
                                                       start=self.last_value.start,
                                                       end=ts)
+                            self.update_step_still.append(newval - self.last_exact_val)
                         else:
                             self.last_value = ValueTS(value=crit_val,
                                                       start=ts,
                                                       end=ts)
+                            self.update_step_still = list()
 
                         # This test is performed every remaining time to detect attack
                         # faster
                         elapsed_time = (ts - self.last_value.start).total_seconds()
-                        res, expected = self.compute_remaining(crit_val, elapsed_time)
+                        if len(self.update_step_still) > 0:
+                            update_mean = np.mean(self.update_step_still)
+                        else:
+                            update_mean = newval - self.last_exact_val
 
-                        if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
-                            self.write_msg(filehandler, res, ts, pv.name,
-                                           elapsed_time, expected, malicious_activities,
-                                           crit_val=crit_val, last_val=crit_val)
+                        self.perform_detection_test(filehandler, ts, pv, malicious_activities,
+                                                    elapsed_time, update_mean, self.last_value.value, self.last_value.value)
+
+                        res, expected = self.compute_remaining(crit_val, elapsed_time)
 
                         self.update_step = list()
 
@@ -402,35 +433,35 @@ class TransitionMatrix(object):
                     else:
                         if not pv.is_bool_var():
                             elapsed_trans_t = (ts - self.last_value.end).total_seconds()
-                            update_mean = np.mean(self.update_step)
-                            res, expected = self.check_transition_time(crit_val, 
-                                                                       self.last_value.value,
-                                                                       elapsed_trans_t, pv)
+                            if len(self.update_step) > 0:
+                                update_mean = np.mean(self.update_step)
+                            else:
+                                update_mean = newval - self.last_exact_val
 
-                            if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
-                                self.write_msg(filehandler, res, ts, pv.name,
-                                               elapsed_trans_t, expected,
-                                               malicious_activities, crit_val=crit_val,
-                                               last_val=self.last_value.value)
+                            self.perform_detection_test(filehandler, ts, pv, malicious_activities,
+                                                        elapsed_trans_t, update_mean,
+                                                        self.last_value.value,
+                                                        crit_val)
 
                         # When a value change from one critical value to another without transition
                         # value so we must compute how long a value remained (only boolean?)
                         same_value_t = (self.last_value.end - self.last_value.start).total_seconds()
-                        res, expected = self.check_transition_time(self.last_value.value,
-                                                                   self.last_value.value,
-                                                                   same_value_t, pv)
 
-                        if res == TransitionMatrix.DIFF or res == TransitionMatrix.UNKNOWN:
-                            self.write_msg(filehandler, res, ts, pv.name, same_value_t, expected,
-                                           malicious_activities, crit_val=self.last_value.value,
-                                           last_val=self.last_value.value)
+                        if len(self.update_step_still) > 0:
+                            update_mean = np.mean(self.update_step)
+                        else:
+                            update_mean = newval - self.last_exact_val
+
+                        self.perform_detection_test(filehandler, ts, pv, malicious_activities,
+                                                    same_value_t, update_mean, self.last_value.value,
+                                                    self.last_value.value)
 
                         self.last_value = ValueTS(value=crit_val, start=ts, end=ts)
                 else:
                     self.last_value = ValueTS(value=crit_val, start=ts, end=ts)
                     self.update_step.append(newval - self.last_exact_val)
                     self.last_exact_val = newval
-                    
+
                 self.has_changed = False
                 break
 
@@ -441,9 +472,9 @@ class TransitionMatrix(object):
         # There is no more modification than will occur
         if not found or ts == self.end_time:
             self.has_changed = True
+            self.update_step_still = list()
 
-            self.update_step = list()
-
+            self.update_step.append(newval - self.last_exact_val)
 
             # Case where a variable was on critical value and just changed to non-critical
             # We need to see how long it remains in that critical value
@@ -464,14 +495,14 @@ class TransitionMatrix(object):
             self.transitions[row][row].add_update_step(value - self.last_exact_val)
         self.update_step_still = list()
 
+
     def add_update_step_diff(self, crit_val, row, column):
-
-
         if len(self.update_step) != 0:
             self.transitions[row][column].add_update_step(np.mean(self.update_step))
         else:
             self.transitions[row][column].add_update_step(crit_val - self.last_val_train.value)
         self.update_step = list()
+
 
     # Add the elasped times of each transition.
     @Decorators
@@ -493,7 +524,7 @@ class TransitionMatrix(object):
 
                     if self.last_val_train.value == crit_val:
 
-                        if not self.has_changed:
+                        if not self.has_changed or (ts - self.last_val_train.end == 1):
                             self.last_val_train = ValueTS(value=crit_val,
                                                           start=self.last_val_train.start,
                                                           end=ts)
@@ -520,6 +551,15 @@ class TransitionMatrix(object):
                         self.add_update_step_same(value, row)
 
                         elapsed_trans_t = (ts - self.last_val_train.end).total_seconds()
+
+                        # The transition should be from consecutive critical value
+                        # It is not true if the width of a range is really small
+                        # FIXME
+                        try:
+                            assert abs(row - column) == 1
+                        except AssertionError:
+                            pass
+
                         self.transitions[row][column].update(elapsed_trans_t)
 
 
@@ -571,10 +611,7 @@ class TransitionMatrix(object):
             for column in range(len(self.header)):
                 entry = self.transitions[row][column]
                 if not isinstance(entry, int):
-                    if entry.same_crit_val:
-                        entry.create_clusters()
-                    else:
-                        entry.compute_dbscan_clusters(self.name, row, column)
+                    entry.compute_clusters(name=self.name, row=row, col=column)
 
 class TimeChecker(Checker):
 

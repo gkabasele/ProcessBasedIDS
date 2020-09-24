@@ -6,7 +6,7 @@ import numpy as np
 from sklearn.neighbors import KernelDensity
 from scipy.stats import gaussian_kde
 from scipy.signal import argrelextrema
-
+import hdbscan
 from welford import Welford
 import dbscanFunc
 import utils
@@ -25,7 +25,7 @@ class TimePattern(object):
         self.clusters = None
         self.same_crit_val = same_crit_val
         self.model = None
-        self.minPts = minPts
+        self.min_pts = minPts
         self.data = None
 
     def update(self, value):
@@ -48,24 +48,42 @@ class TimePattern(object):
         cluster = self.clusters[i]
         return cluster
 
-    def compute_dbscan_clusters(self, name=None, row=None, col=None):
+    def export_data_matrix(self, filename):
+        with open(filename, "wb") as f:
+            if self.data is None:
+                self.data = self.get_matrix_from_data(self.steps, self.values)
+            np.save(f, self.data)
+
+    def compute_clusters(self, strategy="hdbscan", name=None, row=None, col=None):
         print("Name:{}, Row:{}, Col:{}".format(name, row, col))
         self.data = self.get_matrix_from_data(self.steps, self.values)
+
+        filename = "./test_transition_dataset/{}_{}_{}.bin".format(name, row, col)
+        self.export_data_matrix(filename)
+        return
+
         """
+        DEBUG
         density = gaussian_kde(self.values)
         xs = np.linspace(min(self.values), max(self.values), 200)
         plt.plot(xs, density(xs))
         plt.show()
         """
 
-        if len(self.data) >= self.minPts:
-            distances = dbscanFunc.compute_knn_distance(self.data, self.minPts)
-            self.model = dbscanFunc.compute_dbscan_model(distances, self.data, self.minPts)
+        if len(self.data) >= self.min_pts:
+            if strategy:
+                self.model = dbscanFunc.compute_hdbscan_model(self.data, self.min_pts)
+            else:
+                distances = dbscanFunc.compute_knn_distance(self.data, self.min_pts)
+                self.model = dbscanFunc.compute_dbscan_model(distances, self.data, self.min_pts)
+            """
+            DEBUG
             #Number of outliers
             num_outliers = (self.model.labels_ == -1).sum()
             expected_fpr = num_outliers/len(self.model.labels_)
             print("Expected FPR: {}".format(expected_fpr))
             utils.plot_clusters(self.data, self.model.labels_)
+            """
         else:
             self.model = self.data
 
@@ -78,13 +96,20 @@ class TimePattern(object):
     def __repr__(self):
         return self.__str__()
 
-    def is_outlier(self, update_step, time_elapsed):
+    def is_outlier_dbscan(self, time_elapsed, update_step):
         curr_data = np.append(self.data, [update_step, time_elapsed])
 
-        if not len(self.data) > self.minPts:
+        if len(self.data) > self.min_pts:
             labels = self.model.fit_predict(curr_data)
             return labels[-1] == -1
 
+        else:
+            return [update_step, time_elapsed] in self.model
+
+    def is_outlier_hdbscan(self, time_elapsed, update_step):
+        if len(self.data) > self.min_pts:
+            new_label, _ = hdbscan.approximate_predict(self.model, [[update_step, time_elapsed]])
+            return new_label[-1] == -1
         else:
             return [update_step, time_elapsed] in self.model
 

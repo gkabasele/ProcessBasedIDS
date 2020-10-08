@@ -8,6 +8,7 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import gaussian_kde, norm
+from sklearn import preprocessing
 
 
 # PORT
@@ -347,3 +348,11 @@ def save_plot_clusters(X, cluster_mapping, filename):
     plt.scatter(X[:, 0], X[:, 1], c=vectorizer(cluster_mapping))
     plt.savefig(filename)
 
+def normalized(X, x_min=0, x_max=1):
+    nom = (X-X.min(axis=0)) * (x_max - x_min)
+    denom = X.max(axis=0) - X.min(axis=0)
+    denom[denom == 0] = 1
+    return x_min + nom/denom
+
+def standardize(X):
+    return preprocessing.scale(X)

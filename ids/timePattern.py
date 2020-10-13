@@ -63,7 +63,7 @@ class TimePattern(object):
         if len(self.data) >= self.min_pts:
             if strategy:
                 self.model = dbscanFunc.compute_hdbscan_model(self.data, self.min_pts)
-                self.threshold = dbscanFunc.compute_threshold(self.data, self.min_pts, self.model)
+                self.threshold, _ = dbscanFunc.compute_threshold(self.data, self.min_pts, self.model)
         else:
             self.model = self.data
 
@@ -78,14 +78,17 @@ class TimePattern(object):
         return self.__str__()
 
     def is_outlier_hdbscan(self, time_elapsed, update_step):
-        if len(self.data) > self.min_pts:
-            is_outlier, _ = dbscanFunc.run_detection(self.data,
-                                                     np.array([[update_step, time_elapsed]]),
-                                                     self.min_pts,
-                                                     self.threshold)
-            return is_outlier
-        else:
-            return [update_step, time_elapsed] in self.model
+        if self.threshold is not None:
+            if len(self.data) > self.min_pts:
+                is_outlier, _ = dbscanFunc.run_detection(self.data,
+                                                         np.array([[update_step, time_elapsed]]),
+                                                         self.min_pts,
+                                                         self.threshold)
+                return is_outlier
+            else:
+                return [update_step, time_elapsed] in self.model
+
+        return True
 
 
 def find_extreme_local(data):

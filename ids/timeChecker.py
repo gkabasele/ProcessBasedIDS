@@ -554,11 +554,6 @@ class TransitionMatrix(object):
 
                         # The transition should be from consecutive critical value
                         # It is not true if the width of a range is really small
-                        # FIXME
-                        try:
-                            assert abs(row - column) == 1
-                        except AssertionError:
-                            pass
 
                         self.transitions[row][column].update(elapsed_trans_t)
 

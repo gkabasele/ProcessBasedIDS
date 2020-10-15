@@ -72,7 +72,13 @@ class TimePattern(object):
         return utils.standardize(data)
 
     def __str__(self):
-        return str(self.model)
+        if len(self.data) >= self.min_pts:
+            clusters = len(set(self.model.labels_)) -1 if -1 in self.model.labels_ else 0
+            nbr_outlier = len(np.where(clusters == -1)[0])
+            return str("#Clusters:{}, #Outliers:{}".format(clusters, nbr_outlier))
+        else:
+            clusters = len(self.data)
+            return str("#Clusters:{}".format(clusters))
 
     def __repr__(self):
         return self.__str__()
@@ -80,15 +86,15 @@ class TimePattern(object):
     def is_outlier_hdbscan(self, time_elapsed, update_step):
         if self.threshold is not None:
             if len(self.data) > self.min_pts:
-                is_outlier, _ = dbscanFunc.run_detection(self.data,
-                                                         np.array([[update_step, time_elapsed]]),
-                                                         self.min_pts,
-                                                         self.threshold)
-                return is_outlier
+                is_outlier, score = dbscanFunc.run_detection(self.data,
+                                                             np.array([[update_step, time_elapsed]]),
+                                                             self.min_pts,
+                                                             self.threshold)
+                return is_outlier, score
             else:
-                return [update_step, time_elapsed] in self.model
+                return [update_step, time_elapsed] in self.model, None
 
-        return True
+        return True, None
 
 
 def find_extreme_local(data):

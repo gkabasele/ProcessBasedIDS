@@ -286,9 +286,13 @@ def inlier_score(attack, clusters, minPts):
     clf.fit_predict(attack)
     return clf.negative_outlier_factor_[-1]
 
-def outlier_prob_score(model, minPts):
-    soft_clusters = hdbscan.all_points_membership_vectors(model)
-    return np.max(soft_clusters[-1])
+def outlier_prob_score(data, model):
+    if len(set(model.labels_)) > 2:
+        soft_clusters = hdbscan.all_points_membership_vectors(model)
+        return np.max(soft_clusters[-1])
+    else:
+        thresh_list, _ = run_soft_cluster(data, model, [-1])
+        return thresh_list[-1]
 
 def run_detection(normal, new_data, minPts, outlier_thresh, prob=True):
     point = np.reshape(new_data, (1, 2))
@@ -296,7 +300,7 @@ def run_detection(normal, new_data, minPts, outlier_thresh, prob=True):
     model, labels = outlier_detected_recompute(data, minPts)
     if labels[-1] == -1:
         if prob:
-            score = outlier_prob_score(model, minPts)
+            score = outlier_prob_score(data, model)
         else:
             score = inlier_score(data, labels, minPts)
 
@@ -519,6 +523,7 @@ def compute_threshold(data, minPts, model, prob=True):
     return param_space[np.argmin(output_val)], thresh_list
 
 def perform_detection(normal, attack, prob):
+    pdb.set_trace()
     minPts = 4
     model = compute_hdbscan_model(normal, minPts)
 

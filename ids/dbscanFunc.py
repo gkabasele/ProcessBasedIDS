@@ -1,6 +1,7 @@
 import argparse
 import os
 import itertools
+import math
 from timeit import default_timer as timer
 from collections.abc import Iterable
 import numpy as np
@@ -15,6 +16,7 @@ from sklearn.neighbors import LocalOutlierFactor
 from sklearn.cluster import DBSCAN
 from sklearn import metrics
 from sklearn.metrics.pairwise import pairwise_distances
+import jenkspy
 import seaborn as sns
 import hdbscan
 from matplotlib import pyplot as plt
@@ -359,6 +361,10 @@ def points_in_cluster(cluster, tree):
     return leaves
 
 def merge_height(point, cluster, tree, point_dict):
+    ## multi point
+    cluster_row = tree[tree["child"] == cluster]
+    cluster_height = cluster_row["lambda_val"][0]
+    
     if point in point_dict[cluster]:
         merge_row = tree[tree['child'] == float(point)][0]
         return merge_row['lambda_val']
@@ -508,17 +514,20 @@ def compute_threshold(data, minPts, model, prob=True):
 
             #outlier prob
             thresh_list, _ = compute_prob_outliers(model, outliers_index)
-            param_space = [np.percentile(thresh_list, i) for i in range(25, 100, 25)]
         else:
             thresh_list, _ = run_soft_cluster(data, model, outliers_index)
-            param_space = [np.percentile(thresh_list, i) for i in range(25, 100, 25)]
+
+        param_space = [np.percentile(thresh_list, i) for i in range(25, 100, 25)]
     else:
         #local outlier factor
-        tmp, _ = compute_lof_outliers(data, minPts, outliers_index)
-        thresh_list = [x for x in tmp if x > -2]
-        param_space = [np.percentile(thresh_list, i) for i in range(10, 100, 10)]
-
-    output_val = [compute_outlier(x, thresh_list)/len(data) for x in param_space]
+        thresh_list, _ = compute_lof_outliers(data, minPts, outliers_index)
+        if len(thresh_list) > 3:
+            # We consider two groups, the local outlier and the general outlier
+            jnb = jenkspy.JenksNaturalBreaks(3)
+            jnb.fit(thresh_list)
+            return np.min(jnb.groups_[2]), thresh_list
+        else:
+            return -3, thresh_list
 
     return param_space[np.argmin(output_val)], thresh_list
 
@@ -547,7 +556,7 @@ def perform_detection(normal, attack, prob):
     print("Threshold:{}".format(threshold))
     for new_data in enumerate(attack):
         new_val = new_data[1]
-        is_outlier, score = run_detection(normal, new_val, minPts, threshold)
+        is_outlier, score = run_detection(normal, new_val, minPts, threshold, prob)
         if is_outlier:
             print("Outlier: {} ,score: {}".format(np.reshape(new_val, (1, 2)), score))
             nbr_outliers += 1
@@ -598,7 +607,7 @@ def main(filename, is_dir, normal_trace, attack_trace):
         with open(attack_trace, "rb") as f:
             attack = np.load(f)
 
-        perform_detection(normal, attack, True)
+        perform_detection(normal, attack, False)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

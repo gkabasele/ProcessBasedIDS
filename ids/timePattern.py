@@ -63,13 +63,13 @@ class TimePattern(object):
         if len(self.data) >= self.min_pts:
             if strategy:
                 self.model = dbscanFunc.compute_hdbscan_model(self.data, self.min_pts)
-                self.threshold, _ = dbscanFunc.compute_threshold(self.data, self.min_pts, self.model)
+                self.threshold, _ = dbscanFunc.compute_threshold(self.data, self.min_pts, self.model, False)
         else:
             self.model = self.data
 
     def get_matrix_from_data(self, steps, values):
         data = np.array(list(zip(steps, values)))
-        return utils.standardize(data)
+        return data
 
     def __str__(self):
         if len(self.data) >= self.min_pts:
@@ -89,7 +89,7 @@ class TimePattern(object):
                 is_outlier, score = dbscanFunc.run_detection(self.data,
                                                              np.array([[update_step, time_elapsed]]),
                                                              self.min_pts,
-                                                             self.threshold)
+                                                             self.threshold, False)
                 return is_outlier, score
             else:
                 return [update_step, time_elapsed] in self.model, None

@@ -33,12 +33,14 @@ class Requirement(object):
 
 class Checker(object):
 
-    def __init__(self, data, pv_store):
+    def __init__(self, pv_store, data):
         # name -> Process Variable
         self.vars = pv_store
-        #key -> name
-        self.map_key_name = {}
 
+        #key -> name
+        self.map_key_name = dict()
+
+        # Train data
         self.store = data
 
     def setupSWaT(self, descFile):

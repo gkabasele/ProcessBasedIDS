@@ -392,12 +392,12 @@ class TransitionMatrix(object):
 
     def compute_transition_time(self, newval, ts, pv, filehandler, malicious_activities):
         # Value greater (resp. lower) than max (resp. min)
-        if self.is_out_of_bound(newval, self.min_val, pv):
+        if not pv.is_bool_var() and self.is_out_of_bound(newval, self.min_val, pv):
 
             self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name,
                            newval, self.min_val, malicious_activities)
 
-        elif self.is_out_of_bound(newval, self.max_val, pv, False):
+        elif not pv.is_bool_var() and self.is_out_of_bound(newval, self.max_val, pv, False):
 
             self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name,
                            newval, self.max_val, malicious_activities)
@@ -475,7 +475,10 @@ class TransitionMatrix(object):
                         self.last_value = ValueTS(value=crit_val, start=ts, end=ts)
                 else:
                     self.last_value = ValueTS(value=crit_val, start=ts, end=ts)
-                    self.update_step.append(newval - self.last_exact_val)
+                    # can happen if you are directly on a critical value when
+                    # starting reading the trace
+                    if self.last_exact_val is not None:
+                        self.update_step.append(newval - self.last_exact_val)
 
                 self.has_changed = False
                 break
@@ -555,9 +558,10 @@ class TransitionMatrix(object):
                             self.update_step_still.append(value - self.last_exact_val)
                         else:
                             # Since it has changed, we have to compute last value
-                            same_value_t = (self.last_val_train.end - self.last_val_train.start).total_seconds()
-                            self.transitions[row][row].update(same_value_t)
-                            self.add_update_step_same(value, row)
+
+                            #same_value_t = (self.last_val_train.end - self.last_val_train.start).total_seconds()
+                            #self.transitions[row][row].update(same_value_t)
+                            #self.add_update_step_same(value, row)
 
                             self.last_val_train = ValueTS(value=crit_val,
                                                           start=ts,
@@ -574,7 +578,6 @@ class TransitionMatrix(object):
 
                         # We have to store the update behavior in the range
                         self.add_update_step_same(value, row)
-
                         elapsed_trans_t = (ts - self.last_val_train.end).total_seconds()
 
                         # The transition should be from consecutive critical value
@@ -644,7 +647,7 @@ class TimeChecker(Checker):
     def __init__(self, data, pv_store, filename, noisy=True,
                  detection_store=None):
 
-        Checker.__init__(self, data, pv_store)
+        Checker.__init__(self, pv_store, data)
         self.done = False
         self.detection_store = detection_store
         self.messages = {}

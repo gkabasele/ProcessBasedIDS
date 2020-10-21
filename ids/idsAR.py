@@ -12,7 +12,11 @@ from autoreg import ARpredictor
 from autoreg import plot_residuals_stats
 from reqChecker import Checker
 from welford import Welford
+from pvStore import PVStore
+
 import utils
+
+OFFLIMIT = True
 
 class MyQueue(object):
 
@@ -43,21 +47,22 @@ class MyQueue(object):
 
 class IDSAR(Checker):
 
-    def __init__(self, descFile, store, control_coef=3, alpha=0.05):
+    def __init__(self, pv_store, store, control_coef=3, alpha=0.05):
         #alpha : signifiance level
         #control_coef: Stewart control limit
 
-        Checker.__init__(self, descFile, store)
+        Checker.__init__(self, pv_store, store)
+
 
         self.map_pv_predictor = dict()
 
         self.malicious_activities = OrderedDict()
+        self.malicious_reason = list()
 
         self.control_coef = control_coef
         self.alpha = alpha
 
     def create_predictors(self):
-
         for name, variable in self.vars.items():
             if not variable.is_bool_var():
                 self.map_pv_predictor[name] = ARpredictor()
@@ -112,8 +117,10 @@ class IDSAR(Checker):
                         confidence_interval_pos.append(6*model.res_dist.std)
 
                     #if self.anomaly_detected(name, val, map_pv_pred_err, differences_f):
-                    if self.is_outlier(val, residual, model):
+                    res, reason = self.is_outlier(val, residual, model) 
+                    if res:
                         self.add_malicious_activities(ts, name)
+                        self.malicious_reason.append(reason)
                     else:
                         model.res_dist(residual)
 
@@ -143,7 +150,7 @@ class IDSAR(Checker):
 
         model = self.map_pv_predictor[name]
         if val > model.upper_limit or val < model.lower_limit:
-            return True
+            return True, OFFLIMIT
 
         try:
             num, df1, denom, df2 = self.get_num_denom(model, pred_err[name])
@@ -157,20 +164,20 @@ class IDSAR(Checker):
             crit = f.ppf(1 - self.alpha/2, df1, df2)
             if F > crit:
                 differences_f.append(F-crit)
-                return True
+                return True, not OFFLIMIT
         except ZeroDivisionError:
-            return False
+            return False, None
 
     # Residual follows a normal distribution so we can use the z-score to
     # detect if one is an outliers or not
 
     def is_outlier(self, val, residual, model):
         if val > model.upper_limit or val < model.lower_limit:
-            return True
+            return True, OFFLIMIT
 
         z_score = (residual - model.res_dist.mean)/model.res_dist.std
 
-        return z_score > 6 or z_score < -6
+        return z_score > 6 or z_score < -6, not OFFLIMIT
 
     def get_num_denom(self, res_model, pre_model):
         if res_model.residual_var > pre_model.std**2:
@@ -178,21 +185,30 @@ class IDSAR(Checker):
         else:
             return pre_model.std**2, pre_model.k - 1, res_model.residual_var, res_model.deg_free 
 
-
+    def export_detected_atk(self, filename):
+        with open(filename, "w") as f:
+            for i, item in enumerate(self.malicious_activities.items()):
+                k, v = item
+                off_limit_reason = self.malicious_reason[i]
+                if off_limit_reason:
+                    info = "Out of range"
+                else:
+                    info = "Prediction error"
+                f.write("[{}][{}] : [Var:{}]\n".format(k, info, v))
 
 def main(normal_file, attack_file, conf_file, mal_file):
     data_norm = utils.read_state_file(normal_file)
     data_mal = utils.read_state_file(attack_file)
-    ids = IDSAR(conf_file, data_norm, alpha=0.02)
+    pv_store = PVStore(conf_file, data_norm)
+
+    ids = IDSAR(pv_store, data_norm, alpha=0.02)
     ids.create_predictors()
     ids.train_predictors()
     pdb.set_trace()
-    with open(mal_file, "w") as f:
-        ids.run_detection_mode(data_mal)
+    ids.run_detection_mode(data_mal)
+    ids.export_detected_atk(mal_file)
 
-        for k, v in ids.malicious_activities.items():
-            f.write("{} : {}\n".format(k, v))
-
+        
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--normal", dest="normal_file", action="store",

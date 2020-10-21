@@ -349,9 +349,12 @@ def main(conf, output, data, apply_filter):
         for variable in desc["variables"]:
             var = variable["variable"]
             name = var["name"]
-            if name in var_to_list:
-                var["critical"] = var_to_list[name]
-                var["digitizer"] = var_to_digitizer[name].serialize()
+            if var["type"] == DIS_COIL or var["type"] == DIS_INP:
+                var["critical"] = [0, 1, 2]
+            else:
+                if name in var_to_list:
+                    var["critical"] = var_to_list[name]
+                    var["digitizer"] = var_to_digitizer[name].serialize()
 
         with open(output, "w") as ofh:
             content = yaml.safe_dump(desc, allow_unicode=False)

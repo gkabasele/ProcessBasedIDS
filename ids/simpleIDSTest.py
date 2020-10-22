@@ -7,6 +7,10 @@ import evaluationIDS
 from idsAR import IDSAR
 from timeChecker import TimeChecker
 
+TIMEPAT = "timepattern"
+AR = "ar"
+INV = "invariant"
+
 
 def setup(inputfile, attackfile, conf):
 
@@ -53,17 +57,17 @@ def run_time_pattern_ids(pv_store, data, data_atk, matrix, write_matrix):
 
     return ids
 
-def main(inputfile, attackfile, conf, atk_time_file, matrix, write):
-    atk_file = evaluationIDS.create_expected_malicious_activities(atk_time_file)
-
-    pdb.set_trace()
+def main(inputfile, attackfile, conf, atk_time_file, run_ids, matrix, write):
 
     pv_store, data, data_atk = setup(inputfile, attackfile, conf)
 
-    ids_tp = run_time_pattern_ids(pv_store, data, data_atk, matrix, write)
-    ids_ar = run_ar_ids(pv_store, data, data_atk)
+    if TIMEPAT in run_ids:
+        ids_tp = run_time_pattern_ids(pv_store, data, data_atk, matrix, write)
 
+    if AR in run_ids:
+        ids_ar = run_ar_ids(pv_store, data, data_atk)
 
+    atk_file = evaluationIDS.create_expected_malicious_activities(atk_time_file)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -72,9 +76,11 @@ if __name__ == "__main__":
     parser.add_argument("--attack", action="store", dest="attackfile")
     parser.add_argument("--matrix", action="store", dest="matrix")
     parser.add_argument("--time", action="store", dest="atk_time")
+    parser.add_argument("--runids", action="store", nargs='+', type=str,
+                        dest="runids", default=TIMEPAT)
     parser.add_argument("--write", action="store_true", default=False, dest="write")
 
     args = parser.parse_args()
 
     main(args.inputfile, args.attackfile, args.conf, args.atk_time,
-         args.matrix, args.write)
+         args.runids, args.matrix, args.write)

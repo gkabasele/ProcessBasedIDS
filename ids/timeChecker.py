@@ -522,11 +522,11 @@ class TransitionMatrix(object):
         self.update_step_still = list()
 
 
-    def add_update_step_diff(self, crit_val, row, column):
+    def add_update_step_diff(self, row, column, value):
         if len(self.update_step) != 0:
             self.transitions[row][column].add_update_step(np.mean(self.update_step))
         else:
-            self.transitions[row][column].add_update_step(crit_val - self.last_val_train.value)
+            self.transitions[row][column].add_update_step(value - self.last_exact_val)
         self.update_step = list()
 
 
@@ -588,7 +588,7 @@ class TransitionMatrix(object):
 
                         # A new transition was completed so we have to store the update behavior
                         # If the transition is between successive range there put directly the update step
-                        self.add_update_step_diff(crit_val, row, column)
+                        self.add_update_step_diff(row, column, value)
 
                         self.last_val_train = ValueTS(value=crit_val, start=ts, end=ts)
                         self.computation_trigger = True

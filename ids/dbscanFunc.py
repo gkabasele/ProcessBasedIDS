@@ -241,7 +241,7 @@ def plot_soft_clusters(data, model, clusters, outliers_index=None, text=True, in
                              for x in soft_clusters]
     plt.scatter(data[:, 0], data[:, 1], s=50, linewidth=0, c=cluster_member_colors, alpha=0.75)
 
-    if text:
+    if text or info is None:
         add_text_to_plot(data, outliers_index)
     else:
         if isinstance(info[0], Iterable):
@@ -537,6 +537,8 @@ def perform_detection(normal, attack, prob):
     model = compute_hdbscan_model(normal, minPts)
 
     threshold, thresh_list = compute_threshold(normal, minPts, model, prob=prob)
+    if threshold is None:
+        threshold = -3
 
     pdb.set_trace()
 
@@ -561,13 +563,14 @@ def perform_detection(normal, attack, prob):
             print("Outlier: {} ,score: {}".format(np.reshape(new_val, (1, 2)), score))
             nbr_outliers += 1
 
-    nbr_fake_outlier = compute_outlier(threshold, thresh_list)
-    nbr_fake_outlier_ratio = nbr_fake_outlier/len(normal)
+    if thresh_list is not None:
+        nbr_fake_outlier = compute_outlier(threshold, thresh_list)
+        nbr_fake_outlier_ratio = nbr_fake_outlier/len(normal)
+        print("Nbr outlier norm: {} ({}/{})".format(nbr_fake_outlier_ratio, nbr_fake_outlier, len(normal)))
+        perc_fake.append(nbr_fake_outlier_ratio)
 
     outlier_ratio = nbr_outliers/len(attack)
-    print("Nbr outlier norm: {} ({}/{})".format(nbr_fake_outlier_ratio, nbr_fake_outlier, len(normal)))
     print("Nbr outlier atk: {} ({}/{})".format(outlier_ratio, nbr_outliers, len(attack)))
-    perc_fake.append(nbr_fake_outlier_ratio)
     perc_out.append(outlier_ratio)
 
 def plot_thresh_impact(perc, fake_ratio, outlier_ratio):

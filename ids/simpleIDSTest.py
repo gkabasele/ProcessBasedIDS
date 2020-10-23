@@ -57,17 +57,54 @@ def run_time_pattern_ids(pv_store, data, data_atk, matrix, write_matrix):
 
     return ids
 
+def get_ids_result(alerts, time_atk):
+
+    i = 0
+
+    detect_in_period = set()
+
+    wrong_alert = 0
+
+    for alert in alerts:
+        #-----[*********]---[**]--- (period)
+        #-------*****--------*--  (alert)
+        # find next period
+        if alert > time_atk[i]["end"]:
+            while i < len(time_atk) - 1 and alert > time_atk[i]["end"]:
+                i += 1
+
+            if i == len(time_atk) - 1 and alert > time_atk[i]["end"]:
+                wrong_alert += 1
+
+
+        #-----[*********]------ (period)
+        #-**----*****---------  (alert)
+        if alert < time_atk[i]["start"]:
+            wrong_alert += 1
+
+        start_p = time_atk[i]["start"]
+        end_p = time_atk[i]["end"]
+
+        if alert >= start_p and alert <= end_p:
+            detect_in_period.add(time_atk[i]["start"])
+
+
+    miss_atk = len(time_atk) - len(detect_in_period)
+    return len(detect_in_period), wrong_alert, miss_atk
+
+
+
 def main(inputfile, attackfile, conf, atk_time_file, run_ids, matrix, write):
 
     pv_store, data, data_atk = setup(inputfile, attackfile, conf)
+    atk_file = evaluationIDS.create_expected_malicious_activities(atk_time_file)
 
     if TIMEPAT in run_ids:
         ids_tp = run_time_pattern_ids(pv_store, data, data_atk, matrix, write)
+        res = get_ids_result(ids_tp.malicious_activities.keys(), atk_file)
 
     if AR in run_ids:
         ids_ar = run_ar_ids(pv_store, data, data_atk)
-
-    atk_file = evaluationIDS.create_expected_malicious_activities(atk_time_file)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import collections
 import pickle
-from collections import OrderedDict
+from collections import OrderedDict, Counter
 from datetime import datetime, timedelta
 import pdb
 import numpy as np
@@ -447,7 +447,7 @@ class TransitionMatrix(object):
                     # The value has changed since last time
                     else:
                         if not pv.is_bool_var():
-                            elapsed_trans_t = (ts - self.last_value.end).total_seconds()
+                            elapsed_trans_t = int((ts - self.last_value.end).total_seconds())
                             if len(self.update_step) > 0:
                                 update_mean = np.mean(self.update_step)
                             else:
@@ -461,7 +461,7 @@ class TransitionMatrix(object):
                         # When a value change from one critical value to another without transition
                         # value so we must compute how long a value remained (only boolean?)
                         else:
-                            same_value_t = (self.last_value.end - self.last_value.start).total_seconds()
+                            same_value_t = int((self.last_value.end - self.last_value.start).total_seconds())
 
                             if len(self.update_step_still) > 0:
                                 update_mean = np.mean(self.update_step_still)
@@ -573,12 +573,12 @@ class TransitionMatrix(object):
                         self.update_step = list()
                         self.computation_trigger = False
                     else:
-                        same_value_t = (self.last_val_train.end - self.last_val_train.start).total_seconds()
+                        same_value_t = int((self.last_val_train.end - self.last_val_train.start).total_seconds())
                         self.transitions[row][row].update(same_value_t)
 
                         # We have to store the update behavior in the range
                         self.add_update_step_same(value, row)
-                        elapsed_trans_t = (ts - self.last_val_train.end).total_seconds()
+                        elapsed_trans_t = int((ts - self.last_val_train.end).total_seconds())
 
                         # The transition should be from consecutive critical value
                         # It is not true if the width of a range is really small
@@ -611,7 +611,7 @@ class TransitionMatrix(object):
 
             if self.computation_trigger and self.last_val_train is not None:
                 self.computation_trigger = False
-                same_value_t = (self.last_value.end - self.last_value.start).total_seconds()
+                same_value_t = int((self.last_value.end - self.last_value.start).total_seconds())
                 
                 self.add_update_step_same(value, self.val_pos[self.last_val_train.value])
 
@@ -622,7 +622,7 @@ class TransitionMatrix(object):
         # of transition time was done because no transition time was reach
         if ts == self.end_time and not self.computation_trigger and self.last_val_train is not None:
             row = self.val_pos[self.last_val_train.value]
-            same_value_t = (self.last_val_train.end - self.last_val_train.start).total_seconds()
+            same_value_t = int((self.last_val_train.end - self.last_val_train.start).total_seconds())
             self.transitions[row][row].update(same_value_t)
 
         self.last_exact_val = value
@@ -632,7 +632,7 @@ class TransitionMatrix(object):
         for i in range(len(self.historic_val) - 1):
             cur = self.historic_val[i].ts
             nextframe = self.historic_val[i+1].ts
-            elapsed_time.append((nextframe - cur).total_seconds())
+            elapsed_time.append(int((nextframe - cur).total_seconds()))
         return elapsed_time
 
     def compute_clusters(self):
@@ -708,7 +708,7 @@ class TimeChecker(Checker):
         nbr_state = len(self.detection_store)
         if self.detection_store is not None:
             for i, state in enumerate(self.detection_store):
-                if i % 5000 == 0:
+                if i % 300 == 0:
                     print("Starting state {} of {}".format(i, nbr_state))
                 ts = state['timestamp']
                 for name, val in state.items():
@@ -748,3 +748,17 @@ class TimeChecker(Checker):
         with open(filename, "rb") as f:
             mat = pickle.load(f)
             self.matrices = mat
+
+    def get_vars_alerts_hist(self):
+        alert_occurence = [pv for variables in self.malicious_activities.values() for pv in variables]
+        c = Counter(alert_occurence)
+        total = sum(c.values(), 0.0)
+        for key in c:
+            c[key] /= total
+        return c
+
+    def export_detected_atk(self, filename):
+        with open(filename,"w") as f:
+            for k, v in self.malicious_activities.items():
+                f.write("[{}]: {}\n".format(k, v))
+

@@ -36,21 +36,8 @@ class TimePattern(object):
     def add_update_step(self, val):
         self.steps.append(val)
 
-    def create_clusters(self):
-        clusters, breakpoints = clustering_1D(self.values)
-        if breakpoints is not None:
-            self.breakpoints = breakpoints
-            self.clusters = cluster_property(clusters)
-        else:
-            self.clusters = clusters
-
-    def get_cluster(self, data):
-        arr = [x.mean for x in self.clusters]
-        i = find_closest_bp(arr, data)
-        cluster = self.clusters[i]
-        return cluster
-
-    def export_data_matrix(self, filename):
+    def export_data_matrix(self, dirname, name, row, col):
+        filename = dirname + "{}_{}_{}.bin".format(name, row, col)
         with open(filename, "wb") as f:
             if self.data is None:
                 self.data = self.get_matrix_from_data(self.steps, self.values)

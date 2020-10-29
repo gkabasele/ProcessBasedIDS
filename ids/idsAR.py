@@ -2,6 +2,7 @@
 
 from collections import OrderedDict
 from collections import deque
+from collections import Counter
 from datetime import datetime
 from argparse import ArgumentParser
 import pdb
@@ -146,6 +147,15 @@ class IDSAR(Checker):
 
         self.malicious_activities[time_key].add(name)
 
+    def get_vars_alerts_hist(self):
+        alert_occurence = [pv for variables in self.malicious_activities.values() for pv in variables]
+        c = Counter(alert_occurence)
+        total = sum(c.values(), 0.0)
+        for key in c:
+            c[key] /= total
+        return c
+
+
     def anomaly_detected(self, name, val, pred_err, differences_f):
 
         model = self.map_pv_predictor[name]
@@ -208,7 +218,7 @@ def main(normal_file, attack_file, conf_file, mal_file):
     ids.run_detection_mode(data_mal)
     ids.export_detected_atk(mal_file)
 
-        
+
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--normal", dest="normal_file", action="store",

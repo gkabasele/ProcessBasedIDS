@@ -1,6 +1,9 @@
 import re
 import ast
 import pdb
+from collections import OrderedDict
+from collections import Counter
+from datetime import datetime
 import numpy as np
 import operator
 import predicate as pred
@@ -48,7 +51,7 @@ class IDSInvariant(object):
         # ID->predicates
         self.invariants = self.create_invariants(mapping_id_pred,
                                                  invariants)
-        self.malicious_activities = set()
+        self.malicious_activities = OrderedDict()
         self.filehandler = open(filename, "w+")
 
     def create_invariants(self, mapping_id_pred, invariantsfile):
@@ -133,11 +136,38 @@ class IDSInvariant(object):
 
                     msg = "pred_id:{} got: {}, expected: {}{}\n\n".format(failed_pred_id, got_value, failed_pred.operator, exp_value)
                     self.filehandler.write(msg)
-                self.malicious_activities.add(state[TS])
+                self.add_malicious_activities(invariant.identifier, failed_pred_id, state[TS])
                 invalid.append(i)
 
         if len(invalid) != 0:
             return invalid
+
+    def add_malicious_activities(self, invariant, failed_pred_id, ts):
+        time_key = datetime(ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second)
+        if time_key in self.malicious_activities:
+            self.malicious_activities[time_key].add((invariant, failed_pred_id))
+        else:
+            self.malicious_activities[time_key] = set()
+            self.malicious_activities[time_key].add((invariant, failed_pred_id))
+
+    def get_vars_alerts_hist(self):
+        alert_occurence = [t[0] for invariants in self.malicious_activities.values() for t in invariants]
+        c = Counter(alert_occurence)
+        total = sum(c.values(), 0.0)
+        for key in c:
+            c[key] /= total
+        return c
+
+    def export_detected_atk(self, filename):
+        with open(filename, "w") as f:
+            for k, v in self.malicious_activities.items():
+                f.write("[{}] {}\n".format(k, v))
+
+    def run_detection(self, store, sensors, predicates, mapping_id_pred):
+        for i, state in enumerate(store):
+            if i % (int(len(store)/30)) == 0:
+                print("Up to state: {}".format(i))
+            self.valid_state(state, sensors, predicates, mapping_id_pred)
 
     def write(self, timestamp, line):
         self.filehandler.write("[{}] {}\n".format(timestamp, line))

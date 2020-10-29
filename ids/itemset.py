@@ -233,6 +233,7 @@ def main(conf, infile, outfile, minsupportfile, supportfile,
     actuators = store.discrete_monitor_vars()
     predicates = None
 
+
     if do_predicate:
         predicates = pred.generate_all_predicates(conf, data)
         with open(predicate_bin, "wb") as f:

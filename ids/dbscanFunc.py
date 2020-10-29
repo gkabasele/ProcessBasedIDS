@@ -296,7 +296,7 @@ def outlier_prob_score(data, model):
         thresh_list, _ = run_soft_cluster(data, model, [-1])
         return thresh_list[-1]
 
-def run_detection(normal, new_data, minPts, outlier_thresh, prob=True):
+def run_detection(normal, new_data, minPts, outlier_thresh, prob=False):
     point = np.reshape(new_data, (1, 2))
     data = np.append(normal, point, axis=0)
     model, labels = outlier_detected_recompute(data, minPts)
@@ -499,14 +499,14 @@ def compute_prob_outliers(model, outliers_index):
     outliers_prob = [np.max(soft_clusters[i]) for i in outliers_index]
     return outliers_prob, all_prob
 
-def compute_threshold(data, minPts, model, prob=True):
+def compute_threshold(data, minPts, model, prob=False):
     clusters = model.labels_
     outliers_index = np.where(clusters == -1)[0]
 
     # No outliers have been detected so we cannot compute
-    # a threshold
+    # a threshold, therefore is fixed to -3
     if len(outliers_index) == 0:
-        return None, None
+        return -3, None
 
     if prob:
         #implementation bug when there is only one cluster
@@ -521,15 +521,19 @@ def compute_threshold(data, minPts, model, prob=True):
     else:
         #local outlier factor
         thresh_list, _ = compute_lof_outliers(data, minPts, outliers_index)
-        if len(thresh_list) > 3:
+        if len(thresh_list) > 2:
             # We consider two groups, the local outlier and the general outlier
-            jnb = jenkspy.JenksNaturalBreaks(3)
+            jnb = jenkspy.JenksNaturalBreaks(2)
             jnb.fit(thresh_list)
-            return np.min(jnb.groups_[2]), thresh_list
+            print("Thresh List:{}".format(jnb.groups_))
+            try:
+                min_val = np.min(jnb.groups_[1])
+            except ValueError as ex:
+                min_val = np.min(jnb.groups_[0])
+            return min_val, thresh_list
         else:
-            return -3, thresh_list
+            return -3 , thresh_list
 
-    return param_space[np.argmin(output_val)], thresh_list
 
 def perform_detection(normal, attack, prob):
     pdb.set_trace()

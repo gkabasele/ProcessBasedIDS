@@ -34,11 +34,11 @@ class PVStore(object):
                         limit_values = var['critical']
                         digitizer = Digitizer()
                         digitizer.deserialize(var["digitizer"])
-                        ignore = False
+                        ignore = var["ignore"] 
                     else:
                         limit_values = None
                         digitizer = None
-                        ignore = True
+                        ignore = var["ignore"]
                     pv = utils.ProcessSWaTVar(var['name'], var['type'],
                                               limit_values=limit_values,
                                               digitizer=digitizer,

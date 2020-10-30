@@ -64,9 +64,8 @@ class IDSAR(Checker):
         self.alpha = alpha
 
     def create_predictors(self):
-        for name, variable in self.vars.items():
-            if not variable.is_bool_var():
-                self.map_pv_predictor[name] = ARpredictor()
+        for name in self.vars.continuous_monitor_vars():
+            self.map_pv_predictor[name] = ARpredictor()
 
     def train_predictors(self):
         map_pv_col = {x: list() for x in self.map_pv_predictor.keys()}
@@ -77,7 +76,7 @@ class IDSAR(Checker):
 
         for k, data in map_pv_col.items():
             model = self.map_pv_predictor[k]
-            model.train(data)
+            model.train(data, maxorder=120)
             # compute the residuals for the model
             model.make_predictions_from_test(data)
 
@@ -118,7 +117,7 @@ class IDSAR(Checker):
                         confidence_interval_pos.append(6*model.res_dist.std)
 
                     #if self.anomaly_detected(name, val, map_pv_pred_err, differences_f):
-                    res, reason = self.is_outlier(val, residual, model) 
+                    res, reason = self.is_outlier(val, residual, model, data)
                     if res:
                         self.add_malicious_activities(ts, name)
                         self.malicious_reason.append(reason)
@@ -181,8 +180,8 @@ class IDSAR(Checker):
     # Residual follows a normal distribution so we can use the z-score to
     # detect if one is an outliers or not
 
-    def is_outlier(self, val, residual, model):
-        if val > model.upper_limit or val < model.lower_limit:
+    def is_outlier(self, val, residual, model, data):
+        if model.out_of_range(val, data, self.control_coef):
             return True, OFFLIMIT
 
         z_score = (residual - model.res_dist.mean)/model.res_dist.std

@@ -27,6 +27,7 @@ class TimePattern(object):
         self.model = None
         self.min_pts = minPts
         self.data = None
+        self.max_time = None
 
         self.threshold = None
 
@@ -45,6 +46,7 @@ class TimePattern(object):
 
     def compute_clusters(self, strategy="hdbscan", name=None, row=None, col=None):
         print("Name:{}, Row:{}, Col:{}".format(name, row, col))
+        self.max_time = np.max(self.values)
         self.data = self.get_matrix_from_data(self.steps, self.values)
 
         if len(self.data) >= self.min_pts:

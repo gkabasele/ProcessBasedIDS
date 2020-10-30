@@ -334,6 +334,11 @@ class TransitionMatrix(object):
                 else:
                     return TransitionMatrix.DIFF, cluster
         return TransitionMatrix.SAME, cluster
+    
+    def get_pattern(self, oldval, newval):
+        row = self.val_pos[oldval]
+        col = self.val_pos[newval]
+        return self.transitions[row][col]
 
     def test_validity_transition(self, elapsed_time, updates, oldval, newval):
         row = self.val_pos[oldval]
@@ -360,6 +365,7 @@ class TransitionMatrix(object):
 
     def write_msg_diff(self, filehandler, res, ts, pv_name, elapsed_time, update_mean,
                        malicious_activities, score, thresh, crit_val, last_val):
+
 
         filehandler.write("[{}][{}]transitions for {} {}->{}, Values:[{} {}], score:{}, thresh:{}\n".format(ts, res, pv_name,
                                                                                                             last_val, crit_val,
@@ -433,14 +439,17 @@ class TransitionMatrix(object):
 
                         # This test is performed every remaining time to detect attack
                         # faster or not because it require a lot of processing power
-                        #elapsed_time = (ts - self.last_value.start).total_seconds()
-                        #if len(self.update_step_still) > 0:
-                        #    update_mean = np.mean(self.update_step_still)
-                        #else:
-                        #    update_mean = newval - self.last_exact_val
+                        if pv.is_bool_var():
+                            elapsed_time = int((ts - self.last_value.start).total_seconds())
+                            pattern = self.get_pattern(self.last_value.value, self.last_value.value)
+                            if elapsed_time > pattern.max_time:
+                                if len(self.update_step_still) > 0:
+                                    update_mean = np.mean(self.update_step_still)
+                                else:
+                                    update_mean = newval - self.last_exact_val
 
-                        #self.perform_detection_test(filehandler, ts, pv, malicious_activities,
-                        #                            elapsed_time, update_mean, self.last_value.value, self.last_value.value)
+                                self.perform_detection_test(filehandler, ts, pv, malicious_activities,
+                                                            elapsed_time, update_mean, self.last_value.value, self.last_value.value)
 
                         self.update_step = list()
 
@@ -449,6 +458,8 @@ class TransitionMatrix(object):
                         if not pv.is_bool_var():
                             elapsed_trans_t = int((ts - self.last_value.end).total_seconds())
                             if len(self.update_step) > 0:
+                                # The very last step to get to the crit val
+                                self.update_step.append(newval - self.last_exact_val)
                                 update_mean = np.mean(self.update_step)
                             else:
                                 update_mean = newval - self.last_exact_val
@@ -473,6 +484,9 @@ class TransitionMatrix(object):
                                                         self.last_value.value)
 
                         self.last_value = ValueTS(value=crit_val, start=ts, end=ts)
+
+                        self.update_step = list()
+                        self.update_step_still = list()
                 else:
                     self.last_value = ValueTS(value=crit_val, start=ts, end=ts)
                     # can happen if you are directly on a critical value when
@@ -524,6 +538,7 @@ class TransitionMatrix(object):
 
     def add_update_step_diff(self, row, column, value):
         if len(self.update_step) != 0:
+            self.update_step.append(value - self.last_exact_val)
             self.transitions[row][column].add_update_step(np.mean(self.update_step))
         else:
             self.transitions[row][column].add_update_step(value - self.last_exact_val)
@@ -594,6 +609,9 @@ class TransitionMatrix(object):
                         self.computation_trigger = True
                 else:
                     self.last_val_train = ValueTS(value=crit_val, start=ts, end=ts)
+                    if self.last_exact_val is not None:
+                        self.update_step.append(value - self.last_exact_val)
+
                     self.computation_trigger = False
                 self.has_changed = False
                 break

@@ -18,9 +18,9 @@ class ARpredictor(object):
         self.lower_limit = None
         self.def_free = None
 
-    def train(self, data):
+    def train(self, data, maxorder=512):
         # arsel(data, submean=True, absrho=True, criterion=CIC, minorder=0, maxorder=512)
-        a = arsel(data, False, True, "AIC")
+        a = arsel(data, False, True, "AIC", 0, maxorder)
         self.coef = [-x for x in a.AR[0]]
 
     def order(self):
@@ -33,6 +33,18 @@ class ARpredictor(object):
             raise ValueError("Coef. ({})and data ({}) vector of different size".format(len(self.coef)-1, len(data)))
         else:
             return np.dot(self.coef[1:], data)
+
+    def out_of_range(self, val, data, coef):
+        mu = np.mean(data)         
+        std = np.std(data)
+
+        ucl = mu + coef * std
+        lcl = mu - coef * std
+        
+        higher = val > ucl
+        lower = val < lcl
+
+        return higher or lower
 
     def make_predictions_from_test(self, dataset, debug=False):
 

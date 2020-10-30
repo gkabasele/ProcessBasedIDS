@@ -30,7 +30,7 @@ def setup(inputfile, attackfile, conf):
     return pv_store, data, data_atk
 
 def run_ar_ids(pv_store, data, data_atk):
-    ids = IDSAR(pv_store, data, alpha=0.02)
+    ids = IDSAR(pv_store, data, control_coef=6, alpha=0.02)
     ids.create_predictors()
     ids.train_predictors()
 
@@ -55,7 +55,7 @@ def run_ar_ids(pv_store, data, data_atk):
     return ids
 
 def run_time_pattern_ids(pv_store, data, data_atk, matrix, write_matrix):
-    export_log = "useless_logifle_pattern.txt"
+    export_log = "useless_logfile_pattern.txt"
     print("Configuring matrix")
     ids = TimeChecker(data, pv_store,
                       export_log, noisy=True)
@@ -85,7 +85,7 @@ def run_time_pattern_ids(pv_store, data, data_atk, matrix, write_matrix):
     ids.close()
 
     if export:
-        ids.export_detected_atk(filename)
+        ids.export_detected_atk(export_log)
 
     return ids
 
@@ -120,12 +120,16 @@ def run_invariant_ids(pv_store, data_atk, pred_file,
 
     ids.close()
     if export:
-        ids.export_detected_atk(filename)
+        ids.export_detected_atk(export_log)
 
     return ids
 
 
-def get_ids_result(ids, time_atk):
+def get_ids_result(ids, time_atk, windows=0):
+    # window to wait to consider that an alert is
+    #linked to an attack
+
+    relaxed_win = timedelta(seconds=windows)
 
     i = 0
 
@@ -147,7 +151,8 @@ def get_ids_result(ids, time_atk):
             while i < len(time_atk) - 1 and alert > time_atk[i]["end"]:
                 i += 1
 
-            if i == len(time_atk) - 1 and alert > time_atk[i]["end"]:
+            if i == len(time_atk) - 1 and alert > time_atk[i]["end"] + relaxed_win:
+                #pdb.set_trace()
                 wrong_alert += 1
                 if fp_start is not None:
                     ifpt.append((alert - fp_start).total_seconds())
@@ -156,10 +161,12 @@ def get_ids_result(ids, time_atk):
         #-----[*********]------ (period)
         #-**----*****---------  (alert)
         if alert < time_atk[i]["start"]:
-            wrong_alert += 1
-            if fp_start is not None:
-                ifpt.append((alert - fp_start).total_seconds())
-            fp_start = alert
+            if i == 0 or (i > 0 and alert > time_atk[i-1]["end"] + relaxed_win):
+                #pdb.set_trace() 
+                wrong_alert += 1
+                if fp_start is not None:
+                    ifpt.append((alert - fp_start).total_seconds())
+                fp_start = alert
 
         start_p = time_atk[i]["start"]
         end_p = time_atk[i]["end"]
@@ -172,19 +179,19 @@ def get_ids_result(ids, time_atk):
     miss_atk = len(time_atk) - len(detect_in_period)
     return detect_in_period, wrong_alert, miss_atk, ifpt
 
-def run_ids_eval(func_ids, name, atk_file, *args):
+def run_ids_eval(func_ids, name, atk_file, window, *args):
 
     ids = func_ids(*args)
-    detected, wrong_alert, miss_atk, inter_fp_time = get_ids_result(ids, atk_file)
+    detected, wrong_alert, miss_atk, inter_fp_time = get_ids_result(ids, atk_file, window)
 
     detection_time = list(detected.values())
     mean_det = np.mean(detection_time)
-    var_det = np.var(detection_time)
+    std_det = np.std(detection_time)
     minval_det = np.min(detection_time)
     maxval_det = np.max(detection_time)
 
     mean_ifpt = np.mean(inter_fp_time)
-    var_ifpt = np.var(inter_fp_time)
+    std_ifpt = np.std(inter_fp_time)
     minval_ifpt = np.min(inter_fp_time)
     maxval_ifpt = np.max(inter_fp_time)
 
@@ -193,10 +200,10 @@ def run_ids_eval(func_ids, name, atk_file, *args):
     print("Detected: {}".format(len(detected)))
     print("Wrong alert: {}".format(wrong_alert))
     print("Miss Attack: {}".format(miss_atk))
-    print("Detection Time Mean/Var/Min/Max: {}/{}/{}/{}".format(mean_det, var_det,
+    print("Detection Time Mean/Std/Min/Max: {}/{}/{}/{}".format(mean_det, std_det,
                                                                 minval_det, maxval_det))
 
-    print("Inter FP Time Mean/Var/Min/Max: {}/{}/{}/{}".format(mean_ifpt, var_ifpt,
+    print("Inter FP Time Mean/Std/Min/Max: {}/{}/{}/{}".format(mean_ifpt, std_ifpt,
                                                                minval_ifpt, maxval_ifpt))
     print("------------")
 
@@ -206,17 +213,15 @@ def main(inputfile, attackfile, conf, atk_time_file, run_ids,
     pv_store, data, data_atk = setup(inputfile, attackfile, conf)
     atk_file = evaluationIDS.create_expected_malicious_activities(atk_time_file)
 
-    pdb.set_trace()
-
     if TIMEPAT in run_ids:
-        run_ids_eval(run_time_pattern_ids, TIMEPAT, atk_file, pv_store, data,
+        run_ids_eval(run_time_pattern_ids, TIMEPAT, atk_file, 30, pv_store, data,
                      data_atk, matrix, write)
 
     if AR in run_ids:
-        run_ids_eval(run_ar_ids, AR, atk_file, pv_store, data, data_atk)
+        run_ids_eval(run_ar_ids, AR, atk_file, 0, pv_store, data, data_atk)
 
     if INV in run_ids:
-        run_ids_eval(run_invariant_ids, INV, atk_file, pv_store, data_atk, pred_file,
+        run_ids_eval(run_invariant_ids, INV, atk_file, 0, pv_store, data_atk, pred_file,
                      map_id_pred, inv_file)
 
 if __name__ == "__main__":

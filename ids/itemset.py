@@ -70,7 +70,8 @@ def sensor_predicates(state, sensors, sensor, value, predicates, satisfied_pred,
                 satisfied_pred.append((sensor, pred.GT, i))
                 if stop:
                     break
-        except ValueError:
+        except ValueError as ex:
+            print(ex)
             pdb.set_trace()
 
     for i, p in enumerate(predicates[sensor][pred.LS]):
@@ -81,7 +82,8 @@ def sensor_predicates(state, sensors, sensor, value, predicates, satisfied_pred,
                 satisfied_pred.append((sensor, pred.LS, i))
                 if stop:
                     break
-        except ValueError:
+        except ValueError as ex:
+            print(ex)
             pdb.set_trace()
 
     # Get the GMM model of the deltas for the sensor

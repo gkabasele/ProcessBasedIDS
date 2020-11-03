@@ -103,7 +103,7 @@ def run_invariant_ids(pv_store, data_atk, pred_file,
     else:
         raise ValueError("Missing file to run the invariant IDS")
 
-    export_log = "useless_logifle_invariant.txt"
+    export_log = "useless_logfile_invariant.txt"
 
     ids = IDSInvariant(map_id_pred, inv_file, export_log)
 
@@ -185,6 +185,7 @@ def run_ids_eval(func_ids, name, atk_file, window, *args):
     detected, wrong_alert, miss_atk, inter_fp_time = get_ids_result(ids, atk_file, window)
 
     detection_time = list(detected.values())
+    print(detection_time)
     mean_det = np.mean(detection_time)
     std_det = np.std(detection_time)
     minval_det = np.min(detection_time)
@@ -207,7 +208,7 @@ def run_ids_eval(func_ids, name, atk_file, window, *args):
                                                                minval_ifpt, maxval_ifpt))
     print("------------")
 
-def main(inputfile, attackfile, conf, atk_time_file, run_ids,
+def main(inputfile, attackfile, conf, conf_inv, atk_time_file, run_ids,
          matrix, write, pred_file, map_id_pred, inv_file):
 
     pv_store, data, data_atk = setup(inputfile, attackfile, conf)
@@ -221,12 +222,15 @@ def main(inputfile, attackfile, conf, atk_time_file, run_ids,
         run_ids_eval(run_ar_ids, AR, atk_file, 0, pv_store, data, data_atk)
 
     if INV in run_ids:
-        run_ids_eval(run_invariant_ids, INV, atk_file, 0, pv_store, data_atk, pred_file,
+        pv_store_inv = pvStore.PVStore(conf_inv, data)
+
+        run_ids_eval(run_invariant_ids, INV, atk_file, 0, pv_store_inv, data_atk, pred_file,
                      map_id_pred, inv_file)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--conf", action="store", dest="conf")
+    parser.add_argument("--confinv", action="store", dest="conf_inv")
     parser.add_argument("--input", action="store", dest="input_file")
     parser.add_argument("--attack", action="store", dest="attack_file")
     parser.add_argument("--matrix", action="store", dest="matrix")
@@ -241,6 +245,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    main(args.input_file, args.attack_file, args.conf, args.atk_time,
-         args.runids, args.matrix, args.write, args.pred_file,
+    main(args.input_file, args.attack_file, args.conf, args.conf_inv,
+         args.atk_time, args.runids, args.matrix, args.write, args.pred_file,
          args.map_id_pred, args.inv_file)

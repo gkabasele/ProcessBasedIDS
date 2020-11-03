@@ -184,6 +184,17 @@ class TransitionMatrix(object):
                 if crit_val == val:
                     return crit_val
 
+    def find_in_between_crit_val(self, oldval, newval, pv):
+        if not pv.is_bool_var():
+            first_index, _ = pv.digitizer.get_range(oldval)
+            second_index, _ = pv.digitizer.get_range(newval)
+            for crit_val in self.header:
+                for v in pv.limit_values[crit_val]:
+                    if ((v < first_index and v > second_index) or
+                        (v < second_index and v > first_index)):
+                        return crit_val
+                  
+
     def _find_closest(self, elapsed_time, prev, curr, i):
         dist_prev = elapsed_time - prev.mean
         dist = curr - elapsed_time
@@ -448,6 +459,9 @@ class TransitionMatrix(object):
                                 else:
                                     update_mean = newval - self.last_exact_val
 
+                                if pv.name == "valve1" and self.last_value.value == 1:
+                                    pdb.set_trace()
+
                                 self.perform_detection_test(filehandler, ts, pv, malicious_activities,
                                                             elapsed_time, update_mean, self.last_value.value, self.last_value.value)
 
@@ -479,6 +493,9 @@ class TransitionMatrix(object):
                             else:
                                 update_mean = newval - self.last_exact_val
 
+                            if pv.name == "valve1" and self.last_value.value == 1:
+                                pdb.set_trace()
+
                             self.perform_detection_test(filehandler, ts, pv, malicious_activities,
                                                         same_value_t, update_mean, self.last_value.value,
                                                         self.last_value.value)
@@ -508,6 +525,16 @@ class TransitionMatrix(object):
             if self.last_exact_val is not None:
                 self.update_step.append(newval - self.last_exact_val)
 
+            in_crit = self.find_in_between_crit_val(self.last_exact_val, newval, pv)
+            if in_crit is not None and in_crit != self.last_value.value:
+                row = self.val_pos[self.last_value.value]
+                column = self.val_pos[in_crit]
+                elapsed_trans_t = int((ts - self.last_value.end).total_seconds())
+
+                self.perform_detection_test(filehandler, ts, pv, malicious_activities,
+                                            elapsed_trans_t, np.mean(self.update_step),
+                                            self.last_value.value, in_crit)
+
             # Case where a variable was on critical value and just changed to non-critical
             # We need to see how long it remains in that critical value
             if self.detection_trigger and self.last_value is not None:
@@ -524,6 +551,26 @@ class TransitionMatrix(object):
                                             same_value_t, update_mean, self.last_value.value,
                                             self.last_value.value)
                 """
+            # To accelerate attack detection, perform the detection process when too long transition
+            # time
+            if not pv.is_bool_var():
+                elapsed_time = int((ts - self.last_value.end).total_seconds())
+                current_trend = np.mean(self.update_step)
+                target = None
+                range_index, _ = pv.digitizer.get_range(newval)
+                if current_trend >= 0 and self.last_value.value < self.header[-1]:
+                    target = self.last_value.value + 1
+                    exceed = range_index > pv.limit_values[target][0]
+                elif current_trend < 0 and self.last_value.value > self.header[0]:
+                    target = self.last_value.value - 1
+                    exceed = range_index < pv.limit_values[target][0]
+
+                if target is not None:
+                    pattern = self.get_pattern(self.last_value.value, target)
+
+                    if elapsed_time > pattern.max_time and not exceed:
+                        self.perform_detection_test(filehandler, ts, pv, malicious_activities,
+                                                    elapsed_time, current_trend, self.last_value.value, target)
 
             self.update_step_still = list()
         self.last_exact_val = newval
@@ -600,7 +647,6 @@ class TransitionMatrix(object):
 
                         self.transitions[row][column].update(elapsed_trans_t)
 
-
                         # A new transition was completed so we have to store the update behavior
                         # If the transition is between successive range there put directly the update step
                         self.add_update_step_diff(row, column, value)
@@ -626,6 +672,19 @@ class TransitionMatrix(object):
             #Since the variable left a critical value, we need to keep track of the
             #behavior of update to complete the next transition
             self.update_step.append(value - self.last_exact_val)
+
+            # If the update step is too big and the width of range is to small, the IDS may miss
+            # a transition
+            in_crit = self.find_in_between_crit_val(self.last_exact_val, value, pv)
+            if in_crit is not None and in_crit != self.last_val_train.value:
+                row = self.val_pos[self.last_val_train.value]
+                column = self.val_pos[in_crit]
+                if self.transitions[row][column] == -1:
+                    self.transitions[row][column] = TimePattern(same_crit_val=False)
+
+                elapsed_trans_t = int((ts - self.last_val_train.end).total_seconds())
+                self.transitions[row][column].update(elapsed_trans_t)
+                self.transitions[row][column].add_update_step(np.mean(self.update_step))
 
             if self.computation_trigger and self.last_val_train is not None:
                 self.computation_trigger = False

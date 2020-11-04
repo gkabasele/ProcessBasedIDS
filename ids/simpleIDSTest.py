@@ -125,16 +125,26 @@ def run_invariant_ids(pv_store, data_atk, pred_file,
     return ids
 
 
-def get_ids_result(ids, time_atk, windows=0):
+def get_nbr_attack(time_atk):
+    nbr_attack = 0
+
+    for period in time_atk:
+        nbr_attack += int((period["end"] - period["start"]).total_seconds())
+
+    return nbr_attack
+
+def get_ids_result(ids, time_atk, atk_trace_size, aftereffect=10, window=0):
     # window to wait to consider that an alert is
     #linked to an attack
 
-    relaxed_win = timedelta(seconds=windows)
+    relaxed_win = timedelta(seconds=window)
 
     i = 0
 
     alerts = list(ids.malicious_activities.keys())
     alerts_var = list(ids.malicious_activities.values())
+
+    #Period counting of attack
     #inter false positive time
     fp_start = None
     ifpt = list()
@@ -143,6 +153,12 @@ def get_ids_result(ids, time_atk, windows=0):
 
     wrong_alert = 0
 
+    #Second per second counting 
+    true_positive = 0
+    false_positive = 0
+    nbr_attack = get_nbr_attack(time_atk)
+
+
     for idx, alert in enumerate(alerts):
         #-----[*********]---[**]--- (period)
         #-------*****--------*--  (alert)
@@ -150,9 +166,13 @@ def get_ids_result(ids, time_atk, windows=0):
         if alert > time_atk[i]["end"]:
             while i < len(time_atk) - 1 and alert > time_atk[i]["end"]:
                 i += 1
+            # Some attacks does not have after effect
+            if int((time_atk[i]["end"] - time_atk[i]["start"]).total_seconds()) > aftereffect:
+                tmp_window = relaxed_win
+            else:
+                tmp_window = timedelta(seconds=0)
 
-            if i == len(time_atk) - 1 and alert > time_atk[i]["end"] + relaxed_win:
-                #pdb.set_trace()
+            if i == len(time_atk) - 1 and alert > time_atk[i]["end"] + tmp_window:
                 wrong_alert += 1
                 if fp_start is not None:
                     ifpt.append((alert - fp_start).total_seconds())
@@ -161,8 +181,12 @@ def get_ids_result(ids, time_atk, windows=0):
         #-----[*********]------ (period)
         #-**----*****---------  (alert)
         if alert < time_atk[i]["start"]:
-            if i == 0 or (i > 0 and alert > time_atk[i-1]["end"] + relaxed_win):
-                #pdb.set_trace() 
+            if int((time_atk[max(0, i-1)]["end"] - time_atk[max(0, i-1)]["start"]).total_seconds()) > aftereffect:
+                tmp_window = relaxed_win
+            else:
+                tmp_window = timedelta(seconds=0)
+
+            if i == 0 or (i > 0 and alert > time_atk[i-1]["end"] + tmp_window):
                 wrong_alert += 1
                 if fp_start is not None:
                     ifpt.append((alert - fp_start).total_seconds())
@@ -174,15 +198,23 @@ def get_ids_result(ids, time_atk, windows=0):
         if alert >= start_p and alert <= end_p:
             if time_atk[i]["start"] not in detect_in_period:
                 detect_in_period[time_atk[i]["start"]] = (alert - start_p).total_seconds()
+            true_positive += 1
 
+
+    false_positive = wrong_alert
+    false_negative = nbr_attack - true_positive
+    true_negative = atk_trace_size - false_positive
+    eval_res = evaluationIDS.EvalResult(true_positive, false_positive,
+                                        true_negative, false_negative, nbr_attack)
 
     miss_atk = len(time_atk) - len(detect_in_period)
-    return detect_in_period, wrong_alert, miss_atk, ifpt
+    return detect_in_period, wrong_alert, miss_atk, ifpt, eval_res
 
-def run_ids_eval(func_ids, name, atk_file, window, *args):
+def run_ids_eval(func_ids, name, atk_time, atk_trace_size, aftereffect, window, *args):
 
     ids = func_ids(*args)
-    detected, wrong_alert, miss_atk, inter_fp_time = get_ids_result(ids, atk_file, window)
+    detected, wrong_alert, miss_atk, inter_fp_time, eval_res = get_ids_result(ids, atk_time, atk_trace_size,
+                                                                              aftereffect, window)
 
     detection_time = list(detected.values())
     print(detection_time)
@@ -201,6 +233,7 @@ def run_ids_eval(func_ids, name, atk_file, window, *args):
     print("Detected: {}".format(len(detected)))
     print("Wrong alert: {}".format(wrong_alert))
     print("Miss Attack: {}".format(miss_atk))
+    print("Per second {}".format(eval_res))
     print("Detection Time Mean/Std/Min/Max: {}/{}/{}/{}".format(mean_det, std_det,
                                                                 minval_det, maxval_det))
 
@@ -215,18 +248,19 @@ def main(inputfile, attackfile, conf, conf_inv, atk_time_file, run_ids,
     atk_file = evaluationIDS.create_expected_malicious_activities(atk_time_file)
 
     if TIMEPAT in run_ids:
-        run_ids_eval(run_time_pattern_ids, TIMEPAT, atk_file, 30, pv_store, data,
-                     data_atk, matrix, write)
+        run_ids_eval(run_time_pattern_ids, TIMEPAT, atk_file, len(data_atk), 10,
+                     60, pv_store, data, data_atk, matrix, write)
 
     if AR in run_ids:
-        run_ids_eval(run_ar_ids, AR, atk_file, 0, pv_store, data, data_atk)
+        run_ids_eval(run_ar_ids, AR, atk_file, len(data_atk), 10,
+                     0, pv_store, data, data_atk)
 
     if INV in run_ids:
         pv_store_inv = pvStore.PVStore(conf_inv, data)
 
-        run_ids_eval(run_invariant_ids, INV, atk_file, 0, pv_store_inv, data_atk, pred_file,
-                     map_id_pred, inv_file)
-
+        run_ids_eval(run_invariant_ids, INV, atk_file, len(data_atk), 10,
+                    0, pv_store_inv, data_atk, pred_file, map_id_pred, inv_file)
+                    
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--conf", action="store", dest="conf")

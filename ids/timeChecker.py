@@ -459,9 +459,6 @@ class TransitionMatrix(object):
                                 else:
                                     update_mean = newval - self.last_exact_val
 
-                                if pv.name == "valve1" and self.last_value.value == 1:
-                                    pdb.set_trace()
-
                                 self.perform_detection_test(filehandler, ts, pv, malicious_activities,
                                                             elapsed_time, update_mean, self.last_value.value, self.last_value.value)
 
@@ -492,9 +489,6 @@ class TransitionMatrix(object):
                                 update_mean = np.mean(self.update_step_still)
                             else:
                                 update_mean = newval - self.last_exact_val
-
-                            if pv.name == "valve1" and self.last_value.value == 1:
-                                pdb.set_trace()
 
                             self.perform_detection_test(filehandler, ts, pv, malicious_activities,
                                                         same_value_t, update_mean, self.last_value.value,

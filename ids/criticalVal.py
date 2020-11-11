@@ -355,6 +355,8 @@ def main(conf, output, data, apply_filter):
                 if name in var_to_list:
                     var["critical"] = var_to_list[name]
                     var["digitizer"] = var_to_digitizer[name].serialize()
+                else:
+                    var["critical"] = None
 
         with open(output, "w") as ofh:
             content = yaml.safe_dump(desc, allow_unicode=False)

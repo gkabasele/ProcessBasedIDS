@@ -48,6 +48,7 @@ class TimePattern(object):
         print("Name:{}, Row:{}, Col:{}".format(name, row, col))
         self.max_time = np.max(self.values)
         self.data = self.get_matrix_from_data(self.steps, self.values)
+        #self.export_data_matrix("./test_swat_transition_dataset/", name, row, col)
 
         if len(self.data) >= self.min_pts:
             if strategy:
@@ -64,7 +65,7 @@ class TimePattern(object):
         if len(self.data) >= self.min_pts:
             clusters = len(set(self.model.labels_)) -1 if -1 in self.model.labels_ else 0
             nbr_outlier = len(np.where(clusters == -1)[0])
-            return str("#Clusters:{}, #Outliers:{}".format(clusters, nbr_outlier))
+            return str("#Clusters:{}, #Outliers:{}, #Points:{}".format(clusters, nbr_outlier, self.data))
         else:
             clusters = len(self.data)
             return str("#Clusters:{}".format(clusters))

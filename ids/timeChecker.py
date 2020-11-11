@@ -188,12 +188,12 @@ class TransitionMatrix(object):
         if not pv.is_bool_var():
             first_index, _ = pv.digitizer.get_range(oldval)
             second_index, _ = pv.digitizer.get_range(newval)
+
             for crit_val in self.header:
                 for v in pv.limit_values[crit_val]:
                     if ((v < first_index and v > second_index) or
                         (v < second_index and v > first_index)):
                         return crit_val
-                  
 
     def _find_closest(self, elapsed_time, prev, curr, i):
         dist_prev = elapsed_time - prev.mean
@@ -453,7 +453,7 @@ class TransitionMatrix(object):
                         if pv.is_bool_var():
                             elapsed_time = int((ts - self.last_value.start).total_seconds())
                             pattern = self.get_pattern(self.last_value.value, self.last_value.value)
-                            if elapsed_time > pattern.max_time:
+                            if not isinstance(pattern, int) and elapsed_time > pattern.max_time:
                                 if len(self.update_step_still) > 0:
                                     update_mean = np.mean(self.update_step_still)
                                 else:
@@ -519,15 +519,15 @@ class TransitionMatrix(object):
             if self.last_exact_val is not None:
                 self.update_step.append(newval - self.last_exact_val)
 
-            in_crit = self.find_in_between_crit_val(self.last_exact_val, newval, pv)
-            if in_crit is not None and in_crit != self.last_value.value:
-                row = self.val_pos[self.last_value.value]
-                column = self.val_pos[in_crit]
-                elapsed_trans_t = int((ts - self.last_value.end).total_seconds())
+            if self.last_value is not None:
 
-                self.perform_detection_test(filehandler, ts, pv, malicious_activities,
-                                            elapsed_trans_t, np.mean(self.update_step),
-                                            self.last_value.value, in_crit)
+                in_crit = self.find_in_between_crit_val(self.last_exact_val, newval, pv)
+                if in_crit is not None and in_crit != self.last_value.value:
+                    elapsed_trans_t = int((ts - self.last_value.end).total_seconds())
+
+                    self.perform_detection_test(filehandler, ts, pv, malicious_activities,
+                                                elapsed_trans_t, np.mean(self.update_step),
+                                                self.last_value.value, in_crit)
 
             # Case where a variable was on critical value and just changed to non-critical
             # We need to see how long it remains in that critical value
@@ -547,7 +547,7 @@ class TransitionMatrix(object):
                 """
             # To accelerate attack detection, perform the detection process when too long transition
             # time
-            if not pv.is_bool_var():
+            if not pv.is_bool_var() and self.last_value is not None:
                 elapsed_time = int((ts - self.last_value.end).total_seconds())
                 current_trend = np.mean(self.update_step)
                 target = None
@@ -746,7 +746,11 @@ class TimeChecker(Checker):
 
     def is_var_of_interest(self, name):
         return (name != 'timestamp' and name != 'normal/attack'
-                and self.vars[name].is_periodic and not self.vars[name].ignore)
+                and self.vars[name].is_periodic and not self.vars[name].ignore and len(self.vars[name].limit_values) > 0)
+
+    def basic_variable(self, name):
+        return (name != 'timestamp' and name != 'normal/attack'
+                and self.vars[name].is_periodic and not self.vars[name].ignore and len(self.vars[name].limit_values) == 0)
 
     def basic_detection(self, name, value, ts):
         pv = self.vars[name]
@@ -770,7 +774,7 @@ class TimeChecker(Checker):
                     matrix.update_transition_matrix(val, ts, pv)
 
         for name, val in self.vars.items():
-            if val.is_periodic and not val.ignore:
+            if val.is_periodic and not val.ignore and len(val.limit_values) > 0:
                 self.matrices[name].compute_clusters()
                 self.matrices[name].last_exact_val = None
                 self.matrices[name].update_step = list()
@@ -779,7 +783,7 @@ class TimeChecker(Checker):
         nbr_state = len(self.detection_store)
         if self.detection_store is not None:
             for i, state in enumerate(self.detection_store):
-                if i % 300 == 0:
+                if i % 5000 == 0:
                     print("Starting state {} of {}".format(i, nbr_state))
                 ts = state['timestamp']
                 for name, val in state.items():
@@ -790,6 +794,8 @@ class TimeChecker(Checker):
                         pv = self.vars[name]
                         matrix.compute_transition_time(val, ts, pv, self.filehandler,
                                                        self.malicious_activities)
+                    elif self.basic_variable(name):
+                        self.basic_detection(name, val, ts)
         else:
             raise(ValueError("No data to run on for detection"))
 

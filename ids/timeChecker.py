@@ -3,15 +3,16 @@ import collections
 import pickle
 from collections import OrderedDict, Counter
 from datetime import datetime, timedelta
+from timeit import default_timer as timer
 import pdb
 import numpy as np
 
 import utils
+import welford
 from reqChecker import Checker
 from timePattern import TimePattern
 
 ValueTS = collections.namedtuple('ValueTS', ['value', 'start', 'end'])
-
 
 # Threshold to compare the times
 BIG_THRESH = 1
@@ -94,8 +95,15 @@ class TransitionMatrix(object):
 
         # variable to keep track of the update step
         self.last_exact_val = None
-        self.update_step = list()
-        self.update_step_still = list()
+        #self.update_step = list()
+        #self.update_step_still = list()
+        self.update_step_still = welford.Welford() 
+        self.update_step = welford.Welford()
+
+        self.number_test_performed = 0
+        # Determine if a transition/stillness is taking to much time
+        self.slowing_phase = False
+        self.last_check = None
 
 
     # Create matrix of transitions
@@ -144,16 +152,6 @@ class TransitionMatrix(object):
     def nbr_transition(self):
         return len(self.historic_val) - 1
 
-    def compute_change_prob(self, pv):
-        nbr_seq = self.nbr_transition()
-        change = 0
-        for i in range(len(self.historic_val) - 1):
-            cur_val = self.historic_val[i].value
-            next_val = self.historic_val[i+1].value
-            if not self.same_value(cur_val, next_val, pv):
-                change += 1
-        return change/nbr_seq
-
     def add_value(self, val, ts, pv):
         for crit_val in self.header:
             if self.same_value(val, crit_val, pv):
@@ -194,158 +192,7 @@ class TransitionMatrix(object):
                     if ((v < first_index and v > second_index) or
                         (v < second_index and v > first_index)):
                         return crit_val
-
-    def _find_closest(self, elapsed_time, prev, curr, i):
-        dist_prev = elapsed_time - prev.mean
-        dist = curr - elapsed_time
-        if dist < dist_prev:
-            return i
-        else:
-            return i-1
-
-    def find_cluster(self, pattern, elapsed_time):
-        if len(pattern.clusters) == 1:
-            return pattern.clusters[0]
-        else:
-            return pattern.get_cluster(elapsed_time)
-
-    # Comparison for testing with the simulator
-    def is_close_time(self, t1, t2):
-        diff = abs(t1 - t2)
-        return diff <= EQ_THRESH
-
-    def is_big_time(self, t1, t2):
-        diff = abs(t1 -t2)
-        return diff >= BIG_THRESH
-
-    def is_close_time_noisy(self, t1, cluster, thresh=EQ_NOISY_THRESH):
-        if cluster.max_val == cluster.min_val:
-            return t1 == cluster.mean
-
-        if cluster.min_val <= t1 and t1 <= cluster.max_val:
-            return True
-
-        if t1 < cluster.min_val:
-            dist = utils.normalized_dist(cluster.max_val, cluster.min_val,
-                                         cluster.min_val, t1)
-            return dist <= thresh
-
-        if t1 > cluster.max_val:
-            dist = utils.normalized_dist(cluster.max_val, cluster.min_val,
-                                         t1, cluster.max_val)
-            return dist <= thresh
-
-
-    def is_big_time_noisy(self, t1, cluster, thresh=BIG_NOISY_THRESH):
-        if cluster.max_val == cluster.min_val:
-            return t1 == cluster.mean
-
-        if t1 < cluster.min_val:
-            diff_min = utils.normalized_dist(cluster.max_val, cluster.min_val,
-                                             cluster.min_val, t1)
-            return diff_min >= thresh
-
-        elif t1 > cluster.max_val:
-            diff_max = utils.normalized_dist(cluster.max_val, cluster.min_val,
-                                             t1, cluster.max_val)
-
-            return diff_max >= thresh
-
-    def is_small_cluster(self, pattern, cluster):
-        total_pol = sum([c.k for c in pattern.clusters])
-        cluster_size  = cluster.k/total_pol
-
-        return cluster_size < SMALL_CLUSTER
-
-    def is_unstable_cluster(self, pattern):
-        nbr_small = 0
-        for c in pattern.clusters:
-            if self.is_small_cluster(pattern, c):
-                nbr_small += 1
-        return (nbr_small/len(pattern.clusters)) > UNSTABLE_CLUSTER
-
-    def outlier_handler(self, column, row, elapsed_time, cluster):
-        pattern = self.transitions[row][column]
-
-        if (self.is_unstable_cluster(pattern) and
-                not self.is_big_time(elapsed_time, cluster.mean)):
-            cluster(elapsed_time)
-            return TransitionMatrix.SAME, cluster
-        else:
-            return TransitionMatrix.DIFF, cluster
-
-
-    def outlier_handler_noisy(self, column, row, elapsed_time, cluster):
-        pattern = self.transitions[row][column]
-
-        if (self.is_unstable_cluster(pattern) and
-                not self.is_big_time_noisy(elapsed_time, cluster)):
-            cluster(elapsed_time)
-            return TransitionMatrix.SAME, cluster
-        else:
-            return TransitionMatrix.DIFF, cluster
-
-    def check_transition_time(self, newval, oldval, elapsed_time, pv):
-        row = self.val_pos[oldval]
-        column = self.val_pos[newval]
-        expected = self.transitions[row][column]
-        if expected == -1 or expected == 0:
-            return TransitionMatrix.UNKNOWN, expected
-
-        if len(expected.clusters) < N_CLUSTERS:
-            # Too few information about that transition to give an opinion
-            # By default we accept the transition
-            return TransitionMatrix.SAME, None
-
-        cluster = self.find_cluster(expected, elapsed_time)
-
-        ## Test with the simulator##
-        if not self.noisy:
-            if not self.is_small_cluster(expected, cluster):
-                if self.is_close_time_noisy(elapsed_time, cluster, thresh=EQ_THRESH):
-                    return TransitionMatrix.SAME, cluster
-                else:
-                    return TransitionMatrix.DIFF, cluster
-            else:
-                if self.is_close_time_noisy(elapsed_time, cluster, thresh=EQ_THRESH):
-                    return TransitionMatrix.SAME, cluster
-                else:
-                    return self.outlier_handler(column, row, elapsed_time, cluster)
-        else:
-
-            if not self.is_small_cluster(expected, cluster):
-                if self.is_close_time_noisy(elapsed_time, cluster):
-                    return TransitionMatrix.SAME, cluster
-                else:
-                    return TransitionMatrix.DIFF, cluster
-            else:
-                if self.is_close_time_noisy(elapsed_time, cluster):
-                    return TransitionMatrix.SAME, cluster
-                else:
-                    return self.outlier_handler_noisy(column, row, elapsed_time, cluster)
-
-    def compute_remaining(self, val, current_elapsed_time):
-        row = self.val_pos[val]
-        column = self.val_pos[val]
-        pattern = self.transitions[row][column]
-        if isinstance(pattern, int) and (pattern == 0 or pattern == -1):
-            return TransitionMatrix.UNKNOWN, pattern
-        # Get the maximum clusters for the remaining time
-        # FIXME what about the case where a value is suddenly switched?
-        cluster = pattern.clusters[-1]
-        if current_elapsed_time > cluster.max_val:
-            if self.noisy:
-                if self.is_close_time_noisy(current_elapsed_time, cluster):
-                    return TransitionMatrix.SAME, cluster
-                else:
-                    return TransitionMatrix.DIFF, cluster
-            else:
-                if self.is_close_time(current_elapsed_time, cluster.max_val):
-                    return TransitionMatrix.SAME, cluster
-                else:
-                    return TransitionMatrix.DIFF, cluster
-        return TransitionMatrix.SAME, cluster
-    
+        
     def get_pattern(self, oldval, newval):
         row = self.val_pos[oldval]
         col = self.val_pos[newval]
@@ -407,7 +254,10 @@ class TransitionMatrix(object):
             self.write_msg_unknown(filehandler, res, ts, pv.name,
                                    malicious_activities, newval, oldval)
 
+        self.number_test_performed += 1
+
     def compute_transition_time(self, newval, ts, pv, filehandler, malicious_activities):
+
         # Value greater (resp. lower) than max (resp. min)
         if not pv.is_bool_var() and self.is_out_of_bound(newval, self.min_val, pv):
 
@@ -415,7 +265,7 @@ class TransitionMatrix(object):
                            newval, self.min_val, malicious_activities)
 
         elif not pv.is_bool_var() and self.is_out_of_bound(newval, self.max_val, pv, False):
-
+            welford.Welford
             self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name,
                            newval, self.max_val, malicious_activities)
 
@@ -441,37 +291,40 @@ class TransitionMatrix(object):
                             self.last_value = ValueTS(value=crit_val,
                                                       start=self.last_value.start,
                                                       end=ts)
-                            self.update_step_still.append(newval - self.last_exact_val)
+                            self.update_step_still(newval - self.last_exact_val)
                         else:
                             self.last_value = ValueTS(value=crit_val,
                                                       start=ts,
                                                       end=ts)
-                            self.update_step_still = list()
+                            self.update_step_still = welford.Welford()
 
                         # This test is performed every remaining time to detect attack
                         # faster or not because it require a lot of processing power
                         if pv.is_bool_var():
                             elapsed_time = int((ts - self.last_value.start).total_seconds())
                             pattern = self.get_pattern(self.last_value.value, self.last_value.value)
-                            if not isinstance(pattern, int) and elapsed_time > pattern.max_time:
-                                if len(self.update_step_still) > 0:
-                                    update_mean = np.mean(self.update_step_still)
+                            if not isinstance(pattern, int) and pattern.has_cluster() and elapsed_time > pattern.max_time:
+                                if self.update_step_still.k > 0:
+                                    update_mean = self.update_step_still.mean
                                 else:
                                     update_mean = newval - self.last_exact_val
 
                                 self.perform_detection_test(filehandler, ts, pv, malicious_activities,
-                                                            elapsed_time, update_mean, self.last_value.value, self.last_value.value)
+                                                            elapsed_time, update_mean, self.last_value.value,
+                                                            self.last_value.value)
 
-                        self.update_step = list()
+                        self.update_step = welford.Welford()
 
                     # The value has changed since last time
                     else:
+                        self.slowing_phase = False
+                        self.last_check  = None
                         if not pv.is_bool_var():
                             elapsed_trans_t = int((ts - self.last_value.end).total_seconds())
-                            if len(self.update_step) > 0:
+                            if self.update_step.k > 0:
                                 # The very last step to get to the crit val
-                                self.update_step.append(newval - self.last_exact_val)
-                                update_mean = np.mean(self.update_step)
+                                self.update_step(newval - self.last_exact_val)
+                                update_mean = self.update_step.mean
                             else:
                                 update_mean = newval - self.last_exact_val
 
@@ -485,8 +338,8 @@ class TransitionMatrix(object):
                         else:
                             same_value_t = int((self.last_value.end - self.last_value.start).total_seconds())
 
-                            if len(self.update_step_still) > 0:
-                                update_mean = np.mean(self.update_step_still)
+                            if self.update_step_still.k > 0:
+                                update_mean = self.update_step_still.mean
                             else:
                                 update_mean = newval - self.last_exact_val
 
@@ -496,14 +349,14 @@ class TransitionMatrix(object):
 
                         self.last_value = ValueTS(value=crit_val, start=ts, end=ts)
 
-                        self.update_step = list()
-                        self.update_step_still = list()
+                        self.update_step = welford.Welford()
+                        self.update_step_still = welford.Welford()
                 else:
                     self.last_value = ValueTS(value=crit_val, start=ts, end=ts)
                     # can happen if you are directly on a critical value when
                     # starting reading the trace
                     if self.last_exact_val is not None:
-                        self.update_step.append(newval - self.last_exact_val)
+                        self.update_step(newval - self.last_exact_val)
 
                 self.has_changed = False
                 break
@@ -511,13 +364,12 @@ class TransitionMatrix(object):
             if newval < crit_val:
                 break
 
-
         # There is no more modification than will occur
         if not found or ts == self.end_time:
             self.has_changed = True
 
             if self.last_exact_val is not None:
-                self.update_step.append(newval - self.last_exact_val)
+                self.update_step(newval - self.last_exact_val)
 
             if self.last_value is not None:
 
@@ -526,30 +378,19 @@ class TransitionMatrix(object):
                     elapsed_trans_t = int((ts - self.last_value.end).total_seconds())
 
                     self.perform_detection_test(filehandler, ts, pv, malicious_activities,
-                                                elapsed_trans_t, np.mean(self.update_step),
+                                                elapsed_trans_t, self.update_step.mean,
                                                 self.last_value.value, in_crit)
 
             # Case where a variable was on critical value and just changed to non-critical
             # We need to see how long it remains in that critical value
             if self.detection_trigger and self.last_value is not None:
                 self.detection_trigger = False
-                """
-                same_value_t = (self.last_value.end - self.last_value.start).total_seconds()
 
-                if len(self.update_step_still) > 0:
-                    update_mean = np.mean(self.update_step_still)
-                else:
-                    update_mean = newval - self.last_exact_val
-
-                    self.perform_detection_test(filehandler, ts, pv, malicious_activities,
-                                            same_value_t, update_mean, self.last_value.value,
-                                            self.last_value.value)
-                """
             # To accelerate attack detection, perform the detection process when too long transition
             # time
             if not pv.is_bool_var() and self.last_value is not None:
                 elapsed_time = int((ts - self.last_value.end).total_seconds())
-                current_trend = np.mean(self.update_step)
+                current_trend = self.update_step.mean
                 target = None
                 range_index, _ = pv.digitizer.get_range(newval)
                 if current_trend >= 0 and self.last_value.value < self.header[-1]:
@@ -562,28 +403,28 @@ class TransitionMatrix(object):
                 if target is not None:
                     pattern = self.get_pattern(self.last_value.value, target)
 
-                    if elapsed_time > pattern.max_time and not exceed:
+                    if pattern.has_cluster() and elapsed_time > pattern.max_time and not exceed:
                         self.perform_detection_test(filehandler, ts, pv, malicious_activities,
                                                     elapsed_time, current_trend, self.last_value.value, target)
 
-            self.update_step_still = list()
+            self.update_step_still = welford.Welford()
         self.last_exact_val = newval
 
     def add_update_step_same(self, value, row):
-        if len(self.update_step_still) != 0:
-            self.transitions[row][row].add_update_step(np.mean(self.update_step_still))
+        if self.update_step_still.k != 0:
+            self.transitions[row][row].add_update_step(self.update_step_still.mean)
         else:
             self.transitions[row][row].add_update_step(value - self.last_exact_val)
-        self.update_step_still = list()
+        self.update_step_still = welford.Welford()
 
 
     def add_update_step_diff(self, row, column, value):
-        if len(self.update_step) != 0:
-            self.update_step.append(value - self.last_exact_val)
-            self.transitions[row][column].add_update_step(np.mean(self.update_step))
+        if self.update_step.k != 0:
+            self.update_step(value - self.last_exact_val)
+            self.transitions[row][column].add_update_step(self.update_step.mean)
         else:
             self.transitions[row][column].add_update_step(value - self.last_exact_val)
-        self.update_step = list()
+        self.update_step = welford.Welford()
 
 
     # Add the elasped times of each transition.
@@ -611,22 +452,18 @@ class TransitionMatrix(object):
                                                           start=self.last_val_train.start,
                                                           end=ts)
                             # Keeping track of update in the critical zone
-                            self.update_step_still.append(value - self.last_exact_val)
+                            self.update_step_still(value - self.last_exact_val)
                         else:
                             # Since it has changed, we have to compute last value
-
-                            #same_value_t = (self.last_val_train.end - self.last_val_train.start).total_seconds()
-                            #self.transitions[row][row].update(same_value_t)
-                            #self.add_update_step_same(value, row)
 
                             self.last_val_train = ValueTS(value=crit_val,
                                                           start=ts,
                                                           end=ts)
 
-                            self.update_step_still = list()
+                            self.update_step_still = welford.Welford()
 
                         # Reset of the update list because we came back
-                        self.update_step = list()
+                        self.update_step = welford.Welford()
                         self.computation_trigger = False
                     else:
                         same_value_t = int((self.last_val_train.end - self.last_val_train.start).total_seconds())
@@ -650,7 +487,7 @@ class TransitionMatrix(object):
                 else:
                     self.last_val_train = ValueTS(value=crit_val, start=ts, end=ts)
                     if self.last_exact_val is not None:
-                        self.update_step.append(value - self.last_exact_val)
+                        self.update_step(value - self.last_exact_val)
 
                     self.computation_trigger = False
                 self.has_changed = False
@@ -665,7 +502,7 @@ class TransitionMatrix(object):
 
             #Since the variable left a critical value, we need to keep track of the
             #behavior of update to complete the next transition
-            self.update_step.append(value - self.last_exact_val)
+            self.update_step(value - self.last_exact_val)
 
             # If the update step is too big and the width of range is to small, the IDS may miss
             # a transition
@@ -678,7 +515,7 @@ class TransitionMatrix(object):
 
                 elapsed_trans_t = int((ts - self.last_val_train.end).total_seconds())
                 self.transitions[row][column].update(elapsed_trans_t)
-                self.transitions[row][column].add_update_step(np.mean(self.update_step))
+                self.transitions[row][column].add_update_step(self.update_step.mean)
 
             if self.computation_trigger and self.last_val_train is not None:
                 self.computation_trigger = False
@@ -686,7 +523,7 @@ class TransitionMatrix(object):
                 
                 self.add_update_step_same(value, self.val_pos[self.last_val_train.value])
 
-            self.update_step_still = list()
+            self.update_step_still = welford.Welford()
             #FIXME we should check the remaining time
 
         # The case where the end training period was reached and no computation
@@ -777,14 +614,20 @@ class TimeChecker(Checker):
             if val.is_periodic and not val.ignore and len(val.limit_values) > 0:
                 self.matrices[name].compute_clusters()
                 self.matrices[name].last_exact_val = None
-                self.matrices[name].update_step = list()
+                self.matrices[name].update_step = welford.Welford()
 
     def detect_suspect_transition(self):
         nbr_state = len(self.detection_store)
+        nbr_test_perf = 0
+        start_timer = timer()
         if self.detection_store is not None:
             for i, state in enumerate(self.detection_store):
-                if i % 5000 == 0:
-                    print("Starting state {} of {}".format(i, nbr_state))
+                if i % 3600 == 0:
+                    end_timer = timer()
+                    print("Elasped time: {}".format(end_timer - start_timer))
+                    print("Starting state {} of {}, test_performed:{}".format(i, nbr_state, nbr_test_perf))
+                    nbr_test_perf = 0
+                    start_timer = timer()
                 ts = state['timestamp']
                 for name, val in state.items():
                     if self.is_var_of_interest(name):
@@ -792,8 +635,14 @@ class TimeChecker(Checker):
                         if i == len(self.detection_store) - 1:
                             matrix.end_time = ts
                         pv = self.vars[name]
+                        matrix.number_test_performed = 0
                         matrix.compute_transition_time(val, ts, pv, self.filehandler,
                                                        self.malicious_activities)
+                        try:
+                            assert matrix.number_test_performed <= 1
+                        except AssertionError:
+                            pdb.set_trace()
+                        nbr_test_perf += matrix.number_test_performed
                     elif self.basic_variable(name):
                         self.basic_detection(name, val, ts)
         else:

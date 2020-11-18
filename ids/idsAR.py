@@ -76,7 +76,8 @@ class IDSAR(Checker):
 
         for k, data in map_pv_col.items():
             model = self.map_pv_predictor[k]
-            model.train(data, maxorder=120)
+            #model.train(data, maxorder=120)
+            model.train(data)
             # compute the residuals for the model
             model.make_predictions_from_test(data)
 
@@ -99,6 +100,9 @@ class IDSAR(Checker):
             ts = state["timestamp"]
             if debug_file is not None:
                 debug_file.write("State nbr:{}\n".format(i))
+
+            if i % 5000 == 0:
+                print("Up to state: {}".format(i))
 
             for name, val in state.items():
                 if name not in self.map_pv_predictor:

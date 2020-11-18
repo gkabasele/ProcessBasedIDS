@@ -283,208 +283,27 @@ def get_outlier_dist_per_cluster(map_point_cluster, data_lof, clusters, outliers
 
     return cluster_outlier_dist, cluster_outlier_lof_dist
 
-def inlier_score(attack, clusters, minPts):
+def inlier_score(attack, minPts):
     clf = LocalOutlierFactor(n_neighbors=minPts-1, contamination='auto')
     clf.fit_predict(attack)
     return clf.negative_outlier_factor_[-1]
 
-def outlier_prob_score(data, model):
-    if len(set(model.labels_)) > 2:
-        soft_clusters = hdbscan.all_points_membership_vectors(model)
-        return np.max(soft_clusters[-1])
-    else:
-        thresh_list, _ = run_soft_cluster(data, model, [-1])
-        return thresh_list[-1]
-
 def run_detection(normal, new_data, minPts, outlier_thresh, prob=False):
     point = np.reshape(new_data, (1, 2))
     data = np.append(normal, point, axis=0)
-    model, labels = outlier_detected_recompute(data, minPts)
-    if labels[-1] == -1:
-        if prob:
-            score = outlier_prob_score(data, model)
-        else:
-            score = inlier_score(data, labels, minPts)
 
-        return score < outlier_thresh, score
-    return False, None
+    score = inlier_score(data, minPts)
+    return score < outlier_thresh, score
 
-#Code hdbscan for soft-clustering
-#Part 1 Distance based membership
-def exemplars(cluster_id, condensed_tree):
-    raw_tree = condensed_tree._raw_tree
-    # Just the cluster elements of the tree, excluding singleton points
-    cluster_tree = raw_tree[raw_tree['child_size'] > 1]
-    # Get the leaf cluster nodes under the cluster we are considering
-    leaves = hdbscan.plots._recurse_leaf_dfs(cluster_tree, cluster_id)
-    # Now collect up the last remaining points of each leaf cluster (the heart of the leaf)
-    result = np.array([])
-    for leaf in leaves:
-        max_lambda = raw_tree['lambda_val'][raw_tree['parent'] == leaf].max()
-        points = raw_tree['child'][(raw_tree['parent'] == leaf) &
-                (raw_tree['lambda_val'] == max_lambda)]
-        result = np.hstack((result, points))
-    return result.astype(np.int)
+    # This might not be needed
+    #model, labels = outlier_detected_recompute(data, minPts)
 
-def min_dist_to_exemplar(point, cluster_exemplars, data):
-    dists = cdist([data[point]], data[cluster_exemplars.astype(np.int32)])
-    return dists.min()
+    #if labels[-1] == -1:
+    #    score = inlier_score(data, minPts)
+    #    return score < outlier_thresh, score
 
-def dist_vector(point, exemplar_dict, data):
-    result = {}
-    for cluster in exemplar_dict:
-        result[cluster] = min_dist_to_exemplar(point, exemplar_dict[cluster], data)
-        return np.array(list(result.values()))
-
-def dist_membership_vector(point, exemplar_dict, data, softmax=False):
-    if softmax:
-        result = np.exp(1./dist_vector(point, exemplar_dict, data))
-        result[~np.isfinite(result)] = np.finfo(np.double).max
-    else:
-        result = 1./dist_vector(point, exemplar_dict, data)
-        result[~np.isfinite(result)] = np.finfo(np.double).max
-    result /= result.sum()
-    return result
-
-#Part 2 outlier based membership
-def max_lambda_val(cluster, tree):
-    cluster_tree = tree[tree['child_size'] > 1]
-    leaves = hdbscan.plots._recurse_leaf_dfs(cluster_tree, cluster)
-    max_lambda = 0.0
-    for leaf in leaves:
-        max_lambda = max(max_lambda,
-        tree['lambda_val'][tree['parent'] == leaf].max())
-    return max_lambda
-
-def points_in_cluster(cluster, tree):
-    leaves = hdbscan.plots._recurse_leaf_dfs(tree, cluster)
-    return leaves
-
-def merge_height(point, cluster, tree, point_dict):
-    ## multi point
-    cluster_row = tree[tree["child"] == cluster]
-    cluster_height = cluster_row["lambda_val"][0]
-    
-    if point in point_dict[cluster]:
-        merge_row = tree[tree['child'] == float(point)][0]
-        return merge_row['lambda_val']
-    else:
-        while point not in point_dict[cluster]:
-            parent_row = tree[tree['child'] == cluster]
-            cluster = parent_row['parent'].astype(np.float64)[0]
-        for row in tree[tree['parent'] == cluster]:
-            child_cluster = float(row['child'])
-            if child_cluster == point:
-                return row['lambda_val']
-            if child_cluster in point_dict and point in point_dict[child_cluster]:
-                return row['lambda_val']
-
-def per_cluster_scores(point, cluster_ids, tree, max_lambda_dict, point_dict):
-    result = {}
-    point_row = tree[tree['child'] == point]
-    point_cluster = float(point_row[0]['parent'])
-    max_lambda = max_lambda_dict[point_cluster] + 1e-8 # avoid zero lambda vals in odd cases
-
-    for c in cluster_ids:
-        height = merge_height(point, c, tree, point_dict)
-        result[c] = (max_lambda / (max_lambda - height))
-    return result
-
-def outlier_membership_vector(point, cluster_ids, tree,
-                              max_lambda_dict, point_dict, softmax=True):
-    if softmax:
-        result = np.exp(np.array(list(per_cluster_scores(point,
-                                                         cluster_ids,
-                                                         tree,
-                                                         max_lambda_dict,
-                                                         point_dict
-                                                        ).values())))
-        result[~np.isfinite(result)] = np.finfo(np.double).max
-    else:
-        result = np.array(list(per_cluster_scores(point,
-                                                  cluster_ids,
-                                                  tree,
-                                                  max_lambda_dict,
-                                                  point_dict
-                                                 ).values()))
-    result /= result.sum()
-    return result
-
-# Middle way
-def combined_membership_vector(point, data, tree, exemplar_dict, cluster_ids,
-                               max_lambda_dict, point_dict, softmax=False):
-    raw_tree = tree._raw_tree
-    dist_vec = dist_membership_vector(point, exemplar_dict, data, softmax)
-    outl_vec = outlier_membership_vector(point, cluster_ids, raw_tree,
-                                         max_lambda_dict, point_dict, softmax)
-    result = dist_vec * outl_vec
-    result /= result.sum()
-    return result
-
-def prob_in_some_cluster(point, tree, cluster_ids, point_dict, max_lambda_dict):
-    heights = []
-    for cluster in cluster_ids:
-        heights.append(merge_height(point, cluster, tree._raw_tree, point_dict))
-    height = max(heights)
-    nearest_cluster = cluster_ids[np.argmax(heights)]
-    max_lambda = max_lambda_dict[nearest_cluster]
-    return height / max_lambda
-
-def bfs_from_hierarchy(hierarchy, bfs_root):
-    dim = hierarchy.shape[0]
-    max_node = 2*dim
-    num_points = max_node - dim + 1
-
-    to_process = [bfs_root]
-    result = []
-
-    while to_process:
-        result.extend(to_process)
-        to_process = [x - num_points for x in
-                      to_process if x >= num_points]
-        if to_process:
-            to_process = hierarchy[to_process,
-                                   :2].flatten().astype(np.intp).tolist()
-    return result
-
-def hierarchy_example(data):
-    hierarchy = linkage(data, "single")
-    dn = dendrogram(hierarchy)
-
-    root = 2* hierarchy.shape[0]
-    num_points = root // 2 + 1
-    next_label = num_points + 1
-
-    node_list = bfs_from_hierarchy(hierarchy, root)
-    relabel = np.empty(root + 1, dtype=np.intp)
-    relabel[root] = num_points
-
-    pdb.set_trace()
-
-def run_soft_cluster(data, model, outliers_index):
-    tree = model.condensed_tree_
-    cluster_ids = tree._select_clusters()
-    examplar_dict = {c:exemplars(c, tree) for c in cluster_ids}
-
-    raw_tree = tree._raw_tree
-    all_possible_clusters = np.arange(data.shape[0], raw_tree["parent"].max() + 1).astype(np.float64)
-    max_lambda_dict = {c:max_lambda_val(c, raw_tree) for c in all_possible_clusters}
-    point_dict = {c:set(points_in_cluster(c, raw_tree)) for c in all_possible_clusters}
-
-    membership_vectors = np.empty((len(data), len(set(model.labels_)) - 1))
-    for x in range(data.shape[0]):
-        membership_vector = combined_membership_vector(x, data, tree, examplar_dict, cluster_ids,
-                                                       max_lambda_dict, point_dict, False)
-        membership_vector *= prob_in_some_cluster(x, tree, cluster_ids, point_dict, max_lambda_dict)
-
-        membership_vectors[x] = membership_vector
-
-    all_prob = [np.max(x) for x in membership_vectors]
-    outliers_prob = [np.max(membership_vectors[i]) for i in outliers_index]
-
-    return outliers_prob, all_prob
-#DONE
-
+    #return False, None
+   
 def compute_lof_outliers(data, minPts, outliers_index): 
     clf = LocalOutlierFactor(n_neighbors=minPts-1, contamination="auto")
     clf.fit_predict(data)
@@ -499,7 +318,7 @@ def compute_prob_outliers(model, outliers_index):
     outliers_prob = [np.max(soft_clusters[i]) for i in outliers_index]
     return outliers_prob, all_prob
 
-def compute_threshold(data, minPts, model, prob=False):
+def compute_threshold(data, minPts, model, prob=False, display=False):
     clusters = model.labels_
     outliers_index = np.where(clusters == -1)[0]
 
@@ -508,36 +327,28 @@ def compute_threshold(data, minPts, model, prob=False):
     if len(outliers_index) == 0:
         return -3, None
 
-    if prob:
-        #implementation bug when there is only one cluster
-        if len(set(clusters)) > 2:
-
-            #outlier prob
-            thresh_list, _ = compute_prob_outliers(model, outliers_index)
-        else:
-            thresh_list, _ = run_soft_cluster(data, model, outliers_index)
-
-        param_space = [np.percentile(thresh_list, i) for i in range(25, 100, 25)]
-    else:
-        #local outlier factor
-        thresh_list, _ = compute_lof_outliers(data, minPts, outliers_index)
-        if len(thresh_list) > 2:
-            # We consider two groups, the local outlier and the general outlier
-            jnb = jenkspy.JenksNaturalBreaks(2)
-            jnb.fit(thresh_list)
+    #local outlier factor
+    thresh_list, _ = compute_lof_outliers(data, minPts, outliers_index)
+    if len(thresh_list) > 2:
+        # We consider two groups, the local outlier and the general outlier
+        jnb = jenkspy.JenksNaturalBreaks(2)
+        jnb.fit(thresh_list)
+        if display:
             print("Thresh List:{}".format(jnb.groups_))
-            try:
-                min_val = np.min(jnb.groups_[1])
-            except ValueError as ex:
-                min_val = np.min(jnb.groups_[0])
-            return min_val, thresh_list
-        else:
-            return -3 , thresh_list
+        try:
+            min_val = np.min(jnb.groups_[1])
+        except ValueError as ex:
+            min_val = np.min(jnb.groups_[0])
+        return min_val, thresh_list
+    else:
+        return -3 , thresh_list
 
 
 def perform_detection(normal, attack, prob):
     pdb.set_trace()
     minPts = 4
+    if len(normal) < minPts:
+        raise ValueError("The dataset is to small")
     model = compute_hdbscan_model(normal, minPts)
 
     threshold, thresh_list = compute_threshold(normal, minPts, model, prob=prob)

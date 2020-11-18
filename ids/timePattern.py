@@ -48,7 +48,7 @@ class TimePattern(object):
         print("Name:{}, Row:{}, Col:{}".format(name, row, col))
         self.max_time = np.max(self.values)
         self.data = self.get_matrix_from_data(self.steps, self.values)
-        #self.export_data_matrix("./test_swat_transition_dataset/", name, row, col)
+        #self.export_data_matrix("./test_swat_transition_dataset_attack/", name, row, col)
 
         if len(self.data) >= self.min_pts:
             if strategy:
@@ -85,6 +85,9 @@ class TimePattern(object):
                 return [update_step, time_elapsed] in self.model, None
 
         return True, None
+
+    def has_cluster(self):
+        return len(self.data) > self.min_pts
 
 
 def find_extreme_local(data):

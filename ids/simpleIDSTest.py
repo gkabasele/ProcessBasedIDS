@@ -19,23 +19,32 @@ TIMEPAT = "timepattern"
 AR = "ar"
 INV = "invariant"
 
-def setup(inputfile, attackfile, conf):
+def setup(inputfile, attackfile, conf, pvstore_file, create_pv):
 
     print("Loading all the states from the systems")
 
     data = utils.read_state_file(inputfile)
-    pv_store = pvStore.PVStore(conf, data)
+    if create_pv:
+        pv_store = pvStore.PVStore(conf, data)
+        with open(pvstore_file, "wb") as f:
+            pickle.dump(pv_store, f)
+    else:
+        with open(pvstore_file, "rb") as f:
+            pv_store = pickle.load(f)
     data_atk = utils.read_state_file(attackfile)
 
     return pv_store, data, data_atk
 
 def run_ar_ids(pv_store, data, data_atk):
     ids = IDSAR(pv_store, data, control_coef=6, alpha=0.02)
+    print("Training autoregessive IDS")
     ids.create_predictors()
     ids.train_predictors()
 
-    filename = "./ar_malicious.bin"
-    file_reason = "./ar_reasons.bin"
+    print("Running IDS on attack trace")
+
+    filename = "./ar_malicious_swat.bin"
+    file_reason = "./ar_reasons_swat.bin"
     if os.path.exists(filename) and os.path.exists(file_reason):
         with open(filename, "rb") as f:
             ids.malicious_activities = pickle.load(f)
@@ -50,12 +59,12 @@ def run_ar_ids(pv_store, data, data_atk):
         with open(file_reason, "wb") as f:
             pickle.dump(ids.malicious_reason, f)
 
-    ids.export_detected_atk("useless_logfile_ar.txt")
+    ids.export_detected_atk("useless_logfile_ar_swat.txt")
 
     return ids
 
 def run_time_pattern_ids(pv_store, data, data_atk, matrix, write_matrix):
-    export_log = "useless_logfile_pattern.txt"
+    export_log = "useless_logfile_pattern_medium_barrier.txt"
     print("Configuring matrix")
     ids = TimeChecker(data, pv_store,
                       export_log, noisy=True)
@@ -67,11 +76,10 @@ def run_time_pattern_ids(pv_store, data, data_atk, matrix, write_matrix):
         ids.fill_matrices()
         ids.export_matrix(matrix)
 
-
     print("Running IDS on attack trace")
     ids.detection_store = data_atk
 
-    filename = "./tp_malicious.bin"
+    filename = "./tp_malicious_medium_barrier.bin"
 
     if os.path.exists(filename):
         export = True
@@ -81,6 +89,8 @@ def run_time_pattern_ids(pv_store, data, data_atk, matrix, write_matrix):
         ids.detect_suspect_transition()
         with open(filename, "wb") as f:
             pickle.dump(ids.malicious_activities, f)
+
+    print(ids.get_vars_alerts_hist())
 
     ids.close()
 
@@ -103,11 +113,11 @@ def run_invariant_ids(pv_store, data_atk, pred_file,
     else:
         raise ValueError("Missing file to run the invariant IDS")
 
-    export_log = "useless_logfile_invariant.txt"
+    export_log = "useless_logfile_invariant_swat_no_phys.txt"
 
     ids = IDSInvariant(map_id_pred, inv_file, export_log)
 
-    filename = "./inv_malicious.bin"
+    filename = "./inv_malicious_swat_no_phys.bin"
 
     if os.path.exists(filename):
         export = True
@@ -242,9 +252,9 @@ def run_ids_eval(func_ids, name, atk_time, atk_trace_size, aftereffect, window, 
     print("------------")
 
 def main(inputfile, attackfile, conf, conf_inv, atk_time_file, run_ids,
-         matrix, write, pred_file, map_id_pred, inv_file):
+         matrix, write, pred_file, map_id_pred, inv_file, pvstore_file, create_pv):
 
-    pv_store, data, data_atk = setup(inputfile, attackfile, conf)
+    pv_store, data, data_atk = setup(inputfile, attackfile, conf, pvstore_file, create_pv)
     atk_file = evaluationIDS.create_expected_malicious_activities(atk_time_file)
 
     if TIMEPAT in run_ids:
@@ -276,9 +286,11 @@ if __name__ == "__main__":
     parser.add_argument("--predicates", action="store", dest="pred_file")
     parser.add_argument("--map", action="store", dest="map_id_pred")
     parser.add_argument("--invariants", action="store", dest="inv_file")
+    parser.add_argument("--create_pv", action="store_true", dest="create_pv", default=False)
+    parser.add_argument("--pvstore", action="store", dest="pv_store_file")
 
     args = parser.parse_args()
 
     main(args.input_file, args.attack_file, args.conf, args.conf_inv,
          args.atk_time, args.runids, args.matrix, args.write, args.pred_file,
-         args.map_id_pred, args.inv_file)
+         args.map_id_pred, args.inv_file, args.pv_store_file, args.create_pv)

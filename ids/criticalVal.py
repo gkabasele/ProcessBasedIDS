@@ -304,6 +304,22 @@ def merge_successive_range(var_to_crit):
 
     return var_to_list
 
+def add_barrier(var_to_crit):
+    print(var_to_crit)
+    for var, crits in var_to_crit.items():
+        vals = sorted(list(crits))
+        maxval = vals[-1]
+        minval = vals[0]
+
+        for i, val in enumerate(vals):
+            if i != len(vals) - 1:
+                if val + 1 != vals[i+1]:
+                    crits.add(val+1)
+            if i != 0:
+                if val - 1 != vals[i-1]:
+                    crits.add(val-1)
+    print(var_to_crit)
+
 def plot_critical(data, var_to_crit, var_to_digitizer):
     map_var_val = get_all_values(data)
     for var, values in var_to_crit.items():
@@ -322,7 +338,7 @@ def plot_critical(data, var_to_crit, var_to_digitizer):
 
         plt.show()
 
-def main(conf, output, data, apply_filter):
+def main(conf, output, data, apply_filter, apply_barrier):
 
     actuators, sensors = limitVal.get_actuators_sensors(conf)
 
@@ -338,6 +354,9 @@ def main(conf, output, data, apply_filter):
     var_min_split = get_max_split_per_var(event_var_critical)
 
     var_to_crit, var_to_digitizer = get_var_to_critical_value(event_var_critical, var_min_split)
+
+    if apply_barrier:
+        add_barrier(var_to_crit)
 
     var_to_list = merge_successive_range(var_to_crit)
 
@@ -378,9 +397,11 @@ if __name__ == "__main__":
     parser.add_argument("--filter", action="store_true", dest="apply_filter",
                         help="apply_filter")
 
+    parser.add_argument("--barrier", action="store_true", dest="apply_barrier", help="add barrier between zones")
+
     args = parser.parse_args()
 
     data = read_state_file(args.input)
 
-    main(args.conf_file, args.output, data, args.apply_filter)
+    main(args.conf_file, args.output, data, args.apply_filter, args.apply_barrier)
 

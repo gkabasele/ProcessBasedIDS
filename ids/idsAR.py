@@ -5,7 +5,9 @@ from collections import deque
 from collections import Counter
 from datetime import datetime
 from argparse import ArgumentParser
+import pickle
 import pdb
+from copy import deepcopy
 import numpy as np
 from scipy.stats import f
 import matplotlib.pyplot as plt
@@ -48,7 +50,7 @@ class MyQueue(object):
 
 class IDSAR(Checker):
 
-    def __init__(self, pv_store, store, control_coef=3, alpha=0.05):
+    def __init__(self, pv_store, store, control_coef=3, alpha=0.05, maxorder=512):
         #alpha : signifiance level
         #control_coef: Stewart control limit
 
@@ -62,6 +64,7 @@ class IDSAR(Checker):
 
         self.control_coef = control_coef
         self.alpha = alpha
+        self.maxorder = maxorder
 
     def create_predictors(self):
         for name in self.vars.continuous_monitor_vars():
@@ -76,8 +79,7 @@ class IDSAR(Checker):
 
         for k, data in map_pv_col.items():
             model = self.map_pv_predictor[k]
-            #model.train(data, maxorder=120)
-            model.train(data)
+            model.train(data, maxorder=self.maxorder)
             # compute the residuals for the model
             model.make_predictions_from_test(data)
 
@@ -86,10 +88,20 @@ class IDSAR(Checker):
             model.upper_limit = mu + self.control_coef * std
             model.lower_limit = mu - self.control_coef * std
 
+    def export_model(self, filename):
+        with open(filename, "wb") as fname:
+            pickle.dump(self.map_pv_predictor, fname)
+
+    def import_model(self, filename):
+        with open(filename, "rb") as fname:
+            self.map_pv_predictor = pickle.load(fname)
+
+
     def run_detection_mode(self, detection_store, debug_file=None):
 
         map_pv_hist = {k: MyQueue(maxlen=v.order()) for k, v in self.map_pv_predictor.items()}
         map_pv_pred_err = {k: Welford() for k in self.map_pv_predictor.keys()}
+        map_pv_shewart = {k:Welford() for k in self.map_pv_predictor.keys()}
 
         if debug_file is not None:
             pred_residuals = list()
@@ -108,25 +120,29 @@ class IDSAR(Checker):
                 if name not in self.map_pv_predictor:
                     continue
 
+                shewart = map_pv_shewart[name]
                 model = self.map_pv_predictor[name]
                 data = map_pv_hist[name].queue
+                shewart(val)
 
-                if len(data) == model.order():
+                if model.out_of_range(val, self.control_coef, shewart.mean, shewart.std):
+                    self.add_malicious_activities(ts, name) 
+                    self.malicious_reason.append(OFFLIMIT)
+
+                elif len(data) == model.order():
                     prediction = model.predict(data)
-                    residual = val - prediction
+                    residual = prediction - val
+                    tmp_pred_err = deepcopy(map_pv_pred_err[name])
                     map_pv_pred_err[name](residual)
                     if debug_file is not None:
                         pred_residuals.append(residual)
                         confidence_interval_neg.append(-6*model.res_dist.std)
                         confidence_interval_pos.append(6*model.res_dist.std)
 
-                    #if self.anomaly_detected(name, val, map_pv_pred_err, differences_f):
-                    res, reason = self.is_outlier(val, residual, model, data)
-                    if res:
+                    if self.anomaly_detected(name, val, map_pv_pred_err[name], data):
                         self.add_malicious_activities(ts, name)
-                        self.malicious_reason.append(reason)
-                    else:
-                        model.res_dist(residual)
+                        self.malicious_reason.append(not OFFLIMIT)
+                        map_pv_pred_err[name] = tmp_pred_err
 
                 map_pv_hist[name].add(val)
 
@@ -159,27 +175,31 @@ class IDSAR(Checker):
         return c
 
 
-    def anomaly_detected(self, name, val, pred_err, differences_f):
+    def fscore_right_tailed(self, df1, v1, df2, v2, alpha=0.05):
+        F = v1/v2
+        crit1 = f.ppf(1-alpha, df1, df2)
+        return F >= crit1
+
+    def fscore_right_tailed_anomaly_detection(self, model, pred_error):
+        try:
+            return self.fscore_right_tailed(pred_error.k - 1, pred_error.std**2,
+                                            model.res_dist.k -1, model.res_dist.std**2)
+        except ZeroDivisionError:
+            return False
+
+
+    def anomaly_detected(self, name, val, pred_err, data):
 
         model = self.map_pv_predictor[name]
-        if val > model.upper_limit or val < model.lower_limit:
-            return True, OFFLIMIT
 
         try:
-            num, df1, denom, df2 = self.get_num_denom(model, pred_err[name])
-            F = num/denom
-
             # H0: The variances of the residual during the training phase and the detection phase are the same
             # Ha: The variances are different
             # H0 is rejected if the F value is higher than the critical value
+            return self.fscore_right_tailed_anomaly_detection(model, pred_err)
 
-            # Two-tailed test so alpha is divided by two
-            crit = f.ppf(1 - self.alpha/2, df1, df2)
-            if F > crit:
-                differences_f.append(F-crit)
-                return True, not OFFLIMIT
         except ZeroDivisionError:
-            return False, None
+            return False
 
     # Residual follows a normal distribution so we can use the z-score to
     # detect if one is an outliers or not

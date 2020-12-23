@@ -34,10 +34,7 @@ class ARpredictor(object):
         else:
             return np.dot(self.coef[1:], data)
 
-    def out_of_range(self, val, data, coef):
-        mu = np.mean(data)         
-        std = np.std(data)
-
+    def out_of_range(self, val, coef, mu, std):
         ucl = mu + coef * std
         lcl = mu - coef * std
         
@@ -57,8 +54,8 @@ class ARpredictor(object):
         while j < len(dataset):
             value = dataset[i:j]
             pred = self.predict(value[::-1])
-            residuals.append(dataset[j] - pred)
-            self.res_dist(dataset[j] - pred)
+            residuals.append(pred - dataset[j])
+            self.res_dist(pred - dataset[j])
             predictions.append(pred)
             i += 1
             j += 1
@@ -136,5 +133,6 @@ def compute_coef_and_predict(f_train, f_test):
 
 if __name__ == "__main__":
     #compute_coef_and_predict("../../autoregressive_opensource/test1.dat", 100)
-    compute_coef_and_predict("../SWaT_scripts/lit301_normal.dat", "../SWaT_scripts/lit301_attack.dat") # 419 400/209 700
+    #compute_coef_and_predict("../SWaT_scripts/lit301_normal.dat", "../SWaT_scripts/lit301_attack.dat") # 419 400/209 700
+    compute_coef_and_predict("../SWaT_scripts/ait401_normal.dat", "../SWaT_scripts/ait401_attack.dat") # 419 400/209 700
     #compute_coef_and_predict("../SWaT_scripts/tank1_normal_1h.dat", 1000) # 300/2

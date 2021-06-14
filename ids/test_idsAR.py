@@ -82,7 +82,7 @@ def fscore(df1, v1, df2, v2, debug=False, alpha=0.05):
     crit2 = f.ppf(alpha/2, df1, df2)
     bound = sorted([crit1, crit2]) 
     # If H0 is rejected, then an attack occured
-    return F <= bound[0] or F >= bound[1]
+    return F <= bound[0] or F >= bound[1], F, bound[1]
 
 def fscore_right_tailed(df1, v1, df2, v2, alpha=0.05):
     F = v1/v2
@@ -128,7 +128,8 @@ def test_pv_running_ids(pv, data, data_atk):
     train_data = [state[pv] for state in data]
     attack_data = [state[pv] for state in data_atk]
 
-    test_ar_model(train_data, attack_data, len(attack_data), pv)
+    #test_ar_model(train_data, attack_data, len(attack_data), pv)
+    test_ar_model_window(train_data, attack_data, len(attack_data), pv)
 
     
 def test_ar_model_from_file(order):
@@ -170,6 +171,10 @@ def test_ar_model(data, data_atk, nbr_atk, label, order=512):
 
     window = MyQueue(maxlen=model.order())
     for i, val in enumerate(data_atk):
+
+        if i % 5000 == 0:
+            print("Up to state {}".format(i))
+
         shewart_params(val)
         if model.out_of_range(val, 3, shewart_params.mean, shewart_params.std):
                 nbr_anomalies_shewart += 1
@@ -180,7 +185,8 @@ def test_ar_model(data, data_atk, nbr_atk, label, order=512):
             tmp = deepcopy(pred_error)
             pred_error(error)
             errors.append(error)
-            is_outlier, Fvalue, crit = fscore_right_tailed_anomaly_detection(model, pred_error)
+            #is_outlier, Fvalue, crit = fscore_right_tailed_anomaly_detection(model, pred_error)
+            is_outlier, Fvalue, crit = fscore_anomaly_detection(model, pred_error)
 
             fscore_ts.append(Fvalue)
             crit_ts.append(crit)
@@ -202,6 +208,92 @@ def test_ar_model(data, data_atk, nbr_atk, label, order=512):
 
     plt.show()
 
+def test_ar_model_window(data, data_atk, nbr_atk, label, order=512):
+    
+    model = ARpredictor()
+    model.train(data, maxorder=order)
+    model.make_predictions_from_test(data)
+
+    window_size = {1800:Welford(),
+                   3600:Welford(),
+                   10800:Welford(),
+                   21600:Welford(),
+                   43200:Welford(),
+                   86400:Welford()}
+
+    window_anomalies = {k : 0 for k in window_size.keys()}
+    window_fscore = {k : list() for k in window_size.keys()}
+    window_crit = {k : list() for k in window_size.keys()}
+
+    pred_error = Welford()
+    errors = list()
+    nbr_anomalies_fscore = 0
+    nbr_anomalies_shewart = 0
+
+    crit_ts = list()
+    fscore_ts = list()
+
+    shewart_params = Welford()
+
+    window = MyQueue(maxlen=model.order())
+    for i, val in enumerate(data_atk):
+        shewart_params(val)
+        if model.out_of_range(val, 3, shewart_params.mean, shewart_params.std):
+                nbr_anomalies_shewart += 1
+
+        if len(window) == model.order():
+            predictions = model.predict(window.queue)
+            error = predictions - val
+            tmp = deepcopy(pred_error)
+            pred_error(error)
+            errors.append(error)
+            is_outlier, Fvalue, crit = fscore_right_tailed_anomaly_detection(model, pred_error)
+            fscore_ts.append(Fvalue)
+            crit_ts.append(crit)
+            if is_outlier:
+                pred_error = tmp
+                nbr_anomalies_fscore += 1
+
+            for wsize in window_size:
+                tmp = deepcopy(window_size[wsize])
+                window_size[wsize](error)
+                is_outlier, Fvalue, crit = fscore_right_tailed_anomaly_detection(model, window_size[wsize])
+                window_fscore[wsize].append(Fvalue)
+                window_crit[wsize].append(crit)
+                if is_outlier:
+                    window_size[wsize] = tmp
+                    window_anomalies[wsize] += 1
+
+                if window_size[wsize].k == wsize:
+                    window_size[wsize] = Welford()
+
+        window.add(val)
+    
+    print("Residual: {}".format(model.res_dist))
+    print("Error: {}".format(pred_error))
+    print("For {}, {}/{}/{} (fscore/shewart/#state)".format(label,
+                                                     nbr_anomalies_fscore,
+                                                     nbr_anomalies_shewart,
+                                                     nbr_atk))
+    for wsize in window_size:
+        print("wsize:{}, Error:{}".format(wsize, window_size[wsize]))
+        print("For {}, wsize:{}, {}/{} (fscore/#state)".format(label,
+                                                               wsize,
+                                                               window_anomalies[wsize],
+                                                               nbr_atk))
+    plt.plot(fscore_ts, label="Fval")
+    plt.plot(crit_ts, label="crit")
+    plt.legend()
+    plt.title("Normal")
+    plt.show()
+
+    for wsize in window_size:
+        plt.plot(window_fscore[wsize], label="Fval")
+        plt.plot(window_crit[wsize], label="crit")
+        plt.title(wsize)
+        plt.legend()
+        plt.show()
+
 def running_ids(data, data_atk, pv_store):
 
     ids = IDSAR(pv_store, data, control_coef=6, alpha=0.05)
@@ -221,8 +313,8 @@ def running_ids(data, data_atk, pv_store):
         pickle.dump(ids.malicious_reason, f)
 
 def main(normal_file, attack_file, conf):
-    test_myQueue()
-    test_fscore_right_tail()
+    #test_myQueue()
+    #test_fscore_right_tail()
 
     data, pv_store, data_atk = setup(normal_file, attack_file, conf)
 

@@ -19,6 +19,14 @@ TIMEPAT = "timepattern"
 AR = "ar"
 INV = "invariant"
 
+ATKTYPE = [
+            "actuatorMod",
+            "sensorRewritting",
+            "sensorBlock",
+            "outOfBounds",
+            "actuatorBlock"
+          ]
+
 def setup(inputfile, attackfile, conf, pvstore_file, create_pv):
 
     print("Loading all the states from the systems")
@@ -36,22 +44,56 @@ def setup(inputfile, attackfile, conf, pvstore_file, create_pv):
     return pv_store, data, data_atk
 
 def run_ar_ids(pv_store, data, data_atk):
-    ids = IDSAR(pv_store, data, control_coef=6, alpha=0.02)
-    print("Training autoregessive IDS")
-    ids.create_predictors()
-    ids.train_predictors()
+    #ids = IDSAR(pv_store, data, control_coef=3, alpha=0.1, maxorder=512)
+    ids = IDSAR(pv_store, data, control_coef=3, alpha=0.1, maxorder=120)
 
-    print("Running IDS on attack trace")
 
     filename = "./ar_malicious_swat.bin"
     file_reason = "./ar_reasons_swat.bin"
+    
+    #filename = "./ar_malicious_swat0801.bin"
+    #file_predictor = "./ar_predictor_swat_fscore.bin"
+    #file_reason = "./ar_reasons_swat.bin"
+
+    #filename = "./ar_malicious_medium_fscore_equalvar.bin"
+    #file_reason = "./ar_reasons_medium_fscore_equalvar.bin"
+    #file_predictor = "./ar_predictor_medium_fscore_equalvar.bin"
+
+    #file_predictor = "./ar_predictor_medium_process_maxorder120_overflow.bin"
+    #filename = "./ar_malicious_medium_process_maxorder120_overflow.bin"
+    #file_reason = "./ar_reasons_medium_process_maxorder120_overflow.bin"
+
+    #file_predictor = "./ar_predictore_medium_process_maxorder120.bin"
+    #filename = "./ar_malicious_medium_process_maxorder120.bin"
+    #file_reason = "./ar_reasons_medium_process_maxorder120.bin"
+
+    #file_predictor = "./ar_predictore_medium_process_maxorder120_fscore.bin"
+    #filename = "./ar_malicious_medium_process_maxorder120_fscore.bin"
+    #file_reason = "./ar_reasons_medium_process_maxorder120_fscore.bin"
+
+    #file_predictor = "./ar_predictore_medium_process_maxorder512_fscore.bin"   
+    #filename = "./ar_malicious_medium_process_maxorder512_fscore.bin"          
+    #file_reason = "./ar_reasons_medium_process_maxorder512_fscore.bin"
+
     if os.path.exists(filename) and os.path.exists(file_reason):
         with open(filename, "rb") as f:
+            print("Reading malicious activities time from file " + filename)
             ids.malicious_activities = pickle.load(f)
 
         with open(file_reason, "rb") as f:
             ids.malicious_reason = pickle.load(f)
     else:
+        
+        if not os.path.exists(file_predictor):
+            print("Training autoregressive IDS")
+            ids.create_predictors()
+            ids.train_predictors()
+            ids.export_model(file_predictor)
+        else:
+            print("Importing autoregressive predictor")
+            ids.import_model(file_predictor)
+
+        print("Running IDS on attack trace")
         ids.run_detection_mode(data_atk)
         with open(filename, "wb") as f:
             pickle.dump(ids.malicious_activities, f)
@@ -59,12 +101,18 @@ def run_ar_ids(pv_store, data, data_atk):
         with open(file_reason, "wb") as f:
             pickle.dump(ids.malicious_reason, f)
 
-    ids.export_detected_atk("useless_logfile_ar_swat.txt")
+    #ids.export_detected_atk("./useless_logfile_ar_medium_overflow.txt")
+    #ids.export_detected_atk("./useless_logfile_ar_swat_fscore.txt")
+    ids.export_detected_atk("./useless_logfile_ar_swat.txt")
+    #ids.export_detected_atk("./useless_logfile_ar_swat_0801.txt")
 
     return ids
 
 def run_time_pattern_ids(pv_store, data, data_atk, matrix, write_matrix):
-    export_log = "useless_logfile_pattern_medium_barrier.txt"
+    print("Running Time pattern IDS")
+    #export_log = "./useless_logfile_pattern_swat_barrier_basic_detection.txt"
+    export_log = "./useless_logfile_pattern_swat_barrier0801.txt"
+    export_log = "./useless_logfile_pattern_medium_barrier_backup_overflow.txt"
     print("Configuring matrix")
     ids = TimeChecker(data, pv_store,
                       export_log, noisy=True)
@@ -76,16 +124,19 @@ def run_time_pattern_ids(pv_store, data, data_atk, matrix, write_matrix):
         ids.fill_matrices()
         ids.export_matrix(matrix)
 
-    print("Running IDS on attack trace")
     ids.detection_store = data_atk
 
-    filename = "./tp_malicious_medium_barrier.bin"
+    filename = "./tp_malicious_swat_0801.bin"
+    #filename = "./tp_malicious_swat_no_barrier.bin"
+    #filename = "./tp_malicious_medium_overflow.bin"
 
     if os.path.exists(filename):
+        print("Reading malicious activities time from file " + filename)
         export = True
         with open(filename, "rb") as f:
             ids.malicious_activities = pickle.load(f)
     else:
+        print("Running IDS on attack trace")
         ids.detect_suspect_transition()
         with open(filename, "wb") as f:
             pickle.dump(ids.malicious_activities, f)
@@ -102,6 +153,7 @@ def run_time_pattern_ids(pv_store, data, data_atk, matrix, write_matrix):
 def run_invariant_ids(pv_store, data_atk, pred_file,
                       map_id_pred_file, inv_file):
 
+    print("Invariant based IDS")
     export = False
     if pred_file is not None and map_id_pred_file is not None:
         with open(pred_file, "rb") as fname:
@@ -113,17 +165,21 @@ def run_invariant_ids(pv_store, data_atk, pred_file,
     else:
         raise ValueError("Missing file to run the invariant IDS")
 
-    export_log = "useless_logfile_invariant_swat_no_phys.txt"
+    export_log = "./useless_logfile_invariant_swat0801.txt"
+    #export_log = "./useless_logfile_invariant_medium_overflow.txt"
 
     ids = IDSInvariant(map_id_pred, inv_file, export_log)
 
-    filename = "./inv_malicious_swat_no_phys.bin"
+    filename = "./inv_malicious_swat0801.bin"
+    #filename = "./inv_malicious_medium_overflow.bin"
 
     if os.path.exists(filename):
+        print("Reading malicious activities time from file " + filename)
         export = True
         with open(filename, "rb") as f:
             ids.malicious_activities = pickle.load(f)
     else:
+        print("Running detection on attack trace")
         ids.run_detection(data_atk, pv_store.continuous_monitor_vars(), predicates, map_id_pred)
         with open(filename, "wb") as f:
             pickle.dump(ids.malicious_activities, f)
@@ -143,7 +199,27 @@ def get_nbr_attack(time_atk):
 
     return nbr_attack
 
-def get_ids_result(ids, time_atk, atk_trace_size, aftereffect=10, window=0):
+def get_atk_type_nbr(time_atk, types):
+
+    atk_types = {x: 0 for x in types}
+    for atk in time_atk:
+        for t in atk["attackType"]:
+            atk_types[t] += 1
+
+    return atk_types
+
+def get_atk_type_detection_repartition(atk_types, atk_detected_type):
+
+    repartion = dict()
+    for x in atk_types:
+        try:
+            repartion[x] = atk_detected_type[x]/atk_types[x]
+        except ZeroDivisionError:
+            repartion[x] = None
+
+    return repartion
+
+def get_ids_result(ids, time_atk, atk_trace_size, aftereffect=10, window=0, is_invariant=False):
     # window to wait to consider that an alert is
     #linked to an attack
 
@@ -161,6 +237,8 @@ def get_ids_result(ids, time_atk, atk_trace_size, aftereffect=10, window=0):
 
     detect_in_period = dict()
 
+    detect_period_atk_type = dict()
+
     wrong_alert = 0
 
     #Second per second counting 
@@ -168,8 +246,10 @@ def get_ids_result(ids, time_atk, atk_trace_size, aftereffect=10, window=0):
     false_positive = 0
     nbr_attack = get_nbr_attack(time_atk)
 
+    atk_types = get_atk_type_nbr(time_atk, ATKTYPE)
+    detect_type_repartition = {x:0 for x in ATKTYPE}
 
-    for idx, alert in enumerate(alerts):
+    for alert, alert_var in zip(alerts, alerts_var):
         #-----[*********]---[**]--- (period)
         #-------*****--------*--  (alert)
         # find next period
@@ -205,11 +285,26 @@ def get_ids_result(ids, time_atk, atk_trace_size, aftereffect=10, window=0):
         start_p = time_atk[i]["start"]
         end_p = time_atk[i]["end"]
 
-        if alert >= start_p and alert <= end_p:
+        if alert >= start_p and alert <= end_p + relaxed_win:
             if time_atk[i]["start"] not in detect_in_period:
                 detect_in_period[time_atk[i]["start"]] = (alert - start_p).total_seconds()
-            true_positive += 1
+                if is_invariant:
+                    for t in time_atk[i]["attackType"]:
+                        detect_type_repartition[t] += 1
 
+            if not is_invariant:
+                if time_atk[i]["start"] not in detect_period_atk_type:
+                    for var in alert_var:
+                        if var in time_atk[i]["target"]:
+                            for t in time_atk[i]["attackType"]:
+                                detect_type_repartition[t] += 1
+
+                            detect_period_atk_type[time_atk[i]["start"]] = (alert - start_p).total_seconds()
+                            break
+
+
+            true_positive += 1
+            
 
     false_positive = wrong_alert
     false_negative = nbr_attack - true_positive
@@ -218,29 +313,49 @@ def get_ids_result(ids, time_atk, atk_trace_size, aftereffect=10, window=0):
                                         true_negative, false_negative, nbr_attack)
 
     miss_atk = len(time_atk) - len(detect_in_period)
-    return detect_in_period, wrong_alert, miss_atk, ifpt, eval_res
+    return (detect_in_period, wrong_alert, miss_atk, ifpt, eval_res,
+            atk_types, detect_type_repartition)
 
-def run_ids_eval(func_ids, name, atk_time, atk_trace_size, aftereffect, window, *args):
+def get_stats(values):
+    if len(values) == 0:
+        return None, None, None, None
+    else:
+        return np.mean(values), np.std(values), np.min(values), np.max(values)
+
+def display_repartition(atk_types, detect_types):
+    s = "{"
+    for i, x in enumerate(atk_types):
+        if i != len(atk_types)-1:
+            s += "{}:{}/{},".format(x, detect_types[x], atk_types[x])
+        else:
+            s += "{}:{}/{}".format(x, detect_types[x], atk_types[x])
+    s += " }"
+    return s
+
+
+def run_ids_eval(func_ids, name, atk_time, atk_trace_size, aftereffect, window, is_invariant, *args):
 
     ids = func_ids(*args)
-    detected, wrong_alert, miss_atk, inter_fp_time, eval_res = get_ids_result(ids, atk_time, atk_trace_size,
-                                                                              aftereffect, window)
+    detected, wrong_alert, miss_atk, inter_fp_time, eval_res, atk_types, detect_types = get_ids_result(ids, atk_time, atk_trace_size,
+                                                                                                       aftereffect, window, is_invariant)
 
+    detected_period = set(detected.keys())
+    print("Detected Period")
+    print(detected_period)
+    print("Miss Period")
+    all_period = set([period["start"] for period in atk_time]) 
+    print(all_period - detected_period)
+
+    print("Detection Time")
     detection_time = list(detected.values())
     print(detection_time)
-    mean_det = np.mean(detection_time)
-    std_det = np.std(detection_time)
-    minval_det = np.min(detection_time)
-    maxval_det = np.max(detection_time)
-
-    mean_ifpt = np.mean(inter_fp_time)
-    std_ifpt = np.std(inter_fp_time)
-    minval_ifpt = np.min(inter_fp_time)
-    maxval_ifpt = np.max(inter_fp_time)
+    mean_det, std_det, minval_det, maxval_det = get_stats(detection_time)
+    mean_ifpt, std_ifpt, minval_ifpt, maxval_ifpt = get_stats(inter_fp_time)
 
     print("{}".format(name))
     print("------------")
     print("Detected: {}".format(len(detected)))
+    print("Nbr Alert: {}".format(len(ids.malicious_activities)))
     print("Wrong alert: {}".format(wrong_alert))
     print("Miss Attack: {}".format(miss_atk))
     print("Per second {}".format(eval_res))
@@ -249,6 +364,8 @@ def run_ids_eval(func_ids, name, atk_time, atk_trace_size, aftereffect, window, 
 
     print("Inter FP Time Mean/Std/Min/Max: {}/{}/{}/{}".format(mean_ifpt, std_ifpt,
                                                                minval_ifpt, maxval_ifpt))
+    print("Attack Type Repartition: {}".format(display_repartition(atk_types, detect_types)))
+    print("Elapsed time for 1H: {}".format(ids.elapsed_time_per_computation))
     print("------------")
 
 def main(inputfile, attackfile, conf, conf_inv, atk_time_file, run_ids,
@@ -257,20 +374,22 @@ def main(inputfile, attackfile, conf, conf_inv, atk_time_file, run_ids,
     pv_store, data, data_atk = setup(inputfile, attackfile, conf, pvstore_file, create_pv)
     atk_file = evaluationIDS.create_expected_malicious_activities(atk_time_file)
 
+    # window normally at 60
+
     if TIMEPAT in run_ids:
         run_ids_eval(run_time_pattern_ids, TIMEPAT, atk_file, len(data_atk), 10,
-                     60, pv_store, data, data_atk, matrix, write)
+                     0, False, pv_store, data, data_atk, matrix, write)
 
     if AR in run_ids:
         run_ids_eval(run_ar_ids, AR, atk_file, len(data_atk), 10,
-                     0, pv_store, data, data_atk)
+                     0, False, pv_store, data, data_atk)
 
     if INV in run_ids:
         pv_store_inv = pvStore.PVStore(conf_inv, data)
 
         run_ids_eval(run_invariant_ids, INV, atk_file, len(data_atk), 10,
-                    0, pv_store_inv, data_atk, pred_file, map_id_pred, inv_file)
-                    
+                     0, True, pv_store_inv, data_atk, pred_file, map_id_pred, inv_file)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--conf", action="store", dest="conf")

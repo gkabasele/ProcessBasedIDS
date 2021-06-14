@@ -4,6 +4,7 @@ import pdb
 from collections import OrderedDict
 from collections import Counter
 from datetime import datetime
+from timeit import default_timer as timer
 import numpy as np
 import operator
 import predicate as pred
@@ -53,6 +54,7 @@ class IDSInvariant(object):
                                                  invariants)
         self.malicious_activities = OrderedDict()
         self.filehandler = open(filename, "w+")
+        self.elapsed_time_per_computation = list()
 
     def create_invariants(self, mapping_id_pred, invariantsfile):
         invariants = []
@@ -164,9 +166,14 @@ class IDSInvariant(object):
                 f.write("[{}] {}\n".format(k, v))
 
     def run_detection(self, store, sensors, predicates, mapping_id_pred):
+        start_timer = timer()
         for i, state in enumerate(store):
-            if i % (int(len(store)/30)) == 0:
-                print("Up to state: {}".format(i))
+            if i % 3600 == 0:
+                end_timer = timer()
+                print("Elasped time: {}".format(end_timer - start_timer))
+                self.elapsed_time_per_computation.append((end_timer - start_timer))
+                print("IDS Invariant Staring state{} of  {}".format(i, len(store)))
+
             self.valid_state(state, sensors, predicates, mapping_id_pred)
 
     def write(self, timestamp, line):

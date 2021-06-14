@@ -212,7 +212,6 @@ def get_clusters_closest_to_zero(clusters):
 def filter_based_on_ratio(data, event_var_critical, event_var_ratio):
 
     event_var_to_remove = {x: set() for x in event_var_critical}
-
     array = get_all_ratio(event_var_ratio)
 
     clusters = MeanShift().fit(array)

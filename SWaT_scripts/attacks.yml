@@ -1,174 +1,499 @@
 - start: '28/12/2015 10:29:14'
   end: '28/12/2015 10:44:53'
-  target: 'mv101'
+  target:
+          - "mv101"
+          - "p101"
+          - "lit101"
+          - "fit101"
+  attackType:
+          - "actuatorMod"
 
 - start: '28/12/2015 10:51:08'
   end: '28/12/2015 10:58:30'
-  target: 'p102'
+  target:
+          - "mv101"
+          - "p101"
+          - "p102"
+          - "lit101"
+          - "fit201"
+  attackType:
+          - "actuatorMod"
 
 - start: '28/12/2015 11:22:08'
   end: '28/12/2015 11:28:22'
-  target: 'lit101'
+  target:
+          - "mv101"
+          - "p101"
+          - "p102"
+          - "lit101"
+          - "fit201"
+  attackType:
+          - "sensorRewritting"
 
 - start: '28/12/2015 11:47:39'
   end: '28/12/2015 11:54:08'
-  target: 'mv504'
+  target:
+          - "mv504"
+  attackType:
+          - "actuatorMod"
 
 - start: '28/12/2015 12:00:55'
   end: '28/12/2015 12:04:10'
-  target: 'ait202'
+  target:
+          - "ait202"
+          - "ait504"
+          - "p203"
+  attackType:
+          - "sensorRewritting"
 
 - start: '28/12/2015 12:08:25'
   end: '28/12/2015 12:15:33'
-  target: 'lit301'
+  target:
+          - "lit301"
+          - "p301"
+          - "p302"
+          - "dpit301"
+  attackType:
+          - "sensorRewritting"
 
 - start: '28/12/2015 13:10:10'
   end: '28/12/2015 13:26:13'
-  target: 'dpit301'
+  target:
+          - "dpit301"
+          - "lit301"
+          - "lit401"
+          - "p301"
+          - "p302"
+          - "p401"
+          - "p402"
+  attackType:
+          - "sensorRewritting"
 
 - start: '28/12/2015 14:16:20'
   end: '28/12/2015 14:19:00'
-  target: 'fit401'
+  target:
+          - "fit401"
+          - "p501"
+          - "uv401"
+          - "p401"
+          - "p402"
+  attackType:
+          - "sensorRewritting"
 
 - start: '28/12/2015 14:19:00'
   end: '28/12/2015 14:28:20'
-  target: 'fit401'
+  target:
+          - "fit401"
+          - "p501"
+          - "uv401"
+          - "p401"
+          - "p402"
+  attackType:
+          - "sensorRewritting"
 
 - start: '29/12/2015 11:11:25'
   end: '29/12/2015 11:15:17'
-  target: 'mv304'
+  target:
+          - "mv303"
+          - "mv304"
+          - "lit301"
+          - "fit301"
+          - "mv302"
+          - "mv301"
+          - "p301"
+          - "p302"
+          - "lit401"
+          - "dpit301"
+  attackType:
+          - "actuatorMod"
 
 - start: '29/12/2015 11:35:40'
   end: '29/12/2015 11:42:50'
-  target: 'mv303'
+  target:
+          - "mv303"
+          - "mv304"
+          - "lit301"
+          - "fit301"
+          - "mv302"
+          - "mv301"
+          - "p301"
+          - "p302"
+          - "lit401"
+          - "dpit301"
+  attackType:
+          - "actuatorBlock"
 
 - start: '29/12/2015 11:57:25'
   end: '29/12/2015 12:02:00'
-  target: 'lit301'
+  target:
+          - "lit301"
+          - "p301"
+          - "p302"
+          - "dpit301"
+          - "fit301"
+  attackType:
+          - "sensorRewritting"
 
 - start: '29/12/2015 14:38:12'
   end: '29/12/2015 14:50:08'
-  target: 'mv303'
+  target:
+          - "mv303"
+          - "mv304"
+          - "lit301"
+          - "fit301"
+          - "mv302"
+          - "mv301"
+          - "p301"
+          - "p302"
+          - "lit401"
+          - "dpit301"
+  attackType:
+          - "actuatorBlock"
 
 - start: '29/12/2015 18:10:43'
   end: '29/12/2015 18:15:01'
-  target: 'ait504'
+  target:
+          - "ait504"
+          - "ait501"
+          - "ait502"
+          - "ait503"
+          - "fit501"
+          - "fit502"
+          - "fit503"
+          - "fit504"
+          - "p501"
+          - "p502"
+          - "pit501"
+          - "pit502"
+          - "pit503"
+  attackType:
+          - "sensorRewritting"
 
 - start: '29/12/2015 18:15:43'
   end: '29/12/2015 18:22:17'
-  target: 'ait504'
+  target:
+          - "ait504"
+          - "ait501"
+          - "ait502"
+          - "ait503"
+          - "fit501"
+          - "fit502"
+          - "fit503"
+          - "fit504"
+          - "p501"
+          - "p502"
+          - "pit501"
+          - "pit502"
+          - "pit503"
+  attackType:
+          - "sensorRewritting"
 
 - start: '29/12/2015 18:30:00'
   end: '29/12/2015 18:42:00'
   target:
-         - 'mv101'
-         - 'lit101'
+          - "mv101"
+          - "p101"
+          - "lit101"
+          - "fit101"
+
+  attackType:
+          - "sensorRewritting"
+          - "actuatorBlock"
 
 - start: '29/12/2015  22:55:18'
   end: '29/12/2015 23:03:00'
   target:
-         - 'uv401'
-         - 'ait502'
-         - 'p501'
+          - "ait504"
+          - "ait501"
+          - "ait502"
+          - "ait503"
+          - "fit501"
+          - "fit502"
+          - "fit503"
+          - "fit504"
+          - "p501"
+          - "p502"
+          - "pit501"
+          - "pit502"
+          - "pit503"
+          - "uv401"
+          - "mv101"
+          - "p101"
+          - "lit101"
+          - "fit101"
+  attackType:
+          - "sensorRewritting"
+          - "actuatorBlock"
+          - "actuatorMod"
 
 - start: '30/12/2015 01:42:34'
   end: '30/12/2015 01:54:10'
-  target: 
-         - 'p602'
-         - 'dit301'
-         - 'mv301'
+  target:
+          - "p601"
+          - "p602"
+          - "dpit301"
+          - "mv302"
+          - "mv303"
+          - "mv304"
+          - "lit301"
+          - "fit301"
+          - "mv301"
+          - "p301"
+          - "p302"
+          - "lit401"
+  attackType:
+          - "sensorRewritting"
+          - "actuatorBlock"
 
 - start: '30/12/2015 09:51:08'
   end: '30/12/2015 09:56:28'
   target:
-         - 'p203'
-         - 'p205'
+          - "p203"
+          - "p205"
+          - "p101"
+          - "p102"
+          - "mv101"
+          - "lit101"
+          - "fit201"
+          - "mv201"
+  attackType:
+          - "actuatorMod"
 
 - start: '30/12/2015 10:01:50'
   end: '30/12/2015 10:12:01'
-  target: 
-         - 'lit401'
-         - 'p401'
+  target:
+          - "lit401"
+          - "p401"
+          - "p402"
+          - "fit401"
+          - "uv401"
+  attackType:
+          - "sensorRewritting"
+          - "actuatorBlock"
 
 - start: '30/12/2015 17:04:56'
   end: '30/12/2015 17:29:00'
   target:
-         - 'p101'
-         - 'lit301'
+          - "lit101"
+          - "p101"
+          - "p102"
+          - "fit201"
+          - "lit301"
+          - "p301"
+          - "p302"
+          - "dpit301"
+          - "fit301"
+  attackType:
+          - "sensorRewritting"
+          - "actuatorBlock"
 
 - start: '31/12/2015 01:17:08'
   end: '31/12/2015 01:45:18'
   target:
-         - 'p302'
-         - 'lit401'
+          - "p302"
+          - "p301"
+          - "lit401"
+          - "p401"
+          - "p402"
+          - "fit401"
+  attackType:
+          - "sensorRewritting"
+          - "actuatorBlock"
 
 - start: '31/12/2015 01:45:19'
   end: '31/12/2015 11:15:27'
-  target: 'p302'
+  target:
+          - "p302"
+          - "p301"
+          - "lit401"
+          - "p401"
+          - "p402"
+          - "fit401"
+
+  attackType:
+          - "actuatorMod"
 
 - start: '31/12/2015 15:32:00'
   end: '31/12/2015 15:34:00'
-  target: 
-         - 'p201'
-         - 'p203'
-         - 'p205'
+  target:
+          - "p201"
+          - "p203"
+          - "p205"
+          - "mv201"
+  attackType:
+          - "actuatorMod"
 
 - start: '31/12/2015 15:47:40'
   end: '31/12/2015 16:07:10'
   target:
-         - 'lit101'
-         - 'p101'
-         - 'mv201'
+          - "lit101"
+          - "lit301"
+          - "p101"
+          - "p102"
+          - "fit201"
+          - "mv101"
+          - "mv201"
+  attackType:
+          - "actuatorMod"
+          - "actuatorBlock"
+          - "sensorRewritting"
 
 - start: '31/12/2015 22:05:34'
   end: '31/12/2015 22:11:40'
-  target: 'lit401'
+  target:
+          - "p302"
+          - "p301"
+          - "lit401"
+          - "p401"
+          - "p402"
+          - "fit401"
+  attackType:
+          - "sensorRewritting"
 
 - start: '01/01/2016 10:36:00'
   end: '01/01/2016 10:46:00'
-  target: 'lit301'
-
+  target:
+          - "lit301"
+          - "p301"
+          - "p302"
+          - "dpit301"
+  attackType:
+          - "sensorRewritting"
 
 - start: '01/01/2016 14:21:12'
   end: '01/01/2016 14:28:35'
-  target: 'lit101'
+  target:
+          - "mv101"
+          - "p101"
+          - "p102"
+          - "lit101"
+          - "fit201"
+  attackType:
+          - "sensorRewritting"
 
 - start: '01/01/2016 17:12:40'
   end: '01/01/2016  17:14:20'
-  target: 'p101'
+  target:
+          - "mv101"
+          - "p101"
+          - "p102"
+          - "lit101"
+          - "fit201"
+  attackType:
+          - "actuatorMod"
 
 - start: '01/01/2016 17:18:56'
   end: '01/01/2016 17:26:56'
   target:
-        - 'p101'
-        - 'p102'
-          
+          - "mv101"
+          - "p101"
+          - "p102"
+          - "lit101"
+          - "fit201"
+  attackType:
+          - "actuatorMod"
+          - "actuatorBlock"
+         
 - start: '01/01/2016 22:16:01'
   end: '01/01/2016 22:25:00'
-  target: 'lit101'
+  target:
+          - "mv101"
+          - "p101"
+          - "p102"
+          - "lit101"
+          - "fit201"
+  attackType:
+          - "sensorRewritting"
 
 - start: '02/01/2016 11:17:02'
   end: '02/01/2016 11:24:50'
   target:
-        - 'p501'
-        - 'fit502'
+          - "p501"
+          - "fit502"
+          - "ait504"
+          - "ait501"
+          - "ait502"
+          - "ait503"
+          - "fit501"
+          - "fit503"
+          - "fit504"
+          - "p502"
+          - "pit501"
+          - "pit502"
+          - "pit503"
+  attackType:
+          - "actuatorMod"
+          - "sensorRewritting"
 
 - start: '02/01/2016 11:31:38'
   end: '02/01/2016 11:36:18'
   target:
-        - 'ait402'
-        - 'ait502'
+          - "p501"
+          - "fit502"
+          - "ait504"
+          - "ait501"
+          - "ait502"
+          - "ait503"
+          - "fit501"
+          - "fit503"
+          - "fit504"
+          - "p502"
+          - "pit501"
+          - "pit502"
+          - "pit503"
+          - "ait402"
+  attackType:
+          - "sensorRewritting"
 
 - start: '02/01/2016 11:43:48'
   end: '02/01/2016 11:50:28'
   target:
-        - 'fit401'
-        - 'ait502'
+          - "p501"
+          - "fit502"
+          - "ait504"
+          - "ait501"
+          - "ait502"
+          - "ait503"
+          - "fit501"
+          - "fit503"
+          - "fit504"
+          - "p502"
+          - "pit501"
+          - "pit502"
+          - "pit503"
+          - "ait402"
+          - "uv401"
+  attackType:
+          - "sensorRewritting"
 
 - start: '02/01/2016 11:51:42'
   end: '02/01/2016 11:56:38'
-  target: 'fit401'
+  target:
+          - "p501"
+          - "fit502"
+          - "ait504"
+          - "ait501"
+          - "ait502"
+          - "ait503"
+          - "fit501"
+          - "fit503"
+          - "fit504"
+          - "p502"
+          - "pit501"
+          - "pit502"
+          - "pit503"
+          - "ait402"
+          - "uv401"
+  attackType:
+          - "sensorRewritting"
 
 - start: '02/01/2016 13:13:02'
   end: '02/01/2016 13:40:56'
-  target: 'lit301'
+  target:
+          - "lit301"
+          - "p301"
+          - "p302"
+          - "dpit301"
+  attackType:
+          - "sensorRewritting"
+

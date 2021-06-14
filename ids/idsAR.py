@@ -5,6 +5,7 @@ from collections import deque
 from collections import Counter
 from datetime import datetime
 from argparse import ArgumentParser
+from timeit import default_timer as timer
 import pickle
 import pdb
 from copy import deepcopy
@@ -65,6 +66,7 @@ class IDSAR(Checker):
         self.control_coef = control_coef
         self.alpha = alpha
         self.maxorder = maxorder
+        self.elapsed_time_per_computation = list()
 
     def create_predictors(self):
         for name in self.vars.continuous_monitor_vars():
@@ -107,14 +109,19 @@ class IDSAR(Checker):
             pred_residuals = list()
             confidence_interval_pos = list()
             confidence_interval_neg = list()
+        start_timer = timer()
 
         for i, state in enumerate(detection_store):
             ts = state["timestamp"]
             if debug_file is not None:
                 debug_file.write("State nbr:{}\n".format(i))
 
-            if i % 5000 == 0:
-                print("Up to state: {}".format(i))
+            if i % 3600 == 0:
+                end_timer = timer()
+                time_to_compute = end_timer - start_timer
+                print("Elapsed time: {}".format(time_to_compute))
+                self.elapsed_time_per_computation.append(time_to_compute)
+                print("IDSAR Starting state {} of {}".format(i, len(detection_store)))
 
             for name, val in state.items():
                 if name not in self.map_pv_predictor:
@@ -125,8 +132,9 @@ class IDSAR(Checker):
                 data = map_pv_hist[name].queue
                 shewart(val)
 
-                if model.out_of_range(val, self.control_coef, shewart.mean, shewart.std):
-                    self.add_malicious_activities(ts, name) 
+                #if model.out_of_range(val, self.control_coef, shewart.mean, shewart.std):
+                if val > model.upper_limit or val < model.lower_limit:
+                    self.add_malicious_activities(ts, name)
                     self.malicious_reason.append(OFFLIMIT)
 
                 elif len(data) == model.order():
@@ -139,7 +147,8 @@ class IDSAR(Checker):
                         confidence_interval_neg.append(-6*model.res_dist.std)
                         confidence_interval_pos.append(6*model.res_dist.std)
 
-                    if self.anomaly_detected(name, val, map_pv_pred_err[name], data):
+                    #if self.fscore_anomaly_detection(name, map_pv_pred_err[name]):
+                    if self.is_outlier(residual, model):
                         self.add_malicious_activities(ts, name)
                         self.malicious_reason.append(not OFFLIMIT)
                         map_pv_pred_err[name] = tmp_pred_err
@@ -174,6 +183,26 @@ class IDSAR(Checker):
             c[key] /= total
         return c
 
+    def fscore(self, df1, v1, df2, v2, alpha=0.05):
+        F = v1/v2
+
+        # Two-tailed test so alpha is divided by two
+        crit1 = f.ppf(1 - alpha/2, df1, df2)
+        crit2 = f.ppf(alpha/2, df1, df2)
+        bound = sorted([crit1, crit2]) 
+        # If H0 is rejected, then an attack occured
+        return F <= bound[0] or F >= bound[1]
+
+    def fscore_anomaly_detection(self, name, pred_error):
+        model = self.map_pv_predictor[name]
+        try:
+            num, df1, denum, df2 = self.get_num_denom(model, pred_error)
+
+            return self.fscore(df1, num, df2, denum, self.alpha)
+
+        except ZeroDivisionError:
+            return False
+
 
     def fscore_right_tailed(self, df1, v1, df2, v2, alpha=0.05):
         F = v1/v2
@@ -183,12 +212,12 @@ class IDSAR(Checker):
     def fscore_right_tailed_anomaly_detection(self, model, pred_error):
         try:
             return self.fscore_right_tailed(pred_error.k - 1, pred_error.std**2,
-                                            model.res_dist.k -1, model.res_dist.std**2)
+                                            model.res_dist.k -1, model.res_dist.std**2, self.alpha)
         except ZeroDivisionError:
             return False
 
 
-    def anomaly_detected(self, name, val, pred_err, data):
+    def anomaly_detected(self, name, pred_err):
 
         model = self.map_pv_predictor[name]
 
@@ -204,13 +233,10 @@ class IDSAR(Checker):
     # Residual follows a normal distribution so we can use the z-score to
     # detect if one is an outliers or not
 
-    def is_outlier(self, val, residual, model, data):
-        if model.out_of_range(val, data, self.control_coef):
-            return True, OFFLIMIT
-
+    def is_outlier(self, residual, model):
         z_score = (residual - model.res_dist.mean)/model.res_dist.std
 
-        return z_score > 6 or z_score < -6, not OFFLIMIT
+        return z_score > 6 or z_score < -6
 
     def get_num_denom(self, res_model, pre_model):
         if res_model.residual_var > pre_model.std**2:
@@ -237,7 +263,6 @@ def main(normal_file, attack_file, conf_file, mal_file):
     ids = IDSAR(pv_store, data_norm, alpha=0.02)
     ids.create_predictors()
     ids.train_predictors()
-    pdb.set_trace()
     ids.run_detection_mode(data_mal)
     ids.export_detected_atk(mal_file)
 

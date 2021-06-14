@@ -40,6 +40,9 @@ class Comparator(object):
 def find_prev_change(data, ts, i, varname, from_val, to_val):
     try:
         if varname in data[0]:
+            # Check if the process variable is in its attack value
+            # if it is, then we have to look at when did the change happened
+            # as it is the start of the attack
             if data[i]["timestamp"] == ts and data[i][varname] in to_val:
                 j = i
                 while j >= 0 and data[j][varname] in to_val:
@@ -59,6 +62,9 @@ def find_prev_change(data, ts, i, varname, from_val, to_val):
 def find_next_change(data, ts, i, varname, from_val, to_val):
     try:
         if varname in data[0]:
+            # Check if the process variable is stays in the value of the attack
+            # if it is, we need to check when it will change as it will be the
+            # end of the attack
             if data[i]["timestamp"] == ts and data[i][varname] in from_val:
                 j = i
                 while j < len(data) and data[j][varname] in from_val:
@@ -75,6 +81,10 @@ def find_next_change(data, ts, i, varname, from_val, to_val):
 def find_prev_change_c(data, ts, i, varname, from_comp, to_comp):
     try:
         if varname in data[0]:
+            # Check if the process variable is in its attack value
+            # if it is, then we have to look at when did the change happened
+            # as it is the start of the attack
+
             if data[i]["timestamp"] == ts and to_comp.is_true(data[i][varname]):
                 j = i
                 while j >= 0 and to_comp.is_true(data[j][varname]):
@@ -88,7 +98,30 @@ def find_prev_change_c(data, ts, i, varname, from_comp, to_comp):
     except IndexError:
         pdb.set_trace()
 
+def find_next_change_c(data, ts, i, varname, from_comp, to_comp):
+    try:
+        if varname in data[0]:
+            # Check if the process variable is in its attack value
+            # if it is, then we have to look at when it change back to normal
+            # as it is the end of the attack
+
+            if data[i]["timestamp"] == ts and from_comp.is_true(data[i][varname]):
+                j = i
+                while j >= 0 and from_comp.is_true(data[j][varname]):
+                    j += 1
+
+                if j < len(data):
+                    return data[j]["timestamp"]
+            else:
+                pdb.set_trace()
+                raise ValueError("Wrong timestamp or value")
+    except IndexError:
+        pdb.set_trace()
+
 def find_prev_brutal_change_c(data, ts, i, varname):
+    # Look for the point where there as big difference in the update of
+    # the process variable
+
     try:
         if varname in data[0]:
             if data[i]["timestamp"] == ts:
@@ -120,7 +153,7 @@ def main(infile, d_intimes, c_intimes, outtimes):
             if line.startswith("#") or line.startswith(" "):
                 continue
             print(line)
-            ts_tmp, i_tmp, var, from_tmp, to_tmp, kind = [x.replace("\n", "") for x in line.split(",")]
+            ts_tmp, i_tmp, var, from_tmp, to_tmp, kind, atk_id = [x.replace("\n", "") for x in line.split(",")]
             ts = datetime.strptime(ts_tmp, time_format)
             i = int(i_tmp)
 
@@ -137,11 +170,11 @@ def main(infile, d_intimes, c_intimes, outtimes):
             if kind == "change":
                 res = find_prev_change(data, ts, i, var, from_val, to_val)
                 if res is not None:
-                    start_attacks_ts.append(res)
+                    start_attacks_ts.append((res, int(atk_id)))
             elif kind == "stay":
                 res = find_next_change(data, ts, i, var, from_val, to_val)
                 if res is not None:
-                    start_attacks_ts.append(res)
+                    start_attacks_ts.append((res, int(atk_id)))
             else:
                 raise ValueError("Disc. Unknown kind:" + kind)
 
@@ -150,7 +183,7 @@ def main(infile, d_intimes, c_intimes, outtimes):
             if line.startswith("#") or line.startswith(" "):
                 continue
             print(line)
-            ts_tmp, i_tmp, var, from_comp_tmp, to_comp_tmp, kind = [x.replace("\n", "") for x in line.split(",")]
+            ts_tmp, i_tmp, var, from_comp_tmp, to_comp_tmp, kind, atk_id = [x.replace("\n", "") for x in line.split(",")]
             ts = datetime.strptime(ts_tmp, time_format)
             i = int(i_tmp)
 
@@ -160,19 +193,25 @@ def main(infile, d_intimes, c_intimes, outtimes):
             if kind == "norm" or kind == "any":
                 res = find_prev_change_c(data, ts, i, var, from_comp, to_comp)
                 if res is not None:
-                    start_attacks_ts.append(res)
+                    start_attacks_ts.append((res, int(atk_id)))
+
+            elif kind == "normend" or kind == "anyend":
+                res = find_next_change_c(data, ts, i, var, from_comp, to_comp)
+                if res is not None:
+                    start_attacks_ts.append((res, int(atk_id)))
 
             elif kind == "brutal":
                 res = find_prev_brutal_change_c(data, ts, i, var)
                 if res is not None:
-                    start_attacks_ts.append(res)
+                    start_attacks_ts.append((res, int(atk_id)))
 
             else:
                 raise ValueError("Cont. Unknown kind:" + kind)
 
     with open(outtimes, "w") as fname:
-        for ts in start_attacks_ts:
-            fname.write(ts.strftime(time_format) + "\n")
+        start_attacks_ts.sort(key=lambda tup: tup[1])
+        for res in start_attacks_ts:
+            fname.write("{},{}\n".format(res[0].strftime(time_format), res[1]))
 
 
 if __name__ == "__main__":

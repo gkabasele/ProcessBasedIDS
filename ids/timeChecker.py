@@ -570,6 +570,7 @@ class TimeChecker(Checker):
         self.matrices = None
 
         self.malicious_activities = OrderedDict()
+        self.elapsed_time_per_computation = list()
 
     def close(self):
         self.filehandler.close()
@@ -587,7 +588,7 @@ class TimeChecker(Checker):
 
     def basic_variable(self, name):
         return (name != 'timestamp' and name != 'normal/attack'
-                and self.vars[name].is_periodic and not self.vars[name].ignore and len(self.vars[name].limit_values) == 0)
+                and not self.vars[name].ignore and len(self.vars[name].limit_values) == 0)
 
     def basic_detection(self, name, value, ts):
         pv = self.vars[name]
@@ -625,7 +626,8 @@ class TimeChecker(Checker):
                 if i % 3600 == 0:
                     end_timer = timer()
                     print("Elasped time: {}".format(end_timer - start_timer))
-                    print("Starting state {} of {}, test_performed:{}".format(i, nbr_state, nbr_test_perf))
+                    self.elapsed_time_per_computation.append((end_timer - start_timer))
+                    print("IDSTimechecker Starting state {} of {}, test_performed:{}".format(i, nbr_state, nbr_test_perf))
                     nbr_test_perf = 0
                     start_timer = timer()
                 ts = state['timestamp']
@@ -644,7 +646,8 @@ class TimeChecker(Checker):
                             pdb.set_trace()
                         nbr_test_perf += matrix.number_test_performed
                     elif self.basic_variable(name):
-                        self.basic_detection(name, val, ts)
+                        pass
+                        #self.basic_detection(name, val, ts)
         else:
             raise(ValueError("No data to run on for detection"))
 

@@ -1,5 +1,6 @@
 import pickle
 import argparse
+import pdb
 
 def main(inputfile, outputfile, varfile):
 
@@ -14,8 +15,11 @@ def main(inputfile, outputfile, varfile):
         data = pickle.load(fi)
         states = []
         for state in data:
-            curr = {x:state[x] for x in variables}
-            states.append(curr)
+            try:
+                curr = {x:state[x] for x in variables}
+                states.append(curr)
+            except KeyError:
+                pdb.set_trace()
 
         with open(outputfile, mode="wb") as fo:
             pickle.dump(states, fo)

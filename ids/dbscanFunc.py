@@ -10,10 +10,12 @@ from scipy.spatial.distance import euclidean
 from scipy.spatial.distance import cdist 
 from scipy.cluster.hierarchy import linkage
 from scipy.cluster.hierarchy import dendrogram
-from sklearn.datasets.samples_generator import make_blobs
+from sklearn.datasets import make_blobs
 from sklearn.neighbors import NearestNeighbors
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.cluster import DBSCAN
+from sklearn.ensemble import IsolationForest
+from sklearn.svm import OneClassSVM
 from sklearn import metrics
 from sklearn.metrics.pairwise import pairwise_distances
 import jenkspy
@@ -23,6 +25,9 @@ from matplotlib import pyplot as plt
 
 import utils
 from DBCV import DBCV
+
+OUTLIERS = 0
+NORMAL = 1
 
 
 def compute_knn_distance(data, n):
@@ -51,6 +56,7 @@ def compute_hdbscan_model(data, n):
     min_samples = [i for i in range(1, min(len(data), n))]
     max_dbcv_score = None
     max_model = None
+    minpts = None
 
     for i in min_samples:
         clusterer = hdbscan.HDBSCAN(min_cluster_size=n, min_samples=i,
@@ -70,9 +76,10 @@ def compute_hdbscan_model(data, n):
             if max_dbcv_score is None or score > max_dbcv_score:
                 max_dbcv_score = score
                 max_model = model
+                minPts = i
 
     if max_model is not None:
-        return max_model
+        return max_model, minPts
 
 def compute_dbscan_model(distances, data, n, pre_eps=None):
 
@@ -116,7 +123,7 @@ def compute_dbscan_model(distances, data, n, pre_eps=None):
         return dbscan.fit(data)
 
 def compute_outlier(threshold, outlier_lof):
-    nbr_outliers = sum([1 for x in outlier_lof if x <  threshold])
+    nbr_outliers = sum([1 for x in outlier_lof if x < threshold])
     return nbr_outliers
 
 def compare_clustering_from_dir(directory):
@@ -142,7 +149,7 @@ def compare_clustering_from_dir(directory):
 
             # HDBSCAN
             start = timer()
-            hdbscan_model = compute_hdbscan_model(matrix, minPts)
+            hdbscan_model, _ = compute_hdbscan_model(matrix, minPts)
             end = timer()
             hdbscan_time.append(end - start)
 
@@ -176,7 +183,7 @@ def compare_clustering_from_file(matrix=None):
     utils.plot_clusters(X, clusters)
 
     print("HDBSCAN")
-    model_hdb = compute_hdbscan_model(X, minPts)
+    model_hdb, _ = compute_hdbscan_model(X, minPts)
     clusters = model_hdb.labels_
 
     utils.plot_clusters(X, clusters)
@@ -191,7 +198,7 @@ def outlier_detected_predict(model, new_point):
     return labels
 
 def outlier_detected_recompute(data, minPts):
-    model = compute_hdbscan_model(data, minPts)
+    model, _ = compute_hdbscan_model(data, minPts)
     clusters = model.labels_
     return model, clusters
 
@@ -209,7 +216,7 @@ def outlier_test():
     X, y = make_blobs(n_samples=150, centers=3,
                       cluster_std=0.5, random_state=0)
     minPts = 3
-    model = compute_hdbscan_model(X, 3)
+    model, _ = compute_hdbscan_model(X, 3)
 
     clusters = model.labels_
     utils.plot_clusters(X, clusters)
@@ -283,17 +290,56 @@ def get_outlier_dist_per_cluster(map_point_cluster, data_lof, clusters, outliers
 
     return cluster_outlier_dist, cluster_outlier_lof_dist
 
-def inlier_score(attack, minPts):
-    clf = LocalOutlierFactor(n_neighbors=minPts-1, contamination='auto')
+def three_sigma_rule(data, new_point):
+    mu = np.mean(data)
+    std = np.std(data)
+    return abs(new_point-mu) > 3 * std
+
+def onedim_iqr(data, new_point):
+
+    d = np.sort(data)
+    q1 = np.percentile(d, 25, interpolation="midpoint")
+    q2 = np.percentile(d, 50, interpolation="midpoint")
+    q3 = np.percentile(d, 75, interpolation="midpoint")
+    iqr = q3 - q1
+    low_lim = q1 - 1.5 * iqr
+    up_lim = q3 + 1.5 * iqr
+    return new_point > up_lim or new_point < low_lim
+
+def run_detection_forest(model, data, new_data, threshold, stillness, debug):
+    if model is None or threshold is None:
+        return new_data in data
+
+    return model.decision_function(new_data)[0] < threshold
+
+def run_detection_svm(model, data, new_data, stillness, debug):
+    if model is None:
+        return new_data in data
+    return model.predict(new_data)[0] < 0
+
+
+def inlier_score(attack, minPts, debug=False):
+    clf = LocalOutlierFactor(n_neighbors=minPts, contamination="auto")
     clf.fit_predict(attack)
+    if debug:
+        pdb.set_trace()
     return clf.negative_outlier_factor_[-1]
 
-def run_detection(normal, new_data, minPts, outlier_thresh, prob=False):
+def run_detection(normal, new_data, minPts, outlier_thresh,
+                  stillness, prob=False, debug=False):
+    #if stillness:
+    #    #return onedim_iqr(normal[:, 1], new_data[0][1]), None
+    #    return three_sigma_rule(normal[:, 1], new_data[0][1]), None
+
     point = np.reshape(new_data, (1, 2))
     data = np.append(normal, point, axis=0)
 
-    score = inlier_score(data, minPts)
-    return score < outlier_thresh, score
+    score = inlier_score(data, minPts, debug)
+    if debug:
+        pdb.set_trace()
+
+
+    return score < 30*outlier_thresh, score
 
     # This might not be needed
     #model, labels = outlier_detected_recompute(data, minPts)
@@ -303,12 +349,12 @@ def run_detection(normal, new_data, minPts, outlier_thresh, prob=False):
     #    return score < outlier_thresh, score
 
     #return False, None
-   
-def compute_lof_outliers(data, minPts, outliers_index): 
-    clf = LocalOutlierFactor(n_neighbors=minPts-1, contamination="auto")
+
+
+def compute_lof_outliers(data, minPts, outliers_index):
+    clf = LocalOutlierFactor(n_neighbors=minPts, contamination="auto")
     clf.fit_predict(data)
-    all_lof = [clf.negative_outlier_factor_[i] for i in outliers_index]
-    return all_lof, clf
+    return clf.negative_outlier_factor_
 
 def compute_prob_outliers(model, outliers_index):
 
@@ -324,45 +370,52 @@ def compute_threshold(data, minPts, model, prob=False, display=False):
 
     # No outliers have been detected so we cannot compute
     # a threshold, therefore is fixed to -3
-    if len(outliers_index) == 0:
-        return -3, None
+    #if len(outliers_index) == 0:
+    #    print("No outliers")
+    #    return -3, None
 
     #local outlier factor
-    thresh_list, _ = compute_lof_outliers(data, minPts, outliers_index)
-    if len(thresh_list) > 2:
-        # We consider two groups, the local outlier and the general outlier
+    lof = compute_lof_outliers(data, minPts, outliers_index)
+
+    if len(lof) > 2:
+        ## We consider two groups, the local outlier and the general outlier
         jnb = jenkspy.JenksNaturalBreaks(2)
-        jnb.fit(thresh_list)
+        jnb.fit(lof)
+
         if display:
             print("Thresh List:{}".format(jnb.groups_))
         try:
-            min_val = np.min(jnb.groups_[1])
-        except ValueError as ex:
-            min_val = np.min(jnb.groups_[0])
-        return min_val, thresh_list
+            #min_val = np.max(jnb_all.groups_[OUTLIERS])
+            min_val = np.min(jnb.groups_[NORMAL])
+        except ValueError:
+            min_val = np.min(jnb.groups_[OUTLIERS])
+        return min_val, lof
+        #thresh = np.quantile(lof, .02)
+        #thresh = np.min(lof)
+        #return thresh, lof
     else:
-        return -3 , thresh_list
+        return -3, lof
 
 
 def perform_detection(normal, attack, prob):
-    pdb.set_trace()
-    minPts = 4
+    minPts = 10
     if len(normal) < minPts:
         raise ValueError("The dataset is to small")
-    model = compute_hdbscan_model(normal, minPts)
+    model, _ = compute_hdbscan_model(normal, minPts)
 
     threshold, thresh_list = compute_threshold(normal, minPts, model, prob=prob)
     if threshold is None:
+        print("No Threshold could be found assigning  one")
         threshold = -3
 
-    pdb.set_trace()
-
+    """
     try:
         plot_soft_clusters(normal, model, model.labels_,
                            outliers_index=np.where(model.labels_ == -1)[0],
                            text=False, info=thresh_list)
     except KeyError:
         plot_clusters(normal, model, model.labels_)
+    """
 
     perc_fake = list()
     perc_out = list()
@@ -375,7 +428,7 @@ def perform_detection(normal, attack, prob):
         new_val = new_data[1]
         is_outlier, score = run_detection(normal, new_val, minPts, threshold, prob)
         if is_outlier:
-            print("Outlier: {} ,score: {}".format(np.reshape(new_val, (1, 2)), score))
+            #print("Outlier: {} ,score: {}".format(np.reshape(new_val, (1, 2)), score))
             nbr_outliers += 1
 
     if thresh_list is not None:
@@ -408,6 +461,74 @@ def plot_thresh_impact(perc, fake_ratio, outlier_ratio):
     fig.tight_layout()
     plt.show()
 
+def count_outlier(predictions, data):
+    nbr_outlier = len(np.where(predictions == -1)[0])
+
+    print("Nbr Anomalies: {}/{} ({})".format(nbr_outlier, len(data),
+                                             nbr_outlier/len(data)))
+    return nbr_outlier
+
+def one_class_svm(data_normal, data_attack):
+    clf = OneClassSVM(gamma="auto").fit(data_normal)
+
+    predictions = clf.predict(data_normal)
+    print("Prediction: \n")
+    print(predictions)
+
+    count_outlier(predictions, data_normal)
+    
+    predictions = clf.predict(data_attack)
+
+    count_outlier(predictions, data_attack)
+    print("Attack: \n")
+    print(predictions)
+
+    new_point = [[0, 2000]]
+    prediction = clf.predict(new_point)
+    print("New data point: \n")
+    print(prediction)
+
+def isolation_forest(data_normal, data_attack, max_features=1, n_estimators=10,
+                     max_samples="auto", contamination="auto"):
+
+    model = IsolationForest(max_features=max_features,
+                            n_estimators=n_estimators, max_samples=max_samples,
+                            contamination=contamination, warm_start=True, bootstrap=True,
+                            random_state=1)
+    print("Data normal")
+    model.fit(data_normal)
+
+    print("Isolation normal anomaly result: \n")
+    predictions = model.predict(data_normal)
+    nbr_outlier = len(np.where(predictions == -1)[0])
+    print("Nbr Anomalies: {}/{} ({})".format(nbr_outlier, len(data_normal),
+                                             nbr_outlier/len(data_normal)))
+
+
+    score = model.decision_function(data_normal)
+    outliers_score = [score[i] for i in np.where(score < 0)]
+    most_outlier_score = min(score)
+    print("outliers score: {}".format(outliers_score))
+    print("Max outlier score: {}".format(most_outlier_score)) 
+
+    print("Data Attack")
+    print("Isolation attack anomaly result: \n")
+    predictions = model.predict(data_attack)
+    nbr_outlier = len(np.where(predictions == -1)[0])
+    print("Nbr Anomalies: {}/{} ({})".format(nbr_outlier, len(data_attack),
+                                             nbr_outlier/len(data_attack)))
+
+    nbr_less_thresh = len(np.where(model.decision_function(data_attack) <= most_outlier_score)[0])
+    print("Nbr anomalies thresh: {}/{} ({})".format(nbr_less_thresh, len(data_attack),
+                                                    nbr_less_thresh/len(data_attack)))
+    new_point = [[0, 2000]]
+    print("New stupid data point result")
+    pred = model.predict(new_point)
+    print(pred)
+    print("New stupid  data point score")
+    score = model.decision_function(new_point)
+    print(score)
+
 def main(filename, is_dir, normal_trace, attack_trace):
     normal = None
     attack = None
@@ -426,6 +547,17 @@ def main(filename, is_dir, normal_trace, attack_trace):
             attack = np.load(f)
 
         perform_detection(normal, attack, False)
+
+    #one_class_svm(normal, attack)
+
+    start = timer()
+    print("Parameters default")
+    #isolation_forest(normal, attack)
+    end = timer()
+    print("Isolation 2D: {}".format(end - start))
+
+    isolation_forest(normal, attack, max_features=1, n_estimators=10, max_samples=0.6,
+                     contamination=0.05)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

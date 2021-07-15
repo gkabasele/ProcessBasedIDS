@@ -200,6 +200,8 @@ def get_clusters_closest_to_zero(clusters):
     min_label = None
     min_score = 2
 
+    pdb.set_trace()
+
     for label, centroid in enumerate(clusters):
         width, prob = centroid
         score = width/prob
@@ -213,7 +215,6 @@ def filter_based_on_ratio(data, event_var_critical, event_var_ratio):
 
     event_var_to_remove = {x: set() for x in event_var_critical}
     array = get_all_ratio(event_var_ratio)
-
     clusters = MeanShift().fit(array)
 
     min_label = get_clusters_closest_to_zero(clusters.cluster_centers_)
@@ -303,6 +304,10 @@ def merge_successive_range(var_to_crit):
 
     return var_to_list
 
+# Barrier is need becuase of the case where the
+# senseor is osciating close to the range border
+# due to the noise, this impact the stillness
+# time of the sensor
 def add_barrier(var_to_crit):
     print(var_to_crit)
     for var, crits in var_to_crit.items():
@@ -349,6 +354,7 @@ def main(conf, output, data, apply_filter, apply_barrier):
     event_var_critical, event_var_ratio = get_cand_critical_values_from_std(final_data,
                                                                             actuators,
                                                                             sensors)
+    pdb.set_trace()
     filter_based_on_ratio(data, event_var_critical, event_var_ratio)
     var_min_split = get_max_split_per_var(event_var_critical)
 
@@ -361,6 +367,7 @@ def main(conf, output, data, apply_filter, apply_barrier):
 
     plot_critical(final_data, var_to_crit, var_to_digitizer)
 
+    pdb.set_trace()
     with open(conf) as fh:
         content = fh.read()
         desc = yaml.load(content, Loader=yaml.Loader)

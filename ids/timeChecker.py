@@ -14,6 +14,10 @@ from timePattern import TimePattern
 
 ValueTS = collections.namedtuple('ValueTS', ['value', 'start', 'end'])
 
+LOF = "lof"
+ISO = "isolation"
+SVM = "svm"
+
 # Threshold to compare the times
 BIG_THRESH = 1
 EQ_THRESH = 0.5
@@ -60,8 +64,9 @@ class TransitionMatrix(object):
             return res
 
 
-    def __init__(self, variable, noisy=True):
+    def __init__(self, variable, strategy, noisy=True):
         self.noisy = noisy
+        self.strategy = strategy
         self.min_val = variable.min_val
         self.max_val = variable.max_val
         self.header = [x for x in range(len(variable.limit_values))]
@@ -144,9 +149,9 @@ class TransitionMatrix(object):
 
     def is_out_of_bound(self, newval, extrema, pv, mincheck=True):
         if mincheck:
-            return newval < extrema - (2*pv.digitizer.width)
+            return newval < extrema - (10*pv.digitizer.width)
         else:
-            return newval > extrema + (2*pv.digitizer.width)
+            return newval > extrema + (10*pv.digitizer.width)
 
 
     def nbr_transition(self):
@@ -161,13 +166,13 @@ class TransitionMatrix(object):
             elif val < crit_val:
                 break
 
-    def add_malicious_activities(self, malicious_activities, ts, pv):
+    def add_malicious_activities(self, malicious_activities, ts, pv, oldval, newval):
         time_key = datetime(ts.year, ts.month, ts.day,
                             ts.hour, ts.minute, ts.second)
         if time_key not in malicious_activities:
             malicious_activities[time_key] = set()
 
-        malicious_activities[time_key].add(pv)
+        malicious_activities[time_key].add((pv, oldval, newval))
 
 
     def find_crit_val(self, val, pv):
@@ -198,7 +203,7 @@ class TransitionMatrix(object):
         col = self.val_pos[newval]
         return self.transitions[row][col]
 
-    def test_validity_transition(self, elapsed_time, updates, oldval, newval):
+    def test_validity_transition(self, elapsed_time, updates, oldval, newval, stillness, debug=False):
         row = self.val_pos[oldval]
         col = self.val_pos[newval]
         pattern = self.transitions[row][col]
@@ -206,9 +211,17 @@ class TransitionMatrix(object):
         if isinstance(pattern, int) and (pattern == 0 or pattern == -1):
             return TransitionMatrix.UNKNOWN, pattern, None
 
-        is_outlier, score = pattern.is_outlier_hdbscan(elapsed_time, updates)
+        if self.strategy == LOF:
+            is_outlier, score = pattern.is_outlier_hdbscan(elapsed_time, updates, stillness, debug)
+        elif self.strategy == ISO:
+            is_outlier, score = pattern.is_outlier_forest(elapsed_time, updates, stillness, debug)
+        elif self.strategy == SVM:
+            is_outlier, score = pattern.is_outlier_svm(elapsed_time, updates, stillness, debug)
+        else:
+            raise ValueError("Unknown strategy: {}".format(self.strategy))
+
         # score is none if no cluster were defined for that transition
-        if is_outlier: 
+        if is_outlier:
             return TransitionMatrix.DIFF, score, pattern.threshold
         else:
             return TransitionMatrix.SAME, score, pattern.threshold
@@ -218,7 +231,7 @@ class TransitionMatrix(object):
 
         filehandler.write("[{}][{}] Unexpected value for {}, expected:{}, got {}\n".format(ts, res, pv_name,
                                                                                            expected, got))
-        self.add_malicious_activities(malicious_activities, ts, pv_name)
+        self.add_malicious_activities(malicious_activities, ts, pv_name, None, None)
 
 
     def write_msg_diff(self, filehandler, res, ts, pv_name, elapsed_time, update_mean,
@@ -229,22 +242,34 @@ class TransitionMatrix(object):
                                                                                                             last_val, crit_val,
                                                                                                             elapsed_time, update_mean,
                                                                                                             score, thresh))
-        self.add_malicious_activities(malicious_activities, ts, pv_name)
+        self.add_malicious_activities(malicious_activities, ts, pv_name, last_val, crit_val)
 
 
     def write_msg_unknown(self, filehandler, res, ts, pv_name, malicious_activities, crit_val, last_val):
 
         filehandler.write("[{}][{}]transitions for {} {}->{}\n".format(ts, res, pv_name, last_val, crit_val))
 
-        self.add_malicious_activities(malicious_activities, ts, pv_name)
+        self.add_malicious_activities(malicious_activities, ts, pv_name, last_val, crit_val)
 
 
     def perform_detection_test(self, filehandler, ts, pv, malicious_activities,
-                               elapsed_val, update_mean, oldval, newval):
-        res, score, threshold = self.test_validity_transition(elapsed_val, update_mean,
-                                                              oldval,
-                                                              newval)
+                               elapsed_val, update_mean, oldval, newval, stillness=False):
 
+        res, score, threshold = self.test_validity_transition(elapsed_val,
+                                                              update_mean,
+                                                              oldval,
+                                                              newval,
+                                                              stillness)
+        # TEST actuators intensive alert
+        #if (res == TransitionMatrix.DIFF or
+        #        res == TransitionMatrix.UNKNOWN):
+
+        #    rerun = (pv.name in ["mv303", "mv301", "p203"] and oldval == 1 and newval == 1)
+        #    if rerun:
+        #        print(pv.name)
+        #        self.test_validity_transition(elapsed_val, update_mean,
+        #                                      oldval, newval, stillness,
+        #                                      debug=True)
         if res == TransitionMatrix.DIFF:
             self.write_msg_diff(filehandler, res, ts, pv.name,
                                 elapsed_val, update_mean, malicious_activities, score,
@@ -265,7 +290,6 @@ class TransitionMatrix(object):
                            newval, self.min_val, malicious_activities)
 
         elif not pv.is_bool_var() and self.is_out_of_bound(newval, self.max_val, pv, False):
-            welford.Welford
             self.write_msg(filehandler, TransitionMatrix.UNEXPECT, ts, pv.name,
                            newval, self.max_val, malicious_activities)
 
@@ -311,14 +335,14 @@ class TransitionMatrix(object):
 
                                 self.perform_detection_test(filehandler, ts, pv, malicious_activities,
                                                             elapsed_time, update_mean, self.last_value.value,
-                                                            self.last_value.value)
+                                                            self.last_value.value, stillness=True)
 
                         self.update_step = welford.Welford()
 
                     # The value has changed since last time
                     else:
                         self.slowing_phase = False
-                        self.last_check  = None
+                        self.last_check = None
                         if not pv.is_bool_var():
                             elapsed_trans_t = int((ts - self.last_value.end).total_seconds())
                             if self.update_step.k > 0:
@@ -345,7 +369,7 @@ class TransitionMatrix(object):
 
                             self.perform_detection_test(filehandler, ts, pv, malicious_activities,
                                                         same_value_t, update_mean, self.last_value.value,
-                                                        self.last_value.value)
+                                                        self.last_value.value, stillness=True)
 
                         self.last_value = ValueTS(value=crit_val, start=ts, end=ts)
 
@@ -440,10 +464,10 @@ class TransitionMatrix(object):
                     column = self.val_pos[crit_val]
 
                     if self.transitions[row][column] == -1:
-                        self.transitions[row][column] = TimePattern(same_crit_val=False)
+                        self.transitions[row][column] = TimePattern(bool_var=pv.is_bool_var(), same_crit_val=False)
 
                     if self.transitions[row][row] == 0:
-                        self.transitions[row][row] = TimePattern(same_crit_val=True)
+                        self.transitions[row][row] = TimePattern(bool_var=pv.is_bool_var(), same_crit_val=True)
 
                     if self.last_val_train.value == crit_val:
 
@@ -511,7 +535,7 @@ class TransitionMatrix(object):
                 row = self.val_pos[self.last_val_train.value]
                 column = self.val_pos[in_crit]
                 if self.transitions[row][column] == -1:
-                    self.transitions[row][column] = TimePattern(same_crit_val=False)
+                    self.transitions[row][column] = TimePattern(bool_var=pv.is_bool_var(), same_crit_val=False)
 
                 elapsed_trans_t = int((ts - self.last_val_train.end).total_seconds())
                 self.transitions[row][column].update(elapsed_trans_t)
@@ -548,11 +572,18 @@ class TransitionMatrix(object):
             for column in range(len(self.header)):
                 entry = self.transitions[row][column]
                 if not isinstance(entry, int):
-                    entry.compute_clusters(name=self.name, row=row, col=column)
+                    if self.strategy == LOF:
+                        entry.compute_clusters(name=self.name, row=row, col=column)
+                    elif self.strategy == ISO:
+                        entry.train_forest(name=self.name, row=row, col=column)
+                    elif self.strategy == SVM:
+                        entry.train_svm(name=self.name, row=row, col=column)
+                    else:
+                        raise ValueError("Unknown strategy: {}".format(self.strategy))
 
 class TimeChecker(Checker):
 
-    def __init__(self, data, pv_store, filename, noisy=True,
+    def __init__(self, data, pv_store, filename, strategy=LOF, noisy=True,
                  detection_store=None):
 
         Checker.__init__(self, pv_store, data)
@@ -572,6 +603,8 @@ class TimeChecker(Checker):
         self.malicious_activities = OrderedDict()
         self.elapsed_time_per_computation = list()
 
+        self.strategy = strategy
+
     def close(self):
         self.filehandler.close()
 
@@ -579,7 +612,7 @@ class TimeChecker(Checker):
         matrices = {}
         for name, variable in self.vars.items():
             if variable.is_periodic and not variable.ignore:
-                matrices[name] = TransitionMatrix(variable, self.noisy)
+                matrices[name] = TransitionMatrix(variable, self.strategy, self.noisy)
         self.matrices = matrices
 
     def is_var_of_interest(self, name):

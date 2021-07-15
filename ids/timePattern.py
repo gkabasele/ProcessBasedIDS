@@ -4,6 +4,8 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.neighbors import KernelDensity
+from sklearn.ensemble import IsolationForest
+from sklearn.svm import OneClassSVM
 from scipy.stats import gaussian_kde
 from scipy.signal import argrelextrema
 import hdbscan
@@ -11,12 +13,14 @@ from welford import Welford
 import dbscanFunc
 import utils
 
+MAX_THRESHOLD = 100000
+
 """
 Clustering of 1-D array
 """
 class TimePattern(object):
 
-    def __init__(self, minPts=4, same_crit_val=True):
+    def __init__(self, minPts=5, bool_var=False, same_crit_val=True):
         #time transition
         self.values = list()
         # updates means for transition
@@ -25,12 +29,21 @@ class TimePattern(object):
         self.clusters = None
         self.same_crit_val = same_crit_val
         self.model = None
+        # Stillness time of boolean value are too similar (there are some duplicate)
+        # which result to very big LOF, so we need to consider more points
         self.min_pts = minPts
         self.data = None
         self.max_time = None
 
+        self.bool_var = bool_var
+
         self.threshold = None
 
+        self.forest = None
+
+        self.svm = None
+
+        
     def update(self, value):
         self.values.append(value)
 
@@ -52,10 +65,49 @@ class TimePattern(object):
 
         if len(self.data) >= self.min_pts:
             if strategy:
-                self.model = dbscanFunc.compute_hdbscan_model(self.data, self.min_pts)
+                self.model, self.min_pts = dbscanFunc.compute_hdbscan_model(self.data, self.min_pts)
                 self.threshold, _ = dbscanFunc.compute_threshold(self.data, self.min_pts, self.model, False)
+                if self.threshold > MAX_THRESHOLD:
+                    min_pts = self.min_pts
+                    while self.threshold > MAX_THRESHOLD and min_pts <= len(self.data):
+                        min_pts += 1
+                        self.threshold, _ = dbscanFunc.compute_threshold(self.data, min_pts, self.model, False)
+                    if min_pts > len(self.data):
+                        self.min_pts = min_pts
+                        self.model = self.data
+
         else:
             self.model = self.data
+
+    def train_svm(self, name=None, row=None, col=None):
+        print("Name:{}, Row:{}, Col:{}".format(name, row, col))
+        self.max_time = np.max(self.values)
+        self.data = self.get_matrix_from_data(self.steps, self.values)
+        if len(self.data) > 0:
+            self.svm = OneClassSVM(gamma="auto").fit(self.data)
+
+    def train_forest(self, name=None, row=None, col=None):
+        print("Name:{}, Row:{}, Col:{}".format(name, row, col))
+        self.max_time = np.max(self.values)
+        self.data = self.get_matrix_from_data(self.steps, self.values)
+        if len(self.data) > 0:
+            #isolation Forest approach
+            max_features = 1
+            n_estimators = 15
+            max_samples = int(0.6*len(self.data))
+            if max_samples == 0:
+                max_samples = len(self.data)
+            contamination = 0.05
+            self.forest = IsolationForest(max_features=max_features,
+                                          n_estimators=n_estimators, max_samples=max_samples,
+                                          contamination=contamination, warm_start=True,
+                                          bootstrap=True, random_state=1)
+
+            self.forest.fit(self.data)
+            score = self.forest.decision_function(self.data)
+            outlier_score = [score[i] for i in np.where(score < 0)[0]]
+            if len(outlier_score) > 0:
+                self.threshold = max(outlier_score)
 
     def get_matrix_from_data(self, steps, values):
         data = np.array(list(zip(steps, values)))
@@ -73,18 +125,33 @@ class TimePattern(object):
     def __repr__(self):
         return self.__str__()
 
-    def is_outlier_hdbscan(self, time_elapsed, update_step):
+    def is_outlier_hdbscan(self, time_elapsed, update_step, stillness, debug=False):
         if self.threshold is not None:
             if len(self.data) > self.min_pts:
+                if debug:
+                    pdb.set_trace()
                 is_outlier, score = dbscanFunc.run_detection(self.data,
                                                              np.array([[update_step, time_elapsed]]),
                                                              self.min_pts,
-                                                             self.threshold, False)
+                                                             self.threshold, stillness, False, debug)
                 return is_outlier, score
             else:
                 return [update_step, time_elapsed] in self.model, None
 
         return True, None
+
+    def is_outlier_forest(self, time_elapsed, update_step, stillness, debug=False):
+        is_outlier = dbscanFunc.run_detection_forest(self.forest, self.data,
+                                                     np.array([[update_step, time_elapsed]]),
+                                                     self.threshold, stillness, debug)
+
+        return is_outlier, None
+
+    def is_outlier_svm(self, time_elapsed, updata_step, stillness, debug=False):
+        is_outlier = dbscanFunc.run_detection_svm(self.svm, self.data,
+                                                  np.array([[updata_step, time_elapsed]]),
+                                                  stillness, debug)
+        return is_outlier, None
 
     def has_cluster(self):
         return len(self.data) > self.min_pts

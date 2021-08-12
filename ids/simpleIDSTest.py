@@ -2,7 +2,7 @@ import pdb
 import argparse
 import pickle
 import os
-from collections import Counter
+from collections import Counter, OrderedDict
 from datetime import datetime
 from datetime import timedelta
 
@@ -125,7 +125,9 @@ def run_ar_ids(pv_store, data, data_atk):
 
     return ids
 
-def run_time_pattern_ids(pv_store, data, data_atk, matrix, write_matrix, strategy):
+def run_time_pattern_ids(pv_store, data, data_atk, matrix,
+                         write_matrix, strategy, tp_filename,
+                         trans_file):
     print("Running Time pattern IDS")
     #export_log = "./useless_logfile_pattern_swat_barrier_basic_detection.txt"
     export_log = "./useless_logfile_pattern_swat_barrier0801.txt"
@@ -142,10 +144,9 @@ def run_time_pattern_ids(pv_store, data, data_atk, matrix, write_matrix, strateg
         ids.export_matrix(matrix)
 
     ids.detection_store = data_atk
-
-    filename = "./tp_malicious_swat_0801_max_lof_duplication_multiplier_30.bin"
-    #filename = "./tp_malicious_swat_no_barrier.bin"
-    #filename = "./tp_malicious_medium_overflow.bin"
+    
+    filename = tp_filename
+    #filename = "./tp_malicious_swat_0801_max_lof_duplication_multiplier_30.bin"
 
     if os.path.exists(filename):
         print("Reading malicious activities time from file " + filename)
@@ -164,6 +165,14 @@ def run_time_pattern_ids(pv_store, data, data_atk, matrix, write_matrix, strateg
 
     if export:
         ids.export_detected_atk(export_log)
+
+    filename = trans_file
+    if os.path.exists(filename):
+        print("Reading transition log from file " + filename)
+        ids.import_transition_log(filename)
+    else:
+        ids.export_transition_log(filename)
+
 
     return ids
 
@@ -243,11 +252,103 @@ def counter_distribution(data):
         c[k] /= total
     return c
 
-def get_ids_result(ids, time_atk, atk_trace_size, aftereffect=10, window=0, is_invariant=False):
+def get_first_transition(time_atk, transition_log):
+    #transition index
+    i = 0
+    j = 0
+
+    # list of dictionnaries containing the first transitions
+    # after an attack
+    map_transition = list()
+
+
+    while i < len(time_atk)-2:
+        # get the legitimat period after an attack
+        start_period = time_atk[i]["end"]
+        end_period = time_atk[i+1]["start"]
+        first_transitions = OrderedDict()
+
+        if j < len(transition_log):
+
+            transition = transition_log[j]
+            while j < len(transition_log) and transition.end < end_period:
+
+                transition = transition_log[j]
+                # The transition must end after the attack
+                if (transition.varname not in first_transitions and
+                        transition.end > start_period):
+
+                    first_transitions[transition.varname] = transition
+
+                j += 1
+
+            map_transition.append(first_transitions)
+
+        i += 1
+
+    #return [x for first_transitions in map_transition for x in first_transitions.values()]
+    return map_transition
+
+
+def has_impacted_transitions(transitions, start_period, end_period, cur_i):
+
+    exceed = False
+
+
+    for i, transition in enumerate(transitions[cur_i:]):
+        trans_var = transition.values()
+
+        for t_entry in transition.values():
+
+            if end_period is not None:
+                if t_entry.end > start_period and t_entry.end < end_period:
+                    return cur_i + i + 1, True
+                elif t_entry.end > end_period:
+                    exceed = True
+                    break
+            else:
+                if t_entry.end > start_period:
+                    return cur_i + i, True
+        if exceed:
+            return cur_i + i, False
+    return cur_i, False
+
+def unique_impact_transitions(all_transitions, first_transitions):
+    # {var : {(from,to): [point1, point2, ...]}}
+    split_transitions = dict()
+    unique_transitions = list()
+    for t in all_transitions:
+        t_key = (t.from_val, t.to_val)
+        if t.varname in split_transitions:
+            if t_key in split_transitions[t.varname]:
+                split_transitions[t.varname][t_key].append(t.trans_time)
+
+            else:
+                split_transitions[t.varname][t_key] = [t.trans_time]
+        else:
+            split_transitions[t.varname] = {t_key : [t.trans_time]}
+
+    for no_atk_period in first_transitions:
+        new_period = OrderedDict()
+        for t in no_atk_period.values():
+            occurence = 0
+            for point in split_transitions[t.varname][(t.from_val, t.to_val)]:
+                if abs(t.trans_time - point) <= 60:
+                    occurence += 1
+            if occurence < 3:
+                new_period[t.varname] = t
+        unique_transitions.append(new_period)
+    return unique_transitions
+
+def get_ids_result(ids, time_atk, atk_trace_size, map_transition=None,
+                   aftereffect=10, window=0,
+                   is_invariant=False, is_time_pattern=False):
+
     # window to wait to consider that an alert is
     #linked to an attack
-
     relaxed_win = timedelta(seconds=window)
+
+    transition_i = 0
 
     i = 0
 
@@ -268,7 +369,7 @@ def get_ids_result(ids, time_atk, atk_trace_size, aftereffect=10, window=0, is_i
 
     wrong_alert = 0
 
-    #Second per second counting 
+    #Second per second counting
     true_positive = 0
     false_positive = 0
     nbr_attack = get_nbr_attack(time_atk)
@@ -290,12 +391,18 @@ def get_ids_result(ids, time_atk, atk_trace_size, aftereffect=10, window=0, is_i
                 tmp_window = timedelta(seconds=0)
 
             if i == len(time_atk) - 1 and alert > time_atk[i]["end"] + tmp_window:
-                wrong_alert += 1
-                for v in alert_var:
-                    false_alert_vars.append(v)
-                if fp_start is not None:
-                    ifpt.append((alert - fp_start).total_seconds())
-                fp_start = alert
+                impacted = False
+                if is_time_pattern and map_transition is not None:
+                    transition_i, impacted = has_impacted_transitions(map_transition,
+                                                                      time_atk[i]["end"],
+                                                                      None, transition_i)
+                if not impacted:     
+                    wrong_alert += 1
+                    for v in alert_var:
+                        false_alert_vars.append(v)
+                    if fp_start is not None:
+                        ifpt.append((alert - fp_start).total_seconds())
+                    fp_start = alert
 
         #-----[*********]------ (period)
         #-**----*****---------  (alert)
@@ -306,12 +413,22 @@ def get_ids_result(ids, time_atk, atk_trace_size, aftereffect=10, window=0, is_i
                 tmp_window = timedelta(seconds=0)
 
             if i == 0 or (i > 0 and alert > time_atk[i-1]["end"] + tmp_window):
-                wrong_alert += 1
-                for v in alert_var:
-                    false_alert_vars.append(v)
-                if fp_start is not None:
-                    ifpt.append((alert - fp_start).total_seconds())
-                fp_start = alert
+                impacted = False
+                if is_time_pattern and map_transition is not None:
+                    end_period = None
+                    if i < len(time_atk) - 1:
+                        end_period = time_atk[i+1]["start"]
+                    transition_i, impacted = has_impacted_transitions(map_transition,
+                                                                      time_atk[i]["end"],
+                                                                      end_period, transition_i)
+
+                if not impacted:
+                    wrong_alert += 1
+                    for v in alert_var:
+                        false_alert_vars.append(v)
+                    if fp_start is not None:
+                        ifpt.append((alert - fp_start).total_seconds())
+                    fp_start = alert
 
         start_p = time_atk[i]["start"]
         end_p = time_atk[i]["end"]
@@ -326,7 +443,8 @@ def get_ids_result(ids, time_atk, atk_trace_size, aftereffect=10, window=0, is_i
             if not is_invariant:
                 if time_atk[i]["start"] not in detect_period_atk_type:
                     for var in alert_var:
-                        if var in time_atk[i]["target"]:
+                        #FIXME var is (name, from, to) for timepattern
+                        if var[0] in time_atk[i]["target"]:
                             for t in time_atk[i]["attackType"]:
                                 detect_type_repartition[t] += 1
 
@@ -371,19 +489,29 @@ def display_repartition(atk_types, detect_types):
 
 
 def run_ids_eval(func_ids, name, atk_time, atk_trace_size, aftereffect, window,
-                 is_invariant, result_file, *args):
+                 is_invariant, is_timepattern, result_file, count_trans, *args):
 
     ids = func_ids(*args)
-    ids_result = get_ids_result(ids, atk_time, atk_trace_size, aftereffect, window, is_invariant)
+    if is_timepattern:
+        unique_transitions = None
+        if count_trans:
+            map_transition = get_first_transition(atk_time, ids.transition_log)
+            unique_transitions = unique_impact_transitions(ids.transition_log, map_transition)
+        ids_result = get_ids_result(ids, atk_time, atk_trace_size,
+                                    unique_transitions, aftereffect, window,
+                                    is_invariant, is_timepattern)
+    else:
+        ids_result = get_ids_result(ids, atk_time, atk_trace_size, None,
+                                    aftereffect, window, is_invariant, is_timepattern)
 
-    print("False Positive repartition: {}\n".format(ids_result.false_alert_repartition))
-    print("True Positive repartition: {}\n".format(ids_result.true_alert_repartition))
+    result_file.write("False Positive repartition: {}\n".format(ids_result.false_alert_repartition))
+    result_file.write("True Positive repartition: {}\n".format(ids_result.true_alert_repartition))
 
     detected_period = set(ids_result.detected.keys())
     result_file.write("Detected Period\n")
     result_file.write(str(detected_period))
     result_file.write("Miss Period\n")
-    all_period = set([period["start"] for period in atk_time]) 
+    all_period = set([period["start"] for period in atk_time])
     result_file.write(str(all_period - detected_period)+ "\n")
 
     result_file.write("Detection Time\n")
@@ -410,7 +538,7 @@ def run_ids_eval(func_ids, name, atk_time, atk_trace_size, aftereffect, window,
 
 def main(inputfile, attackfile, conf, conf_inv, atk_time_file, run_ids,
          matrix, write, pred_file, map_id_pred, inv_file, pvstore_file, create_pv,
-         result_filename, strategy):
+         result_filename, strategy, tp_filename, count_trans, trans_file):
 
     pv_store, data, data_atk = setup(inputfile, attackfile, conf, pvstore_file, create_pv)
     atk_file = evaluationIDS.create_expected_malicious_activities(atk_time_file)
@@ -421,19 +549,20 @@ def main(inputfile, attackfile, conf, conf_inv, atk_time_file, run_ids,
 
         if TIMEPAT in run_ids:
             run_ids_eval(run_time_pattern_ids, TIMEPAT, atk_file, len(data_atk), 10,
-                         0, False, result_file, pv_store, data, data_atk, matrix, write,
-                         strategy)
+                         0, False, True, result_file, count_trans,
+                         pv_store, data, data_atk, matrix, write,
+                         strategy, tp_filename, trans_file)
 
         if AR in run_ids:
             run_ids_eval(run_ar_ids, AR, atk_file, len(data_atk), 10,
-                         0, False, result_file, pv_store, data, data_atk)
-                         
+                         0, False, False, result_file, pv_store, data, data_atk)
+
 
         if INV in run_ids:
             pv_store_inv = pvStore.PVStore(conf_inv, data)
 
             run_ids_eval(run_invariant_ids, INV, atk_file, len(data_atk), 10,
-                         0, True, result_file, pv_store_inv, data_atk, pred_file,
+                         0, True, False, result_file, pv_store_inv, data_atk, pred_file,
                          map_id_pred, inv_file)
                          
 
@@ -457,10 +586,16 @@ if __name__ == "__main__":
     parser.add_argument("--result", action="store", dest="result_filename")
     parser.add_argument("--strategy", action="store", choices=["lof", "svm", "isolation"], default="lof",
                         dest="strategy")
+    parser.add_argument("--filename", action="store", dest="tp_filename")
+    parser.add_argument("--transition", action="store_true", dest="count_trans",default=False)
+    parser.add_argument("--transfile", action="store", dest="trans_file")
 
     args = parser.parse_args()
+
+    #FIXME configuration file for parameters
 
     main(args.input_file, args.attack_file, args.conf, args.conf_inv,
          args.atk_time, args.runids, args.matrix, args.write, args.pred_file,
          args.map_id_pred, args.inv_file, args.pv_store_file, args.create_pv,
-         args.result_filename, args.strategy)
+         args.result_filename, args.strategy, args.tp_filename, args.count_trans,
+         args.trans_file)

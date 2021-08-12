@@ -339,7 +339,7 @@ def run_detection(normal, new_data, minPts, outlier_thresh,
         pdb.set_trace()
 
 
-    return score < 30*outlier_thresh, score
+    return score < outlier_thresh, score
 
     # This might not be needed
     #model, labels = outlier_detected_recompute(data, minPts)
@@ -385,7 +385,6 @@ def compute_threshold(data, minPts, model, prob=False, display=False):
         if display:
             print("Thresh List:{}".format(jnb.groups_))
         try:
-            #min_val = np.max(jnb_all.groups_[OUTLIERS])
             min_val = np.min(jnb.groups_[NORMAL])
         except ValueError:
             min_val = np.min(jnb.groups_[OUTLIERS])

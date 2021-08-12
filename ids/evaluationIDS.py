@@ -365,7 +365,7 @@ def create_expected_malicious_activities(atk_period, timePattern=False):
 
         if not timePattern:
             for attack in desc:
-                if type(attack[START]) is not datetime:
+                if START in attack and type(attack[START]) is not datetime:
                     starttime = datetime.strptime(attack[START], '%d/%m/%Y %H:%M:%S')
                     endtime = datetime.strptime(attack[END], '%d/%m/%Y %H:%M:%S')
                     attack[START] = starttime

@@ -64,17 +64,18 @@ class TimePattern(object):
         #self.export_data_matrix("./test_swat_transition_dataset_attack/", name, row, col)
 
         if len(self.data) >= self.min_pts:
-            if strategy:
-                self.model, self.min_pts = dbscanFunc.compute_hdbscan_model(self.data, self.min_pts)
-                self.threshold, _ = dbscanFunc.compute_threshold(self.data, self.min_pts, self.model, False)
-                if self.threshold > MAX_THRESHOLD:
-                    min_pts = self.min_pts
-                    while self.threshold > MAX_THRESHOLD and min_pts <= len(self.data):
-                        min_pts += 1
-                        self.threshold, _ = dbscanFunc.compute_threshold(self.data, min_pts, self.model, False)
-                    if min_pts > len(self.data):
-                        self.min_pts = min_pts
-                        self.model = self.data
+            self.model, self.min_pts = dbscanFunc.compute_hdbscan_model(self.data, self.min_pts)
+            self.threshold, _ = dbscanFunc.compute_threshold(self.data, self.min_pts, self.model, False)
+            if self.threshold > MAX_THRESHOLD:
+                min_pts = self.min_pts
+                while self.threshold > MAX_THRESHOLD and min_pts <= len(self.data):
+                    min_pts += 1
+                    self.threshold, _ = dbscanFunc.compute_threshold(self.data, min_pts, self.model, False)
+                if min_pts > len(self.data):
+                    self.min_pts = len(self.data)
+                    self.model = self.data
+                else:
+                    self.min_pts = min_pts
 
         else:
             self.model = self.data
